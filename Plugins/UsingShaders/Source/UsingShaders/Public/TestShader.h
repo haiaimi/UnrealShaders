@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -11,12 +11,11 @@
  * 
  */
 UCLASS(MinimalAPI, meta = (ScriptName = "HaiaimiShaderLibrary"))
-class USINGSHADERS_API UTestShaderBlueprintLibrary : UBlueprintFunctionLibrary
+class UTestShaderBlueprintLibrary :public UBlueprintFunctionLibrary
 {
-	GENERATED_BODY()
+	GENERATED_UCLASS_BODY()
 
 public:
-	UTestShaderBlueprintLibrary();
 
 	UFUNCTION(BlueprintCallable, Category = "UsingShaderPlugin", meta = (WorldContext = "WorldContext"))
 	static void DrawTestShaderRenderTarget(class UTextureRenderTarget* OutputRenderTarget, AActor* Ac, FLinearColor AcColor);

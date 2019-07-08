@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "TestShader.h"
@@ -8,16 +8,15 @@
 #include "RHIStaticStates.h"
 #include "RenderUtils.h"
 #include "PipelineStateCache.h"
+#include "Engine/TextureRenderTarget.h"
+#include "GameFramework/Actor.h"
+#include "SceneInterface.h"
+#include "Engine/World.h"
 
 
-UTestShaderBlueprintLibrary::UTestShaderBlueprintLibrary()
+UTestShaderBlueprintLibrary::UTestShaderBlueprintLibrary(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
 {
-
-}
-
-void UTestShaderBlueprintLibrary::DrawTestShaderRenderTarget(class UTextureRenderTarget* OutputRenderTarget, AActor* Ac, FLinearColor AcColor)
-{
-
 }
 
 class FHelloShader : public FGlobalShader
@@ -91,6 +90,37 @@ IMPLEMENT_SHADER_TYPE(, FHelloShaderVS, TEXT("/Plugin/UsingShaders/Private/Custo
 IMPLEMENT_SHADER_TYPE(, FHelloShaderPS, TEXT("/Plugin/UsingShaders/Private/CustomShader.usf"), TEXT("MainPS"), SF_Pixel)
 
 
+static void DrawIndexedPrimitiveUP_cpy(
+	FRHICommandList& RHICmdList,
+	uint32 PrimitiveType,
+	uint32 MinVertexIndex,
+	uint32 NumVertices,
+	uint32 NumPrimitives,
+	const void* IndexData,
+	uint32 IndexDataStride,
+	const void* VertexData,
+	uint32 VertexDataStride)
+{
+	const uint32 NumIndices = GetVertexCountForPrimitiveCount(NumPrimitives, PrimitiveType);
+
+	FRHIResourceCreateInfo CreateInfo;
+	FVertexBufferRHIRef VertexBufferRHI = RHICreateVertexBuffer(VertexDataStride * NumVertices, BUF_Volatile, CreateInfo);
+	void* VoidPtr = RHILockVertexBuffer(VertexBufferRHI, 0, VertexDataStride * NumVertices, RLM_WriteOnly);
+	FPlatformMemory::Memcpy(VoidPtr, VertexData, VertexDataStride * NumVertices);
+	RHIUnlockVertexBuffer(VertexBufferRHI);
+
+	FIndexBufferRHIRef IndexBufferRHI = RHICreateIndexBuffer(IndexDataStride, IndexDataStride * NumIndices, BUF_Volatile, CreateInfo);
+	void* VoidPtr2 = RHILockIndexBuffer(IndexBufferRHI, 0, IndexDataStride * NumIndices, RLM_WriteOnly);
+	FPlatformMemory::Memcpy(VoidPtr2, IndexData, IndexDataStride * NumIndices);
+	RHIUnlockIndexBuffer(IndexBufferRHI);
+
+	RHICmdList.SetStreamSource(0, VertexBufferRHI, 0);
+	RHICmdList.DrawIndexedPrimitive(IndexBufferRHI, MinVertexIndex, 0, NumVertices, 0, NumPrimitives, 1);
+
+	IndexBufferRHI.SafeRelease();
+	VertexBufferRHI.SafeRelease();
+}
+
 static void DrawHelloShaderRenderTarget_RenderThread(
 	FRHICommandListImmediate& RHICmdList,
 	FTextureRenderTargetResource* OutputRenderTargetResource,
@@ -109,11 +139,14 @@ static void DrawHelloShaderRenderTarget_RenderThread(
 	SCOPED_DRAW_EVENTF(RHICmdList, DrawUVDisplacementRenderTarget_RenderThread);
 #endif
 
-	SetRenderTarget(RHICmdList,
+	/*SetRenderTarget(RHICmdList,
 		OutputRenderTargetResource->GetRenderTargetTexture(),
 		FTextureRHIRef(),
 		ESimpleRenderTargetMode::EUninitializedColorAndDepth,
-		FExclusiveDepthStencil::DepthNop_StencilNop);
+		FExclusiveDepthStencil::DepthNop_StencilNop);*/
+	//RHICmdList.BeginRenderPass(FRHIRenderPassInfo(OutputRenderTargetResource->GetRenderTargetTexture(), EDepthStencilTargetActions::ClearDepthStencil_DontStoreDepthStencil, nullptr, FExclusiveDepthStencil::DepthNop_StencilNop), TEXT("hello"));
+	FRHIRenderPassInfo RPInfo(OutputRenderTargetResource->GetRenderTargetTexture(), ERenderTargetActions::DontLoad_Store, OutputRenderTargetResource->TextureRHI);
+	RHICmdList.BeginRenderPass(RPInfo, TEXT("DrawTestShader"));
 
 	TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 	TShaderMapRef<FHelloShaderVS> VertexShader(GlobalShaderMap);
@@ -143,6 +176,25 @@ static void DrawHelloShaderRenderTarget_RenderThread(
         2, 1, 3  
     };  
 
-	DrawIndexedPrimitiveUP(RHICmdList, PT_TriangleStrip, 0, ARRAY_COUNT(Vertices), 2, Indices, sizeof(Indices[0]), Vertices, sizeof(Vertices[0]));
-	RHICmdList.CopyToResolveTarget(OutputRenderTargetResource->GetRenderTargetTexture(), OutputRenderTargetResource->TextureRHI, FResolveParams());
+	DrawIndexedPrimitiveUP_cpy(RHICmdList, PT_TriangleStrip, 0, ARRAY_COUNT(Vertices), 2, Indices, sizeof(Indices[0]), Vertices, sizeof(Vertices[0]));
+	//RHICmdList.CopyToResolveTarget(OutputRenderTargetResource->GetRenderTargetTexture(), OutputRenderTargetResource->TextureRHI, FResolveParams());
+
+	RHICmdList.EndRenderPass();
+}
+
+
+void UTestShaderBlueprintLibrary::DrawTestShaderRenderTarget(class UTextureRenderTarget* OutputRenderTarget, AActor* Ac, FLinearColor AcColor)
+{
+	check(IsInGameThread());
+
+	if (!OutputRenderTarget)return;
+
+	FTextureRenderTargetResource* TextureRenderTargetResource = OutputRenderTarget->GameThread_GetRenderTargetResource();
+	UWorld* World = Ac->GetWorld();
+	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
+	FName TextureRenderTargetName = OutputRenderTarget->GetFName();
+	ENQUEUE_RENDER_COMMAND(CaptureCommand)([TextureRenderTargetResource, FeatureLevel, AcColor, TextureRenderTargetName](FRHICommandListImmediate& RHICmdList)
+	{
+		DrawHelloShaderRenderTarget_RenderThread(RHICmdList, TextureRenderTargetResource, FeatureLevel, TextureRenderTargetName, AcColor);
+	});
 }

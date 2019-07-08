@@ -26,6 +26,11 @@ public class UsingShaders : ModuleRules
 			new string[]
 			{
 				"Core",
+                "CoreUObject",
+                "Engine",
+                "RHI",
+                "Engine",
+                "RenderCore",
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
