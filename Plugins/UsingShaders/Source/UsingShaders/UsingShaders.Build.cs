@@ -31,6 +31,7 @@ public class UsingShaders : ModuleRules
                 "RHI",
                 "Engine",
                 "RenderCore",
+                "Projects"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
