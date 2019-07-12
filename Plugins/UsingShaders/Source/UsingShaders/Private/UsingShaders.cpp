@@ -11,7 +11,7 @@ void FUsingShadersModule::StartupModule()
 {
 	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
 	FString PluginShaderDir = FPaths::Combine(IPluginManager::Get().FindPlugin(TEXT("UsingShaders"))->GetBaseDir(), TEXT("Shaders"));
-	AddShaderSourceDirectoryMapping(TEXT("/Plugin/Shaders"), PluginShaderDir);
+	AddShaderSourceDirectoryMapping(TEXT("/Plugins/Shaders"), PluginShaderDir);
 }
 
 void FUsingShadersModule::ShutdownModule()

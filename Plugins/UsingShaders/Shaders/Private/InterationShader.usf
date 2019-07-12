@@ -2,8 +2,13 @@
 
 float4 SimpleColor;
 
+Texture2D InterationTexture;
+SamplerState InterationSampler;      //Œ∆¿Ì≤…—˘≈‰÷√
+
 void MainVS(
 	in float4 InPosition : ATTRIBUTE0,
+	in float2 UV : ATTRIBUTE1,
+	out float2 OutUV : TEXCOORD0,
 	out float4 OutPosition : SV_POSITION
 	)
 {
@@ -11,8 +16,10 @@ void MainVS(
 }
 
 void MainPS(
+	in float2 UV : TEXCOORD0,
 	out float4 OutColor : SV_Target0
 )
 {
-    OutColor = SimpleColor;
+    OutColor = float4(InterationTexture.Sample(InterationSampler, UV).rgb, 1.f);
+    OutColor *= SimpleColor;
 }
