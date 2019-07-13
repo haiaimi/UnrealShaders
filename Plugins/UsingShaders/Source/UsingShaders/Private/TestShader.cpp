@@ -28,7 +28,8 @@ class FHelloShader : public FGlobalShader
 public:
 	FHelloShader() {}
 
-	FHelloShader(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+	FHelloShader(const ShaderMetaType::CompiledShaderInitializerType& Initializer):
+		FGlobalShader(Initializer)
 	{
 		SimpleColorVal.Bind(Initializer.ParameterMap, TEXT("SimpleColor"));
 	}
@@ -151,7 +152,10 @@ static void DrawHelloShaderRenderTarget_RenderThread(
 		FTextureRHIRef(),
 		ESimpleRenderTargetMode::EUninitializedColorAndDepth,
 		FExclusiveDepthStencil::DepthNop_StencilNop);*/
+
 	//RHICmdList.BeginRenderPass(FRHIRenderPassInfo(OutputRenderTargetResource->GetRenderTargetTexture(), EDepthStencilTargetActions::ClearDepthStencil_DontStoreDepthStencil, nullptr, FExclusiveDepthStencil::DepthNop_StencilNop), TEXT("hello"));
+	FIntPoint DrawTargetResolution(OutputRenderTargetResource->GetSizeX(), OutputRenderTargetResource->GetSizeY());  
+    RHICmdList.SetViewport(0, 0, 0.0f, DrawTargetResolution.X, DrawTargetResolution.Y, 1.0f); 
 	FRHIRenderPassInfo RPInfo(OutputRenderTargetResource->GetRenderTargetTexture(), ERenderTargetActions::DontLoad_Store, OutputRenderTargetResource->TextureRHI);
 	RHICmdList.BeginRenderPass(RPInfo, TEXT("DrawTestShader"));
 
@@ -184,7 +188,11 @@ static void DrawHelloShaderRenderTarget_RenderThread(
     };  
 
 	//现在开始绘制，按照顶点缓冲和索引缓冲来绘制
-	DrawIndexedPrimitiveUP_cpy(RHICmdList, PT_TriangleStrip, 0, ARRAY_COUNT(Vertices), 2, Indices, sizeof(Indices[0]), Vertices, sizeof(Vertices[0]));
+	
+	DrawIndexedPrimitiveUP_cpy(RHICmdList, PT_TriangleList, 0, ARRAY_COUNT(Vertices), 2, Indices, sizeof(Indices[0]), Vertices, sizeof(Vertices[0]));
+	
+	// RHICmdList.SetStreamSource(0, GScreenSpaceVertexBuffer.VertexBufferRHI, 0);
+	//RHICmdList.DrawIndexedPrimitive(GTwoTrianglesIndexBuffer.IndexBufferRHI, 0, 0, 4, 0, 2, 1);
 	//RHICmdList.CopyToResolveTarget(OutputRenderTargetResource->GetRenderTargetTexture(), OutputRenderTargetResource->TextureRHI, FResolveParams());
 
 	RHICmdList.EndRenderPass();

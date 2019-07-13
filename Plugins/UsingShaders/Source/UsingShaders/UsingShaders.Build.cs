@@ -32,7 +32,7 @@ public class UsingShaders : ModuleRules
                 "Engine",
                 "RenderCore",
                 "Projects",
-                "ShaderCore"
+                "UtilityShaders"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
