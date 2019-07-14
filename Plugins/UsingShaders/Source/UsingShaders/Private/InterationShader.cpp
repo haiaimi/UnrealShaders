@@ -1,4 +1,4 @@
-#include "InterationSahder.h"
+#include "InterationShader.h"
 #include "RHIResources.h"
 #include "RenderResource.h"
 #include "GlobalShader.h"
@@ -76,7 +76,7 @@ public:
 		 
 		//下面是为着色器设置纹理参数
 		SetTextureParameter(RHICmdList, GetPixelShader(), TestTextureVal, TestTextureSampler, 
-				TStaticSamplerState<SF_Trilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(),     //纹理采样配置，三线性过滤，U，V,W三个维度都是Clamp
+				TStaticSamplerState<SF_AnisotropicLinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(),     //纹理采样配置，三线性过滤，U，V,W三个维度都是Clamp
 				MyTexture);
 	}
 
@@ -110,7 +110,7 @@ public:
 
 class FInterationShaderPS :public FInterationShader
 {
-	DECLARE_SHADER_TYPE(FInterationShaderVS, Global);
+	DECLARE_SHADER_TYPE(FInterationShaderPS, Global);
 
 public:
 	FInterationShaderPS() {}
@@ -121,8 +121,8 @@ public:
 	}
 };
 
-IMPLEMENT_SHADER_TYPE(, FInterationShaderVS, TEXT("/Plugin/Shaders/Private/InterationShader.usf"),TEXT("MainVS"), SF_Vertex)
-IMPLEMENT_SHADER_TYPE(, FInterationShaderPS, TEXT("/Plugin/Shaders/Private/InterationShader.usf"),TEXT("MainPS"), SF_Pixel)
+IMPLEMENT_SHADER_TYPE(, FInterationShaderVS, TEXT("/Plugins/Shaders/Private/InterationShader.usf"),TEXT("MainVS"), SF_Vertex)
+IMPLEMENT_SHADER_TYPE(, FInterationShaderPS, TEXT("/Plugins/Shaders/Private/InterationShader.usf"),TEXT("MainPS"), SF_Pixel)
 
 
 static void DrawIndexedPrimitiveUP_cpy(
@@ -182,12 +182,18 @@ static void DrawInterationShaderRenderTarget_RenderThread(
 		ESimpleRenderTargetMode::EUninitializedColorAndDepth,
 		FExclusiveDepthStencil::DepthNop_StencilNop);*/
 	//RHICmdList.BeginRenderPass(FRHIRenderPassInfo(OutputRenderTargetResource->GetRenderTargetTexture(), EDepthStencilTargetActions::ClearDepthStencil_DontStoreDepthStencil, nullptr, FExclusiveDepthStencil::DepthNop_StencilNop), TEXT("hello"));
+	FIntPoint DrawTargetResolution(OutputRenderTargetResource->GetSizeX(), OutputRenderTargetResource->GetSizeY());  
+    RHICmdList.SetViewport(0, 0, 0.0f, 500, 500, 1.0f);    //设置视口大小
+
 	FRHIRenderPassInfo RPInfo(OutputRenderTargetResource->GetRenderTargetTexture(), ERenderTargetActions::DontLoad_Store, OutputRenderTargetResource->TextureRHI);
-	RHICmdList.BeginRenderPass(RPInfo, TEXT("DrawInterationShader"));
+	RHICmdList.BeginRenderPass(RPInfo, TEXT("InterationShader"));
 
 	TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 	TShaderMapRef<FInterationShaderVS> VertexShader(GlobalShaderMap);
 	TShaderMapRef<FInterationShaderPS> PixelShader(GlobalShaderMap);        //获取自定义的Shader
+
+	FInterationDeclaration VertexDeclaration;   
+	VertexDeclaration.InitRHI(); //创建定点输入布局
 
 	FGraphicsPipelineStateInitializer GraphicPSPoint;
 	RHICmdList.ApplyCachedRenderTargets(GraphicPSPoint);
@@ -195,7 +201,7 @@ static void DrawInterationShaderRenderTarget_RenderThread(
 	GraphicPSPoint.BlendState = TStaticBlendState<>::GetRHI();
 	GraphicPSPoint.RasterizerState = TStaticRasterizerState<>::GetRHI();
 	GraphicPSPoint.PrimitiveType = PT_TriangleList;        //绘制的图元类型
-	GraphicPSPoint.BoundShaderState.VertexDeclarationRHI = GetVertexDeclarationFVector4();    //顶点类型
+	GraphicPSPoint.BoundShaderState.VertexDeclarationRHI = VertexDeclaration.VertexDeclarationRHI;
 	GraphicPSPoint.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
 	GraphicPSPoint.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 	SetGraphicsPipelineState(RHICmdList, GraphicPSPoint);

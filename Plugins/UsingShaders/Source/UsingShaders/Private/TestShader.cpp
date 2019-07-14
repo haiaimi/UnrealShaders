@@ -12,7 +12,6 @@
 #include "GameFramework/Actor.h"
 #include "SceneInterface.h"
 #include "Engine/World.h"
-#include "InteractionSahder.h"
 #include "Engine/Texture.h"
 #include "Shader.h"
 

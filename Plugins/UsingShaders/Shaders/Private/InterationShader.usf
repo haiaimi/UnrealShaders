@@ -1,9 +1,10 @@
 #include "/Engine/Public/Platform.ush"
 
+#define PI 3.14
 float4 SimpleColor;
 
 Texture2D InterationTexture;
-SamplerState InterationSampler;      //纹理采样配置
+SamplerState InterationTextureSampler;     //纹理采样配置
 
 void MainVS(
 	in float4 InPosition : ATTRIBUTE0,
@@ -13,6 +14,10 @@ void MainVS(
 	)
 {
     OutPosition = InPosition;
+    float si = sin(PI);
+    float co = cos(PI);
+    float2x2 rotmat = { co, si, -si, co };     //二维旋转
+    OutUV = mul(UV - 0.5f, rotmat) + 0.5;  
 }
 
 void MainPS(
@@ -20,6 +25,6 @@ void MainPS(
 	out float4 OutColor : SV_Target0
 )
 {
-    OutColor = float4(InterationTexture.Sample(InterationSampler, UV).rgb, 1.f);
+    OutColor = float4(InterationTexture.Sample(InterationTextureSampler, UV).rgb, 1.f);
     OutColor *= SimpleColor;
 }

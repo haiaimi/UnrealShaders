@@ -22,4 +22,4 @@ void FUsingShadersModule::ShutdownModule()
 
 #undef LOCTEXT_NAMESPACE
 	
-IMPLEMENT_MODULE(FUsingShadersModule, UsingShaders)
+IMPLEMENT_MODULE(FUsingShadersModule, UsingShaders) 
