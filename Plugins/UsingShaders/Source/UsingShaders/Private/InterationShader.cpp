@@ -125,7 +125,7 @@ IMPLEMENT_SHADER_TYPE(, FInterationShaderVS, TEXT("/Plugins/Shaders/Private/Inte
 IMPLEMENT_SHADER_TYPE(, FInterationShaderPS, TEXT("/Plugins/Shaders/Private/InterationShader.usf"),TEXT("MainPS"), SF_Pixel)
 
 
-static void DrawIndexedPrimitiveUP_cpy(
+static void DrawIndexedPrimitiveUP_cpy2(
 	FRHICommandList& RHICmdList,
 	uint32 PrimitiveType,
 	uint32 MinVertexIndex,
@@ -223,7 +223,7 @@ static void DrawInterationShaderRenderTarget_RenderThread(
         2, 1, 3  
     };  
 
-	DrawIndexedPrimitiveUP_cpy(RHICmdList, PT_TriangleList, 0, ARRAY_COUNT(Vertices), 2, Indices, sizeof(Indices[0]), Vertices, sizeof(Vertices[0]));
+	DrawIndexedPrimitiveUP_cpy2(RHICmdList, PT_TriangleList, 0, ARRAY_COUNT(Vertices), 2, Indices, sizeof(Indices[0]), Vertices, sizeof(Vertices[0]));
 	//RHICmdList.CopyToResolveTarget(OutputRenderTargetResource->GetRenderTargetTexture(), OutputRenderTargetResource->TextureRHI, FResolveParams());
 
 	RHICmdList.EndRenderPass();

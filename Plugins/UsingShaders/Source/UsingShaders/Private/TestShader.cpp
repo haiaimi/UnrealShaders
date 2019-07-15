@@ -95,7 +95,7 @@ IMPLEMENT_SHADER_TYPE(, FHelloShaderVS, TEXT("/Plugins/Shaders/Private/CustomSha
 IMPLEMENT_SHADER_TYPE(, FHelloShaderPS, TEXT("/Plugins/Shaders/Private/CustomShader.usf"), TEXT("MainPS"), SF_Pixel)
 
 
-static void DrawIndexedPrimitiveUP_cpy(
+static void DrawIndexedPrimitiveUP_cpy1(
 	FRHICommandList& RHICmdList,
 	uint32 PrimitiveType,
 	uint32 MinVertexIndex,
@@ -187,7 +187,7 @@ static void DrawHelloShaderRenderTarget_RenderThread(
     };  
 
 	//现在开始绘制，按照顶点缓冲和索引缓冲来绘制
-	DrawIndexedPrimitiveUP_cpy(RHICmdList, PT_TriangleList, 0, ARRAY_COUNT(Vertices), 2, Indices, sizeof(Indices[0]), Vertices, sizeof(Vertices[0]));
+	DrawIndexedPrimitiveUP_cpy1(RHICmdList, PT_TriangleList, 0, ARRAY_COUNT(Vertices), 2, Indices, sizeof(Indices[0]), Vertices, sizeof(Vertices[0]));
 	
 	// RHICmdList.SetStreamSource(0, GScreenSpaceVertexBuffer.VertexBufferRHI, 0);
 	//RHICmdList.DrawIndexedPrimitive(GTwoTrianglesIndexBuffer.IndexBufferRHI, 0, 0, 4, 0, 2, 1);

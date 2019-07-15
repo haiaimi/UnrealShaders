@@ -42,5 +42,6 @@ void MainPS(
             break;
 		default:
             OutColor *= SimpleColor;
+            break;
     }
 }

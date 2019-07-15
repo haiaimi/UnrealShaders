@@ -1,4 +1,3 @@
-#include "../Public/UniformBufferShader.h"
 #include "UniformBufferShader.h"
 #include "RHIResources.h"
 #include "RenderResource.h"
@@ -25,7 +24,7 @@ END_GLOBAL_SHADER_PARAMETER_STRUCT()
  //为Shader声明UniformBuffer，不需要在Shader中声明，该声明会把这些定义写入到Common.ush的shader文件中
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FUniformBufferShaderData, "FUniformData");    
 
-struct FVertexInput
+struct FUVertexInput
 {
 	FVector4 Position;
 	FVector2D UV;
@@ -40,9 +39,9 @@ public:
 	{
 		//设置顶点输入布局
 		FVertexDeclarationElementList Elements;
-		uint32 Stride = sizeof(FVertexInput);   //步长
-		Elements.Add(FVertexElement(0, STRUCT_OFFSET(FVertexInput, Position), EVertexElementType::VET_Float4, 0, Stride));  //第一个参数Stream应该是配合Instance来使用
-		Elements.Add(FVertexElement(0, STRUCT_OFFSET(FVertexInput, UV), EVertexElementType::VET_Float2, 1, Stride));
+		uint32 Stride = sizeof(FUVertexInput);   //步长
+		Elements.Add(FVertexElement(0, STRUCT_OFFSET(FUVertexInput, Position), EVertexElementType::VET_Float4, 0, Stride));  //第一个参数Stream应该是配合Instance来使用
+		Elements.Add(FVertexElement(0, STRUCT_OFFSET(FUVertexInput, UV), EVertexElementType::VET_Float2, 1, Stride));
 		VertexDeclarationRHI = RHICreateVertexDeclaration(Elements);
 	}
 
@@ -146,7 +145,7 @@ IMPLEMENT_SHADER_TYPE(, FUniformBufferShaderVS, TEXT("/Plugins/Shaders/Private/U
 IMPLEMENT_SHADER_TYPE(, FUniformBufferShaderPS, TEXT("/Plugins/Shaders/Private/UniformBufferShader.usf"),TEXT("MainPS"), SF_Pixel)
 
 
-static void DrawIndexedPrimitiveUP_cpy(
+static void DrawIndexedPrimitiveUP_cpy3(
 	FRHICommandList& RHICmdList,
 	uint32 PrimitiveType,
 	uint32 MinVertexIndex,
@@ -230,7 +229,7 @@ static void DrawUniformBufferShaderRenderTarget_RenderThread(
 
 	PixelShader->SetParameters(RHICmdList, MyColor, MyTexture, MyData);    //设置Shader参数，这里一个颜色参数和一个纹理参数
 
-	FVertexInput Vertices[4];
+	FUVertexInput Vertices[4];
 	Vertices[0].Position.Set(-1.0f, 1.0f, 0, 1.0f);
 	Vertices[1].Position.Set(1.0f, 1.0f, 0, 1.0f);
 	Vertices[2].Position.Set(-1.0f, -1.0f, 0, 1.0f);
@@ -245,7 +244,7 @@ static void DrawUniformBufferShaderRenderTarget_RenderThread(
         2, 1, 3  
     };  
 
-	DrawIndexedPrimitiveUP_cpy(RHICmdList, PT_TriangleList, 0, ARRAY_COUNT(Vertices), 2, Indices, sizeof(Indices[0]), Vertices, sizeof(Vertices[0]));
+	DrawIndexedPrimitiveUP_cpy3(RHICmdList, PT_TriangleList, 0, ARRAY_COUNT(Vertices), 2, Indices, sizeof(Indices[0]), Vertices, sizeof(Vertices[0]));
 	//RHICmdList.CopyToResolveTarget(OutputRenderTargetResource->GetRenderTargetTexture(), OutputRenderTargetResource->TextureRHI, FResolveParams());
 
 	RHICmdList.EndRenderPass();
