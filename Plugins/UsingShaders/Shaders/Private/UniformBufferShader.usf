@@ -1,0 +1,46 @@
+#include "/Engine/Private/Common.ush"
+
+#define PI 3.14
+float4 SimpleColor;
+
+Texture2D UniformBufferTexture;
+SamplerState UniformBufferTextureSampler;    //纹理采样配置
+
+void MainVS(
+	in float4 InPosition : ATTRIBUTE0,
+	in float2 UV : ATTRIBUTE1,
+	out float2 OutUV : TEXCOORD0,
+	out float4 OutPosition : SV_POSITION
+	)
+{
+    OutPosition = InPosition;
+    float si = sin(PI);
+    float co = cos(PI);
+    float2x2 rotmat = { co, si, -si, co };     //二维旋转
+    OutUV = mul(UV - 0.5f, rotmat) + 0.5;  
+}
+
+void MainPS(
+	in float2 UV : TEXCOORD0,
+	out float4 OutColor : SV_Target0
+)
+{
+    OutColor = float4(UniformBufferTexture.Sample(UniformBufferTextureSampler, UV).rgb, 1.f);
+    switch (FUniformData.ColorIndex)
+    {
+		case 1:
+            OutColor *= FUniformData.ColorOne;
+            break;
+		case 2:
+            OutColor *= FUniformData.ColorTwo;
+            break;
+		case 3:
+            OutColor *= FUniformData.ColorThree;
+            break;
+        case 4:
+            OutColor *= FUniformData.ColorFour;
+            break;
+		default:
+            OutColor *= SimpleColor;
+    }
+}

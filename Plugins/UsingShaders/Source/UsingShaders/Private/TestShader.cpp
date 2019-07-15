@@ -187,7 +187,6 @@ static void DrawHelloShaderRenderTarget_RenderThread(
     };  
 
 	//现在开始绘制，按照顶点缓冲和索引缓冲来绘制
-	
 	DrawIndexedPrimitiveUP_cpy(RHICmdList, PT_TriangleList, 0, ARRAY_COUNT(Vertices), 2, Indices, sizeof(Indices[0]), Vertices, sizeof(Vertices[0]));
 	
 	// RHICmdList.SetStreamSource(0, GScreenSpaceVertexBuffer.VertexBufferRHI, 0);
