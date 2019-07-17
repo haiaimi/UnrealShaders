@@ -1,6 +1,6 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "4.22",
+	"EngineAssociation": "{59175D0F-4610-030C-117A-3F90044084D6}",
 	"Category": "",
 	"Description": "",
 	"Modules": [
@@ -8,6 +8,12 @@
 			"Name": "HaiaimiShaders",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "RenderDocPlugin",
+			"Enabled": true
 		}
 	]
 }

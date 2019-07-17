@@ -6,28 +6,36 @@
  * Contact: tdmaav@gmail.com
  */
 
-const int NUM_STEPS = 8;
-const float EPSILON = 1e-3;
-#define EPSILON_NRM (0.1 / 500)
+//Quoted from https://www.shadertoy.com/view/Ms2SD1
+//webgl改成UE4内适用的HLSL
+
+#define NUM_STEPS  8
+#define EPSILON  1e-3
+#define EPSILON_NRM (0.1 / 1000)
 #define PI 3.14
 
 // sea
-const int ITER_GEOMETRY = 3;
-const int ITER_FRAGMENT = 5;
-const float SEA_HEIGHT = 0.6;
-const float SEA_CHOPPY = 4.0;
-const float SEA_SPEED = 0.8;
-const float SEA_FREQ = 0.16;
-const float3 SEA_BASE = float3(0.1, 0.19, 0.22);
-const float3 SEA_WATER_COLOR = float3(0.8, 0.9, 0.6);
+#define ITER_GEOMETRY  3
+#define ITER_FRAGMENT  5
+#define SEA_HEIGHT  0.6
+#define SEA_CHOPPY  4.0
+#define SEA_SPEED  0.8;
+#define SEA_FREQ  0.16;
+#define SEA_BASE  float3(0.1, 0.19, 0.22)
+#define SEA_WATER_COLOR  float3(0.8, 0.9, 0.6)
 #define SEA_TIME 1.0
 //#define SEA_TIME (1.0 + iTime * SEA_SPEED)
-const float2x2 octave_m = float2x2(1.6, 1.2, -1.2, 1.6);
+#define octave_m  float2x2(1.6, 1.2, -1.2, 1.6)
+
+float getSeaTime()
+{
+    return 1.0 + FSeascapeData.TimeSeconds * SEA_SPEED;
+}
 
 // math  convert euler to rotation matrix
 float3x3 fromEuler(float3 ang)
 {
-    float2  a1 = float2(sin(ang.x), cos(ang.x));
+    float2 a1 = float2(sin(ang.x), cos(ang.x));
     float2 a2 = float2(sin(ang.y), cos(ang.y));
     float2 a3 = float2(sin(ang.z), cos(ang.z));
     float3x3 m;
@@ -46,8 +54,8 @@ float noise(in float2 p)
     float2 i = floor(p);
     float2 f = frac(p);
     float2 u = f * f * (3.0 - 2.0 * f);
-    return -1.0 + 2.0 * lerp(lerp(hash(i + float2(0.0, 0.0)), hash(i + float2(1.0, 0.0)), u.x), 
-							 lerp(hash(i + float2(0.0, 1.0)), hash(i + float2(1.0, 1.0)), u.x), 
+    return -1.0 + 2.0 * lerp(lerp(hash(i + float2(0.0, 0.0)), hash(i + float2(1.0, 0.0)), u.x),
+							 lerp(hash(i + float2(0.0, 1.0)), hash(i + float2(1.0, 1.0)), u.x),
 							 u.y);
 }
 
@@ -90,8 +98,8 @@ float map(float3 p)
     float d, h = 0.0;
     for (int i = 0; i < ITER_GEOMETRY; i++)
     {
-        d = sea_octave((uv + SEA_TIME) * freq, choppy);
-        d += sea_octave((uv - SEA_TIME) * freq, choppy);
+        d = sea_octave((uv + getSeaTime()) * freq, choppy);
+        d += sea_octave((uv - getSeaTime()) * freq, choppy);
         h += d * amp;
         uv = mul(uv, octave_m);
         freq *= 1.9;
@@ -112,8 +120,8 @@ float map_detailed(float3 p)
     float d, h = 0.0;
     for (int i = 0; i < ITER_FRAGMENT; i++)
     {
-        d = sea_octave((uv + SEA_TIME) * freq, choppy);
-        d += sea_octave((uv - SEA_TIME) * freq, choppy);
+        d = sea_octave((uv + getSeaTime()) * freq, choppy);
+        d += sea_octave((uv - getSeaTime()) * freq, choppy);
         h += d * amp;
         uv = mul(uv, octave_m);
         freq *= 1.9;
@@ -198,24 +206,24 @@ void MainPS(
     out float4 fragColor : SV_Target0
 )
 {
-    float2 SimResolution = float2(500, 500);
-    float2 uv = fragCoord.xy / /*iResolution.xy*/SimResolution;
+    float2 SimResolution = FSeascapeData.ViewResolution;
+    float2 uv = fragCoord.xy;
     uv = uv * 2.0 - 1.0;
     uv.x *= SimResolution.x / SimResolution.y;
-    float time = /*iTime * 0.3 + iMouse.x * 0.01*/ 0.3;
+    float time = getSeaTime() * 0.3 + FSeascapeData.MousePos.x * 0.01;
         
     // ray
     float3 ang = float3(sin(time * 3.0) * 0.1, sin(time) * 0.2 + 0.3, time);
     float3 ori = float3(0.0, 3.5, time * 5.0);
     float3 dir = normalize(float3(uv.xy, -2.0));
     dir.z += length(uv) * 0.15;
-    dir = mul(normalize(dir), fromEuler(ang));
+    //dir = mul(normalize(dir), fromEuler(ang));
     
     // tracing
     float3 p;
     heightMapTracing(ori, dir, p);
     float3 dist = p - ori;
-    float3 n = getNormal(p, dot(dist, dist) * EPSILON_NRM);
+    float3 n = getNormal(p, dot(dist, dist) * (0.1 / SimResolution.x));
     float3 light = normalize(float3(0.0, 1.0, 0.8));
              
     // color

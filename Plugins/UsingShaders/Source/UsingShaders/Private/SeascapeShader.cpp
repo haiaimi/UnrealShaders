@@ -20,8 +20,6 @@ SHADER_PARAMETER(float, TimeSeconds)
 SHADER_PARAMETER(FVector2D, MousePos)
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
- //为Shader声明UniformBuffer，不需要在Shader中声明，该声明会把这些定义写入到Common.ush的shader文件中
-IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FSeascapeShaderData, "FUniformData");    
 
 struct FSVertexInput
 {
@@ -131,6 +129,10 @@ public:
 	}
 };
 
+ //为Shader声明UniformBuffer，不需要在Shader中声明，该声明会把这些定义写入到Common.ush的shader文件中
+IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FSeascapeShaderData, "FSeascapeData");    
+
+
 IMPLEMENT_SHADER_TYPE(, FSeascapeShaderVS, TEXT("/Plugins/Shaders/Private/SeascapeShader.usf"),TEXT("MainVS"), SF_Vertex)
 IMPLEMENT_SHADER_TYPE(, FSeascapeShaderPS, TEXT("/Plugins/Shaders/Private/SeascapeShader.usf"),TEXT("MainPS"), SF_Pixel)
 
@@ -186,9 +188,9 @@ static void DrawUniformBufferShaderRenderTarget_RenderThread(
 #endif
 
 	FIntPoint DrawTargetResolution(OutputRenderTargetResource->GetSizeX(), OutputRenderTargetResource->GetSizeY());  
-    RHICmdList.SetViewport(0, 0, 0.0f, 500, 500, 1.0f);    //设置视口大小
+    RHICmdList.SetViewport(0, 0, 0.0f, DrawTargetResolution.X, DrawTargetResolution.Y, 1.0f);    //设置视口大小
 
-	FRHIRenderPassInfo RPInfo(OutputRenderTargetResource->GetRenderTargetTexture(), ERenderTargetActions::DontLoad_Store, OutputRenderTargetResource->TextureRHI);
+	FRHIRenderPassInfo RPInfo(OutputRenderTargetResource->GetRenderTargetTexture(), ERenderTargetActions::Load_Store, OutputRenderTargetResource->TextureRHI);
 	RHICmdList.BeginRenderPass(RPInfo, TEXT("SeascapeShader"));
 
 	TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
