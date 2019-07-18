@@ -6,8 +6,9 @@
  * Contact: tdmaav@gmail.com
  */
 
-//Quoted from https://www.shadertoy.com/view/Ms2SD1
+//此Shader使用Ray Marching思想实现水体模拟，不需要纹理贴图
 //webgl改成UE4内适用的HLSL
+//Quoted from https://www.shadertoy.com/view/Ms2SD1
 
 #define NUM_STEPS  8
 #define EPSILON  1e-3
@@ -24,7 +25,6 @@
 #define SEA_BASE  float3(0.1, 0.19, 0.22)
 #define SEA_WATER_COLOR  float3(0.8, 0.9, 0.6)
 #define SEA_TIME 1.0
-//#define SEA_TIME (1.0 + iTime * SEA_SPEED)
 #define octave_m  float2x2(1.6, 1.2, -1.2, 1.6)
 
 float getSeaTime()
@@ -44,11 +44,14 @@ float3x3 fromEuler(float3 ang)
     m[2] = float3(a3.y * a1.x * a2.x + a1.y * a3.x, a1.x * a3.x - a1.y * a3.y * a2.x, a2.y * a3.y);
     return m;
 }
+
 float hash(float2 p)
 {
     float h = dot(p, float2(127.1, 311.7));
     return frac(sin(h) * 43758.5453123);
 }
+
+//噪声算法
 float noise(in float2 p)
 {
     float2 i = floor(p);
@@ -60,10 +63,13 @@ float noise(in float2 p)
 }
 
 // lighting
+//漫反射
 float diffuse(float3 n, float3 l, float p)
 {
     return pow(dot(n, l) * 0.4 + 0.6, p);
 }
+
+//镜面光
 float specular(float3 n, float3 l, float3 e, float s)
 {
     float nrm = (s + 8.0) / (PI * 8.0);
@@ -78,15 +84,17 @@ float3 getSkyColor(float3 e)
 }
 
 // sea
+//通过正余弦波获取水体的高度
 float sea_octave(float2 uv, float choppy)
 {
-    uv += noise(uv);
+    uv += noise(uv);  //取uv的噪声值
     float2 wv = 1.0 - abs(sin(uv));
     float2 swv = abs(cos(uv));
     wv = lerp(wv, swv, wv);
     return pow(1.0 - pow(wv.x * wv.y, 0.65), choppy);
 }
 
+//Ray Marching中步进结果与目标位置的比对
 float map(float3 p)
 {
     float freq = SEA_FREQ;
@@ -96,8 +104,9 @@ float map(float3 p)
     uv.x *= 0.75;
     
     float d, h = 0.0;
+    UNROLL
     for (int i = 0; i < ITER_GEOMETRY; i++)
-    {
+    {                  
         d = sea_octave((uv + getSeaTime()) * freq, choppy);
         d += sea_octave((uv - getSeaTime()) * freq, choppy);
         h += d * amp;
@@ -118,6 +127,7 @@ float map_detailed(float3 p)
     uv.x *= 0.75;
     
     float d, h = 0.0;
+	UNROLL
     for (int i = 0; i < ITER_FRAGMENT; i++)
     {
         d = sea_octave((uv + getSeaTime()) * freq, choppy);
@@ -159,7 +169,7 @@ float3 getNormal(float3 p, float eps)
     n.y = eps;
     return normalize(n);
 }
-
+//通过Ray Marching获取高度
 float heightMapTracing(float3 ori, float3 dir, out float3 p)
 {
     float tm = 0.0;
@@ -169,17 +179,19 @@ float heightMapTracing(float3 ori, float3 dir, out float3 p)
         return tx;
     float hm = map(ori + dir * tm);
     float tmid = 0.0;
+	//通过SDF(Signed Distance Function)方法获取位置
+    UNROLL
     for (int i = 0; i < NUM_STEPS; i++)
     {
-        tmid = lerp(tm, tx, hm / (hm - hx));
+        tmid = lerp(tm, tx, hm / (hm - hx));   //每次改变步长
         p = ori + dir * tmid;
-        float hmid = map(p);
-        if (hmid < 0.0)
+        float hmid = map(p);    //比较结果
+        if (hmid < 0.0)   //小于0，步进超过目标位置，还有步数就反向步进
         {
             tx = tmid;
             hx = hmid;
         }
-        else
+        else     //大于0，还为到达目标，加大步长
         {
             tm = tmid;
             hm = hmid;
@@ -214,8 +226,8 @@ void MainPS(
         
     // ray
     float3 ang = float3(sin(time * 3.0) * 0.1, sin(time) * 0.2 + 0.3, time);
-    float3 ori = float3(0.0, 3.5, time * 5.0);
-    float3 dir = normalize(float3(uv.xy, -2.0));
+    float3 ori = float3(0.0, 3.5, time * 5.0);    //摄像机位置，随着时间变换位置
+    float3 dir = normalize(float3(uv.xy, -2.0));  //视线方向
     dir.z += length(uv) * 0.15;
     //dir = mul(normalize(dir), fromEuler(ang));
     

@@ -77,14 +77,6 @@ public:
 
 	void SetParameters(FRHICommandListImmediate& RHICmdList, FSeascapeBufferData& MyData)
 	{
-		//设置一个普通变量
-		//SetShaderValue(RHICmdList, GetPixelShader(), SimpleColorVal, MyColor);
-		 
-		//下面是为着色器设置纹理以及纹理参数
-		//SetTextureParameter(RHICmdList, GetPixelShader(), TestTextureVal, TestTextureSampler, 
-		//		TStaticSamplerState<SF_AnisotropicLinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(),     //纹理采样配置，三线性过滤，U，V,W三个维度都是Clamp
-		//		MyTexture);
-		//设置UniformBuffer
 		FSeascapeShaderData SShaderData;
 		SShaderData.ViewResolution = MyData.ViewResolution;
 		SShaderData.TimeSeconds = MyData.TimeSeconds;
@@ -96,7 +88,6 @@ public:
 	virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		//Ar << SimpleColorVal << TestTextureVal;
 		return bShaderHasOutdatedParameters;
 	}
 
@@ -233,7 +224,6 @@ static void DrawUniformBufferShaderRenderTarget_RenderThread(
 
 	RHICmdList.EndRenderPass();
 }
-
 
 USeascapeShaderBlueprintLibrary::USeascapeShaderBlueprintLibrary(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
