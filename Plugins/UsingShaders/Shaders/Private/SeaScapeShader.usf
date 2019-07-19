@@ -33,6 +33,7 @@ float getSeaTime()
 }
 
 // math  convert euler to rotation matrix
+//欧拉角转换到矩阵，用于视角旋转
 float3x3 fromEuler(float3 ang)
 {
     float2 a1 = float2(sin(ang.x), cos(ang.x));
@@ -97,25 +98,26 @@ float sea_octave(float2 uv, float choppy)
 //Ray Marching中步进结果与目标位置的比对
 float map(float3 p)
 {
-    float freq = SEA_FREQ;
-    float amp = SEA_HEIGHT;
+    float freq = SEA_FREQ;    //波浪频率
+    float amp = SEA_HEIGHT;   //
     float choppy = SEA_CHOPPY;
     float2 uv = p.xz;
     uv.x *= 0.75;
     
     float d, h = 0.0;
+	//下面是多次循环来获取水面高度
     UNROLL
     for (int i = 0; i < ITER_GEOMETRY; i++)
     {                  
         d = sea_octave((uv + getSeaTime()) * freq, choppy);
         d += sea_octave((uv - getSeaTime()) * freq, choppy);
         h += d * amp;
-        uv = mul(uv, octave_m);
+        uv = mul(uv, octave_m);  //变换UV，获取不同的位置
         freq *= 1.9;
         amp *= 0.22;
         choppy = lerp(choppy, 1.0, 0.2);
     }
-    return p.y - h;
+    return p.y - h;  //当前高度与目标高度对比
 }
 
 float map_detailed(float3 p)
@@ -160,6 +162,7 @@ float3 getSeaColor(float3 p, float3 n, float3 l, float3 eye, float3 dist)
 }
 
 // Tracing Marching      Get the normal of specified point
+// 计算法线
 float3 getNormal(float3 p, float eps)
 {
     float3 n;
