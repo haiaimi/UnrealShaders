@@ -2,19 +2,13 @@
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "Classes/Kismet/BlueprintFunctionLibrary.h"
-#include "InterationShader.generated.h"
+#include "RHIResources.h"
 
 /**
  * 
  */
-UCLASS(MinimalAPI, meta = (ScriptName = "HaiaimiShaderLibrary"))
-class UBlurComputeShaderBlueprintLibrary :public UBlueprintFunctionLibrary
-{
-	GENERATED_UCLASS_BODY()
 
-public:
-	UFUNCTION(BlueprintCallable, Category = "UsingShaderPlugin", meta = (WorldContext = "WorldContext"))
-	static void DrawBlurComputeShaderRenderTarget(AActor* Ac, class FTextureRHIParamRef MyTexture);
-};
+void DrawBlurComputeShaderRenderTarget(AActor* Ac, FTextureRHIParamRef MyTexture, FUnorderedAccessViewRHIParamRef TextureUAV);
+
 
 

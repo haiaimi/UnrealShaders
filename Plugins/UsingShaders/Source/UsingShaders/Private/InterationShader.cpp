@@ -13,6 +13,7 @@
 #include "Engine/World.h"
 #include "SceneInterface.h"
 #include "BlurComputeShader.h"
+#include "RHICommandList.h"
 
 
 struct FVertexInput
@@ -271,6 +272,11 @@ void UInterationShaderBlueprintLibrary::DrawInterationShaderRenderTarget_Blur(cl
 		DrawInterationShaderRenderTarget_RenderThread(RHICmdList, TextureRenderTargetResource, FeatureLevel, TextureRenderTargetName, MyColor, MyTextureRHI);
 	});
 
-	UBlurComputeShaderBlueprintLibrary::DrawBlurComputeShaderRenderTarget(Ac, MyTextureRHI);
+		//´´½¨UAVÍ¼
+	FRHIResourceCreateInfo RHIResourceCreateInfo;
+	FTextureRHIParamRef Texture = RHICreateTexture2D(MyTextureRHI->GetTexture2D()->GetSizeX(), MyTextureRHI->GetTexture2D()->GetSizeY(), PF_A32B32G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo);
+	FUnorderedAccessViewRHIParamRef TextureUAV = RHICreateUnorderedAccessView(Texture);
+
+	DrawBlurComputeShaderRenderTarget(Ac, MyTextureRHI, TextureUAV);
 }
 
