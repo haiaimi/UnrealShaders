@@ -14,7 +14,7 @@ class UBlurComputeShaderBlueprintLibrary :public UBlueprintFunctionLibrary
 
 public:
 	UFUNCTION(BlueprintCallable, Category = "UsingShaderPlugin", meta = (WorldContext = "WorldContext"))
-	static void DrawBlurComputeShaderRenderTarget(class UTextureRenderTarget* OutputRenderTarget, AActor* Ac, FLinearColor MyColor, class UTexture* MyTexture);
+	static void DrawBlurComputeShaderRenderTarget(AActor* Ac, class FTextureRHIParamRef MyTexture);
 };
 
 

@@ -12,6 +12,7 @@
 #include "GameFramework/Actor.h"
 #include "Engine/World.h"
 #include "SceneInterface.h"
+#include "BlurComputeShader.h"
 
 
 struct FVertexInput
@@ -252,3 +253,24 @@ void UInterationShaderBlueprintLibrary::DrawInterationShaderRenderTarget(class U
 		DrawInterationShaderRenderTarget_RenderThread(RHICmdList, TextureRenderTargetResource, FeatureLevel, TextureRenderTargetName, MyColor, MyTextureRHI);
 	});
 }
+
+void UInterationShaderBlueprintLibrary::DrawInterationShaderRenderTarget_Blur(class UTextureRenderTarget* OutputRenderTarget, AActor* Ac, FLinearColor MyColor, class UTexture* MyTexture)
+{
+	check(IsInGameThread());
+
+	if (!OutputRenderTarget)return;
+
+	FTextureRenderTargetResource* TextureRenderTargetResource = OutputRenderTarget->GameThread_GetRenderTargetResource();
+	FTextureRHIParamRef MyTextureRHI = MyTexture->TextureReference.TextureReferenceRHI;
+	UWorld* World = Ac->GetWorld();
+	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
+	FName TextureRenderTargetName = OutputRenderTarget->GetFName();
+	//把渲染加入到渲染线程
+	ENQUEUE_RENDER_COMMAND(CaptureCommand)([TextureRenderTargetResource, FeatureLevel, MyColor, TextureRenderTargetName, MyTextureRHI](FRHICommandListImmediate& RHICmdList)
+	{
+		DrawInterationShaderRenderTarget_RenderThread(RHICmdList, TextureRenderTargetResource, FeatureLevel, TextureRenderTargetName, MyColor, MyTextureRHI);
+	});
+
+	UBlurComputeShaderBlueprintLibrary::DrawBlurComputeShaderRenderTarget(Ac, MyTextureRHI);
+}
+
