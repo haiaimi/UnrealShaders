@@ -48,7 +48,7 @@ public:
 		OutEnvironment.SetDefine(TEXT("BLUR_MICRO"), 1);
 	}
 
-	void SetParameters(FRHICommandListImmediate& RHICmdList, const FTextureRHIParamRef& InTexture,FUnorderedAccessViewRHIRef& OutputUAV)
+	void SetParameters(FRHICommandListImmediate& RHICmdList, const FTextureRHIParamRef& InTexture,FUnorderedAccessViewRHIRef OutputUAV)
 	{
 		if (OutputSurface.IsBound())
 			RHICmdList.SetUAVParameter(GetComputeShader(), OutputSurface.GetBaseIndex(), OutputUAV);
@@ -99,18 +99,20 @@ static void ExcuteBlurComputeShader_RenderThread(
 
 	//创建UAV图
 	FRHIResourceCreateInfo RHIResourceCreateInfo;
-	FTextureRHIParamRef TempTexture = RHICreateTexture2D(InTexture->GetTexture2D()->GetSizeX(), InTexture->GetTexture2D()->GetSizeY(), PF_A32B32G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo);
+	FTexture2DRHIRef TempTexture = RHICreateTexture2D(InTexture->GetTexture2D()->GetSizeX(), InTexture->GetTexture2D()->GetSizeY(), PF_A32B32G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo);
 	FUnorderedAccessViewRHIRef TempTextureUAV = RHICreateUnorderedAccessView(TempTexture);
 
 	RHICmdList.SetComputeShader(ComputeShaderHorz->GetComputeShader());
 	ComputeShaderHorz->SetParameters(RHICmdList, InTexture, TempTextureUAV);
-	DispatchComputeShader(RHICmdList, *ComputeShaderHorz, InTexture->GetTexture2D()->GetSizeX() / GROUP_THREAD_COUNTS, InTexture->GetTexture2D()->GetSizeY(), 1);        //调度计算着色器
+	DispatchComputeShader(RHICmdList, *ComputeShaderHorz, InTexture->GetTexture2D()->GetSizeX() / GROUP_THREAD_COUNTS, InTexture->GetTexture2D()->GetSizeY(), 1);        //横向计算着色器
 	ComputeShaderHorz->UnbindUAV(RHICmdList);
 
 	RHICmdList.SetComputeShader(ComputeShaderVert->GetComputeShader());
 	ComputeShaderVert->SetParameters(RHICmdList, TempTexture, OutputUAV);
-	DispatchComputeShader(RHICmdList, *ComputeShaderVert, InTexture->GetTexture2D()->GetSizeX(), InTexture->GetTexture2D()->GetSizeY() / GROUP_THREAD_COUNTS, 1);        //调度计算着色器
+	DispatchComputeShader(RHICmdList, *ComputeShaderVert, InTexture->GetTexture2D()->GetSizeX(), InTexture->GetTexture2D()->GetSizeY() / GROUP_THREAD_COUNTS, 1);        //纵向计算着色器
 	ComputeShaderVert->UnbindUAV(RHICmdList);
+
+	TempTextureUAV.SafeRelease();
 }
 
 void DrawBlurComputeShaderRenderTarget(AActor* Ac, FTextureRHIParamRef MyTexture, FUnorderedAccessViewRHIParamRef TextureUAV)

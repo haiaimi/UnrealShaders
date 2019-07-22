@@ -4,44 +4,45 @@ static const float gWeights[11] = { 0.05f, 0.05f, 0.1f, 0.1f, 0.1f, 0.2f, 0.1f, 
 
 static const int gBlurRadius = 5;
 
-
 Texture2D InputTexture;
 SamplerState TextureSampler;
 RWTexture2D<float4> OutputTexture;
 
 #define N 256
 #define CacheSize (N + 2*gBlurRadius)
-groupshared float4 gCache[CacheSize];
+groupshared float4 gCache[CacheSize];   //缓存池，仅限在同一个线程组中使用，用来存储该线程组使用到所有的颜色，应该是 N+2*gBlurRadius
 
+//横向着色器
 [numthreads(N, 1, 1)]
 void HorzBlurCS(int3 groupThreadID : SV_GroupThreadID,
 				int3 dispatchThreadID : SV_DispatchThreadID)
 {
+    uint2 TextureSize;
+    InputTexture.GetDimensions(TextureSize.x, TextureSize.y);
+	[branch]
     if (groupThreadID.x < gBlurRadius)
     {
-		// Clamp out of bound samples that occur at image borders.
+		//写入最左边半径大小的颜色
         int x = max(dispatchThreadID.x - gBlurRadius, 0);
         gCache[groupThreadID.x] = InputTexture[int2(x, dispatchThreadID.y)];
     }
+	[branch]
     if (groupThreadID.x >= N - gBlurRadius)
     {
-		// Clamp out of bound samples that occur at image borders.
-        int x = min(dispatchThreadID.x + gBlurRadius, InputTexture.Length.x - 1);
+		// 写入最右边半径大小的颜色
+        int x = min(dispatchThreadID.x + gBlurRadius, TextureSize.x - 1);
         gCache[groupThreadID.x + 2 * gBlurRadius] = InputTexture[int2(x, dispatchThreadID.y)];
     }
 
-	// Clamp out of bound samples that occur at image borders.
-    gCache[groupThreadID.x + gBlurRadius] = InputTexture[min(dispatchThreadID.xy, InputTexture.Length.xy - 1)];
+	//向缓存中添加颜色
+    gCache[groupThreadID.x + gBlurRadius] = InputTexture[min(dispatchThreadID.xy, TextureSize.xy - 1)];
 
-	// Wait for all threads to finish.
+	//等待线程组中所有线程执行完毕，结束后缓存中所有位置的颜色已经被写入
     GroupMemoryBarrierWithGroupSync();
-	
-	//
-	// Now blur each pixel.
-	//
 
     float4 blurColor = float4(0, 0, 0, 0);
 	
+	//下面就是按权值计算
 	[unroll]
     for (int i = -gBlurRadius; i <= gBlurRadius; ++i)
     {
@@ -53,41 +54,30 @@ void HorzBlurCS(int3 groupThreadID : SV_GroupThreadID,
     OutputTexture[dispatchThreadID.xy] = blurColor;
 }
 
+
+//纵向着色器，原理与上面一样
 [numthreads(1, N, 1)]
 void VertBlurCS(int3 groupThreadID : SV_GroupThreadID,
 				int3 dispatchThreadID : SV_DispatchThreadID)
 {
-	//
-	// Fill local thread storage to reduce bandwidth.  To blur 
-	// N pixels, we will need to load N + 2*BlurRadius pixels
-	// due to the blur radius.
-	//
-	
-	// This thread group runs N threads.  To get the extra 2*BlurRadius pixels, 
-	// have 2*BlurRadius threads sample an extra pixel.
+    uint2 TextureSize;
+    InputTexture.GetDimensions(TextureSize.x, TextureSize.y);
+	[branch]
     if (groupThreadID.y < gBlurRadius)
     {
-		// Clamp out of bound samples that occur at image borders.
         int y = max(dispatchThreadID.y - gBlurRadius, 0);
         gCache[groupThreadID.y] = InputTexture[int2(dispatchThreadID.x, y)];
     }
+	[branch]
     if (groupThreadID.y >= N - gBlurRadius)
     {
-		// Clamp out of bound samples that occur at image borders.
-        int y = min(dispatchThreadID.y + gBlurRadius, InputTexture.Length.y - 1);
+        int y = min(dispatchThreadID.y + gBlurRadius, TextureSize.y - 1);
         gCache[groupThreadID.y + 2 * gBlurRadius] = InputTexture[int2(dispatchThreadID.x, y)];
     }
 	
-	// Clamp out of bound samples that occur at image borders.
-    gCache[groupThreadID.y + gBlurRadius] = InputTexture[min(dispatchThreadID.xy, InputTexture.Length.xy - 1)];
+    gCache[groupThreadID.y + gBlurRadius] = InputTexture[min(dispatchThreadID.xy, TextureSize.xy - 1)];
 
-
-	// Wait for all threads to finish.
     GroupMemoryBarrierWithGroupSync();
-	
-	//
-	// Now blur each pixel.
-	//
 
     float4 blurColor = float4(0, 0, 0, 0);
 	

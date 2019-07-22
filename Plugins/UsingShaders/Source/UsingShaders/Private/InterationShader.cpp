@@ -266,17 +266,23 @@ void UInterationShaderBlueprintLibrary::DrawInterationShaderRenderTarget_Blur(cl
 	UWorld* World = Ac->GetWorld();
 	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
 	FName TextureRenderTargetName = OutputRenderTarget->GetFName();
-	//把渲染加入到渲染线程
-	ENQUEUE_RENDER_COMMAND(CaptureCommand)([TextureRenderTargetResource, FeatureLevel, MyColor, TextureRenderTargetName, MyTextureRHI](FRHICommandListImmediate& RHICmdList)
+	
+	//创建UAV图
+	FRHIResourceCreateInfo RHIResourceCreateInfo;
+	Texture = RHICreateTexture2D(MyTextureRHI->GetTexture2D()->GetSizeX(), MyTextureRHI->GetTexture2D()->GetSizeY(), PF_A32B32G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo);
+	TextureUAV = RHICreateUnorderedAccessView(Texture);
+
+	//计算模糊处理后的图
+	DrawBlurComputeShaderRenderTarget(Ac, MyTextureRHI, TextureUAV);
+
+	//传入模糊后的图，把渲染加入到渲染线程
+	ENQUEUE_RENDER_COMMAND(CaptureCommand)([TextureRenderTargetResource, FeatureLevel, MyColor, TextureRenderTargetName](FRHICommandListImmediate& RHICmdList)
 	{
-		DrawInterationShaderRenderTarget_RenderThread(RHICmdList, TextureRenderTargetResource, FeatureLevel, TextureRenderTargetName, MyColor, MyTextureRHI);
+		DrawInterationShaderRenderTarget_RenderThread(RHICmdList, TextureRenderTargetResource, FeatureLevel, TextureRenderTargetName, MyColor, Texture);
 	});
 
-		//创建UAV图
-	FRHIResourceCreateInfo RHIResourceCreateInfo;
-	FTextureRHIParamRef Texture = RHICreateTexture2D(MyTextureRHI->GetTexture2D()->GetSizeX(), MyTextureRHI->GetTexture2D()->GetSizeY(), PF_A32B32G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo);
-	FUnorderedAccessViewRHIParamRef TextureUAV = RHICreateUnorderedAccessView(Texture);
-
-	DrawBlurComputeShaderRenderTarget(Ac, MyTextureRHI, TextureUAV);
 }
+
+FTextureRHIRef UInterationShaderBlueprintLibrary::Texture = FTextureRHIRef();
+FUnorderedAccessViewRHIRef UInterationShaderBlueprintLibrary::TextureUAV = FUnorderedAccessViewRHIRef();
 
