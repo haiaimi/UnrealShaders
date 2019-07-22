@@ -7,6 +7,7 @@
 #include "Engine/World.h"
 #include "SceneInterface.h"
 #include "RHICommandList.h"
+#include "Engine/Engine.h"
 
 BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FBlurComputeShaderData, )
 //SHADER_PARAMETER(TArray<float>, )
@@ -15,7 +16,7 @@ END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FBlurComputeShaderData, "FBlurData");   
 
-#define GROUP_THREAD_COUNTS 256
+#define GROUP_THREAD_COUNTS 64
 
 template<int Index>
 class FBlurComputeShader : public FGlobalShader
@@ -89,6 +90,7 @@ static void ExcuteBlurComputeShader_RenderThread(
 		FRHICommandListImmediate& RHICmdList,
 		ERHIFeatureLevel::Type FeatureLevel,
 		FTextureRHIParamRef InTexture,
+		FTextureRHIParamRef UAVSource,
 		FUnorderedAccessViewRHIRef OutputUAV)
 
 {
@@ -99,29 +101,36 @@ static void ExcuteBlurComputeShader_RenderThread(
 
 	//创建UAV图
 	FRHIResourceCreateInfo RHIResourceCreateInfo;
-	FTexture2DRHIRef TempTexture = RHICreateTexture2D(InTexture->GetTexture2D()->GetSizeX(), InTexture->GetTexture2D()->GetSizeY(), PF_A32B32G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo);
+	FTexture2DRHIRef TempTexture = RHICreateTexture2D(InTexture->GetSizeXYZ().X, InTexture->GetSizeXYZ().Y, PF_A32B32G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo);
 	FUnorderedAccessViewRHIRef TempTextureUAV = RHICreateUnorderedAccessView(TempTexture);
 
-	RHICmdList.SetComputeShader(ComputeShaderHorz->GetComputeShader());
-	ComputeShaderHorz->SetParameters(RHICmdList, InTexture, TempTextureUAV);
-	DispatchComputeShader(RHICmdList, *ComputeShaderHorz, InTexture->GetTexture2D()->GetSizeX() / GROUP_THREAD_COUNTS, InTexture->GetTexture2D()->GetSizeY(), 1);        //横向计算着色器
-	ComputeShaderHorz->UnbindUAV(RHICmdList);
+	//GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Blue, InTexture->GetSizeXYZ().ToString());
+	FTextureRHIParamRef IterTexture = InTexture;
 
-	RHICmdList.SetComputeShader(ComputeShaderVert->GetComputeShader());
-	ComputeShaderVert->SetParameters(RHICmdList, TempTexture, OutputUAV);
-	DispatchComputeShader(RHICmdList, *ComputeShaderVert, InTexture->GetTexture2D()->GetSizeX(), InTexture->GetTexture2D()->GetSizeY() / GROUP_THREAD_COUNTS, 1);        //纵向计算着色器
-	ComputeShaderVert->UnbindUAV(RHICmdList);
+	for (int32 i = 0; i < 5; ++i)
+	{
+		RHICmdList.SetComputeShader(ComputeShaderHorz->GetComputeShader());
+		ComputeShaderHorz->SetParameters(RHICmdList, IterTexture, TempTextureUAV);
+		DispatchComputeShader(RHICmdList, *ComputeShaderHorz, InTexture->GetSizeXYZ().X / GROUP_THREAD_COUNTS, InTexture->GetSizeXYZ().Y, 1);        //横向计算着色器
+		ComputeShaderHorz->UnbindUAV(RHICmdList);
 
+		RHICmdList.SetComputeShader(ComputeShaderVert->GetComputeShader());
+		ComputeShaderVert->SetParameters(RHICmdList, TempTexture, OutputUAV);
+		DispatchComputeShader(RHICmdList, *ComputeShaderVert, InTexture->GetSizeXYZ().X, InTexture->GetSizeXYZ().Y / GROUP_THREAD_COUNTS, 1);        //纵向计算着色器
+		ComputeShaderVert->UnbindUAV(RHICmdList);
+		IterTexture = UAVSource;
+	}
+	
 	TempTextureUAV.SafeRelease();
 }
 
-void DrawBlurComputeShaderRenderTarget(AActor* Ac, FTextureRHIParamRef MyTexture, FUnorderedAccessViewRHIParamRef TextureUAV)
+void DrawBlurComputeShaderRenderTarget(AActor* Ac, FTextureRHIParamRef MyTexture, FTextureRHIParamRef UAVSource, FUnorderedAccessViewRHIParamRef TextureUAV)
 {
-		UWorld* World = Ac->GetWorld();
+	UWorld* World = Ac->GetWorld();
 	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
 
-	ENQUEUE_RENDER_COMMAND(CaptureCommand)([FeatureLevel, MyTexture, TextureUAV](FRHICommandListImmediate& RHICmdList)
+	ENQUEUE_RENDER_COMMAND(CaptureCommand)([FeatureLevel, MyTexture, UAVSource, TextureUAV](FRHICommandListImmediate& RHICmdList)
 	{
-		ExcuteBlurComputeShader_RenderThread(RHICmdList, FeatureLevel, MyTexture, TextureUAV);
+		ExcuteBlurComputeShader_RenderThread(RHICmdList, FeatureLevel, MyTexture, UAVSource, TextureUAV);
 	});
 }

@@ -8,10 +8,11 @@ Texture2D InputTexture;
 SamplerState TextureSampler;
 RWTexture2D<float4> OutputTexture;
 
-#define N 256
+#define N 64
 #define CacheSize (N + 2*gBlurRadius)
 groupshared float4 gCache[CacheSize];   //缓存池，仅限在同一个线程组中使用，用来存储该线程组使用到所有的颜色，应该是 N+2*gBlurRadius
 
+//使用双向过滤，节省性能
 //横向着色器
 [numthreads(N, 1, 1)]
 void HorzBlurCS(int3 groupThreadID : SV_GroupThreadID,
@@ -24,7 +25,7 @@ void HorzBlurCS(int3 groupThreadID : SV_GroupThreadID,
     {
 		//写入最左边半径大小的颜色
         int x = max(dispatchThreadID.x - gBlurRadius, 0);
-        gCache[groupThreadID.x] = InputTexture[int2(x, dispatchThreadID.y)];
+        gCache[groupThreadID.x] = InputTexture[int2(x, dispatchThreadID.y)];     //计算着色器内取像素值不能使用过滤方法
     }
 	[branch]
     if (groupThreadID.x >= N - gBlurRadius)
