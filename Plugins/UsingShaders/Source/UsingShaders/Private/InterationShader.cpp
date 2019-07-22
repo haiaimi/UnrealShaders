@@ -255,7 +255,7 @@ void UInterationShaderBlueprintLibrary::DrawInterationShaderRenderTarget(class U
 	});
 }
 
-void UInterationShaderBlueprintLibrary::DrawInterationShaderRenderTarget_Blur(class UTextureRenderTarget* OutputRenderTarget, AActor* Ac, FLinearColor MyColor, class UTexture* MyTexture)
+void UInterationShaderBlueprintLibrary::DrawInterationShaderRenderTarget_Blur(class UTextureRenderTarget* OutputRenderTarget, AActor* Ac, FLinearColor MyColor, class UTexture* MyTexture, int32 BlurCounts)
 {
 	check(IsInGameThread());
 
@@ -274,7 +274,7 @@ void UInterationShaderBlueprintLibrary::DrawInterationShaderRenderTarget_Blur(cl
 	TextureUAV = RHICreateUnorderedAccessView(Texture);
 
 	//计算模糊处理后的图
-	DrawBlurComputeShaderRenderTarget(Ac, MyTextureRHI, Texture, TextureUAV);
+	DrawBlurComputeShaderRenderTarget(Ac, BlurCounts, MyTextureRHI, Texture, TextureUAV);
 
 	//传入模糊后的图，把渲染加入到渲染线程
 	ENQUEUE_RENDER_COMMAND(CaptureCommand)([TextureRenderTargetResource, FeatureLevel, MyColor, TextureRenderTargetName](FRHICommandListImmediate& RHICmdList)

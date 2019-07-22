@@ -89,6 +89,7 @@ IMPLEMENT_SHADER_TYPE(template<>, FBlurComputeShader<2>, TEXT("/Plugins/Shaders/
 static void ExcuteBlurComputeShader_RenderThread(
 		FRHICommandListImmediate& RHICmdList,
 		ERHIFeatureLevel::Type FeatureLevel,
+		int32 BlurCounts,
 		FTextureRHIParamRef InTexture,
 		FTextureRHIParamRef UAVSource,
 		FUnorderedAccessViewRHIRef OutputUAV)
@@ -107,7 +108,8 @@ static void ExcuteBlurComputeShader_RenderThread(
 	//GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Blue, InTexture->GetSizeXYZ().ToString());
 	FTextureRHIParamRef IterTexture = InTexture;
 
-	for (int32 i = 0; i < 5; ++i)
+	//多次模糊处理
+	for (int32 i = 0; i < BlurCounts; ++i)
 	{
 		RHICmdList.SetComputeShader(ComputeShaderHorz->GetComputeShader());
 		ComputeShaderHorz->SetParameters(RHICmdList, IterTexture, TempTextureUAV);
@@ -124,13 +126,13 @@ static void ExcuteBlurComputeShader_RenderThread(
 	TempTextureUAV.SafeRelease();
 }
 
-void DrawBlurComputeShaderRenderTarget(AActor* Ac, FTextureRHIParamRef MyTexture, FTextureRHIParamRef UAVSource, FUnorderedAccessViewRHIParamRef TextureUAV)
+void DrawBlurComputeShaderRenderTarget(AActor* Ac, int32 BlurCounts, FTextureRHIParamRef MyTexture, FTextureRHIParamRef UAVSource, FUnorderedAccessViewRHIParamRef TextureUAV)
 {
 	UWorld* World = Ac->GetWorld();
 	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
 
-	ENQUEUE_RENDER_COMMAND(CaptureCommand)([FeatureLevel, MyTexture, UAVSource, TextureUAV](FRHICommandListImmediate& RHICmdList)
+	ENQUEUE_RENDER_COMMAND(CaptureCommand)([FeatureLevel, BlurCounts, MyTexture, UAVSource, TextureUAV](FRHICommandListImmediate& RHICmdList)
 	{
-		ExcuteBlurComputeShader_RenderThread(RHICmdList, FeatureLevel, MyTexture, UAVSource, TextureUAV);
+		ExcuteBlurComputeShader_RenderThread(RHICmdList, FeatureLevel, BlurCounts, MyTexture, UAVSource, TextureUAV);
 	});
 }
