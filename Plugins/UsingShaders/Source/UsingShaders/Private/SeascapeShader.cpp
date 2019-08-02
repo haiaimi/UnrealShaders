@@ -94,6 +94,7 @@ public:
 private:
 };
 
+template<int32 Index>
 class FSeascapeShaderVS :public FSeascapeShader
 {
 	DECLARE_SHADER_TYPE(FSeascapeShaderVS, Global);
@@ -107,6 +108,7 @@ public:
 	}
 };
 
+template<int32 Index>
 class FSeascapeShaderPS :public FSeascapeShader
 {
 	DECLARE_SHADER_TYPE(FSeascapeShaderPS, Global);
@@ -124,8 +126,11 @@ public:
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FSeascapeShaderData, "FSeascapeData");    
 
 
-IMPLEMENT_SHADER_TYPE(, FSeascapeShaderVS, TEXT("/Plugins/Shaders/Private/SeascapeShader.usf"),TEXT("MainVS"), SF_Vertex)
-IMPLEMENT_SHADER_TYPE(, FSeascapeShaderPS, TEXT("/Plugins/Shaders/Private/SeascapeShader.usf"),TEXT("MainPS"), SF_Pixel)
+IMPLEMENT_SHADER_TYPE(, FSeascapeShaderVS<1>, TEXT("/Plugins/Shaders/Private/SeascapeShader.usf"),TEXT("MainVS"), SF_Vertex)
+IMPLEMENT_SHADER_TYPE(, FSeascapeShaderPS<1>, TEXT("/Plugins/Shaders/Private/SeascapeShader.usf"),TEXT("MainPS"), SF_Pixel)
+
+IMPLEMENT_SHADER_TYPE(, FSeascapeShaderVS<2>, TEXT("/Plugins/Shaders/Private/ProteanCloud.usf"), TEXT("MainVS"), SF_Vertex)
+IMPLEMENT_SHADER_TYPE(, FSeascapeShaderPS<2>, TEXT("/Plugins/Shaders/Private/ProteanCloud.usf"), TEXT("MainPS"), SF_Pixel)
 
 
 static void DrawIndexedPrimitiveUP_cpy4(
@@ -185,8 +190,8 @@ static void DrawUniformBufferShaderRenderTarget_RenderThread(
 	RHICmdList.BeginRenderPass(RPInfo, TEXT("SeascapeShader"));
 
 	TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
-	TShaderMapRef<FSeascapeShaderVS> VertexShader(GlobalShaderMap);
-	TShaderMapRef<FSeascapeShaderPS> PixelShader(GlobalShaderMap);        //获取自定义的Shader
+	TShaderMapRef<FSeascapeShaderVS<2>> VertexShader(GlobalShaderMap);
+	TShaderMapRef<FSeascapeShaderPS<2>> PixelShader(GlobalShaderMap);        //获取自定义的Shader
 
 	FSeascapeVertexDeclaration VertexDeclaration;   
 	VertexDeclaration.InitRHI(); //创建定点输入布局
