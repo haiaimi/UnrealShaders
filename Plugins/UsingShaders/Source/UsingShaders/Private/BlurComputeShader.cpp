@@ -16,7 +16,8 @@ END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FBlurComputeShaderData, "FBlurData");   
 
-#define GROUP_THREAD_COUNTS 64
+//线程组中线程数，对应shader中的定义
+#define GROUP_THREAD_COUNTS 64        
 
 template<int Index>
 class FBlurComputeShader : public FGlobalShader
