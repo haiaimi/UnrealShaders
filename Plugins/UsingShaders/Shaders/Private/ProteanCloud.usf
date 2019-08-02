@@ -27,7 +27,7 @@ float2x2 rot(in float a)
     float c = cos(a), s = sin(a);
     return float2x2(c, s, -s, c);
 }
-const float3x3 m3 = float3x3(0.33338, 0.56034, -0.71817, -0.87887, 0.32651, -0.15323, 0.15162, 0.69596, 0.61339) * 1.93;
+static const float3x3 m3 = float3x3(0.33338, 0.56034, -0.71817, -0.87887, 0.32651, -0.15323, 0.15162, 0.69596, 0.61339) * 1.93;
 float mag2(float2 p)
 {
     return dot(p, p);
@@ -48,7 +48,7 @@ float2 map(float3 p)
 {
     float3 p2 = p;
     p2.xy -= disp(p.z).xy;
-    p.xy = mul(p.xy, rot(sin(p.z + FSeascapeData.TimeSeconds) * (0.1 + prm1 * 0.05) + FSeascapeData.TimeSeconds * 0.09));
+    p.xy = mul(p.xy, rot(sin(p.z + FRayMarchingData.TimeSeconds) * (0.1 + prm1 * 0.05) + FRayMarchingData.TimeSeconds * 0.09));
     float cl = mag2(p2.xy);
     float d = 0.;
     p *= .61;
@@ -57,7 +57,7 @@ float2 map(float3 p)
     float dspAmp = 0.1 + prm1 * 0.2;
     for (int i = 0; i < 5; i++)
     {
-        p += sin(p.zxy * 0.75 * trk + FSeascapeData.TimeSeconds * trk * .8) * dspAmp;
+        p += sin(p.zxy * 0.75 * trk + FRayMarchingData.TimeSeconds * trk * .8) * dspAmp;
         d -= abs(dot(cos(p), sin(p.yzx)) * z);
         z *= 0.57;
         trk *= 1.4;
@@ -143,12 +143,13 @@ void MainPS(
     float2 q = UV;
     //float2 p = (gl_FragCoord.xy - 0.5 * iResolution.xy) / iResolution.y;
     float2 p = UV - float2(0.5f, 0.5f);
+    p.x = p.x * (FRayMarchingData.ViewResolution.x / FRayMarchingData.ViewResolution.y);
     //bsMo = (iMouse.xy - 0.5 * iResolution.xy) / iResolution.y;
     
-    float time = FSeascapeData.TimeSeconds * 3.;
+    float time = FRayMarchingData.TimeSeconds * 3.;
     float3 ro = float3(0, 0, time);
     
-    ro += float3(sin(FSeascapeData.TimeSeconds) * 0.5, sin(FSeascapeData.TimeSeconds * 1.) * 0., 0);
+    ro += float3(sin(FRayMarchingData.TimeSeconds) * 0.5, sin(FRayMarchingData.TimeSeconds * 1.) * 0., 0);
         
     float dspAmp = 0.85;
     ro.xy += disp(ro.z) * dspAmp;
@@ -161,7 +162,7 @@ void MainPS(
     rightdir = normalize(cross(updir, target));
     float3 rd = normalize((p.x * rightdir + p.y * updir) * 1. - target);
     rd.xy = mul(rd.xy, rot(-disp(time + 3.5).x * 0.2 + bsMo.x));
-    prm1 = smoothstep(-0.4, 0.4, sin(FSeascapeData.TimeSeconds * 0.3));
+    prm1 = smoothstep(-0.4, 0.4, sin(FRayMarchingData.TimeSeconds * 0.3));
     float4 scn = render(ro, rd, time);
 		
     float3 col = scn.rgb;
