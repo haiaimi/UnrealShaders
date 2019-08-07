@@ -122,7 +122,7 @@ public:
 	}
 };
 
- //为Shader声明UniformBuffer，不需要在Shader中声明，该声明会把这些定义写入到Common.ush的shader文件中
+ //为Shader声明UniformBuffer，不需要在Shader中声明，该声明会把这些定义写入到Common.ush的shader文件中，所以Shader文件中要包含Common文件
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FRayMarchingShaderData, "FRayMarchingData");    
 
 

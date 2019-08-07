@@ -22,12 +22,18 @@
 */
 #include "/Engine/Private/Common.ush"
 
+//RayMarching实现的云洞，转换成HLSL版本
+//FRayMarchingData 是UE4C++中定义的UniformBuffer，用于传输一些常用数据
+
+//二维旋转矩阵
 float2x2 rot(in float a)
 {
     float c = cos(a), s = sin(a);
     return float2x2(c, s, -s, c);
 }
+
 static const float3x3 m3 = float3x3(0.33338, 0.56034, -0.71817, -0.87887, 0.32651, -0.15323, 0.15162, 0.69596, 0.61339) * 1.93;
+
 float mag2(float2 p)
 {
     return dot(p, p);
@@ -44,6 +50,7 @@ float2 disp(float t)
     return float2(sin(t * 0.22) * 1.f, cos(t * 0.175) * 1.f) * 2.f;
 }
 
+// 步进
 float2 map(float3 p)
 {
     float3 p2 = p;
@@ -51,10 +58,11 @@ float2 map(float3 p)
     p.xy = mul(p.xy, rot(sin(p.z + FRayMarchingData.TimeSeconds) * (0.1 + prm1 * 0.05) + FRayMarchingData.TimeSeconds * 0.09));
     float cl = mag2(p2.xy);
     float d = 0.;
-    p *= .61;
+    p *= 0.61;
     float z = 1.;
     float trk = 1.;
     float dspAmp = 0.1 + prm1 * 0.2;
+	[unroll]
     for (int i = 0; i < 5; i++)
     {
         p += sin(p.zxy * 0.75 * trk + FRayMarchingData.TimeSeconds * trk * .8) * dspAmp;
@@ -74,8 +82,10 @@ float4 render(in float3 ro, in float3 rd, float time)
     float3 lpos = float3(disp(time + ldst) * 0.5, time + ldst);
     float t = 1.5;
     float fogT = 0.;
+	[unroll(80)]
     for (int i = 0; i < 130; i++)
     {
+		[branch]
         if (rez.a > 0.99)
             break;
 
@@ -85,6 +95,7 @@ float4 render(in float3 ro, in float3 rd, float time)
         float dn = clamp((mpv.x + 2.), 0., 3.);
         
         float4 col = float4(0.f, 0.f, 0.f, 0.f);
+        [branch]
         if (mpv.x > 0.6)
         {
         
@@ -140,16 +151,17 @@ void MainPS(
     out float4 fragColor : SV_Target0
 )
 {
+	//要注意webgl传入的是像素坐标，hlsl传入的UV坐标
     float2 q = UV;
     //float2 p = (gl_FragCoord.xy - 0.5 * iResolution.xy) / iResolution.y;
     float2 p = UV - float2(0.5f, 0.5f);
     p.x = p.x * (FRayMarchingData.ViewResolution.x / FRayMarchingData.ViewResolution.y);
     //bsMo = (iMouse.xy - 0.5 * iResolution.xy) / iResolution.y;
     
-    float time = FRayMarchingData.TimeSeconds * 3.;
+    float time = FRayMarchingData.TimeSeconds * 3.f;
     float3 ro = float3(0, 0, time);
     
-    ro += float3(sin(FRayMarchingData.TimeSeconds) * 0.5, sin(FRayMarchingData.TimeSeconds * 1.) * 0., 0);
+    ro += float3(sin(FRayMarchingData.TimeSeconds) * 0.5, sin(FRayMarchingData.TimeSeconds * 1.f) * 0.f, 0);
         
     float dspAmp = 0.85;
     ro.xy += disp(ro.z) * dspAmp;
