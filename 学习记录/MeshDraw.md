@@ -43,4 +43,4 @@
             View.ParallelMeshDrawCommandPasses[EMeshPass::BasePass].DispatchDraw(&ParallelSet, ParentCmdList);
         }
     ```
-    在调用DispatchDraw时会调用FRHICommandList中的资源设置方法以及绘制的方法，如SetShaderUniformBuffer、SetShaderSampler、SetShaderTexture以及SetShaderResourceViewParameter，绘制的时候就调用DrawIndexedPrimitive / DrawPrimitive
+    在调用DispatchDraw时会调用FRHICommandList中的资源设置方法以及绘制的方法，如SetShaderUniformBuffer、SetShaderSampler、SetShaderTexture以及SetShaderResourceViewParameter，绘制的时候就调用DrawIndexedPrimitive / DrawPrimitive。注意在渲染的时候会使用到这一Pass的FMeshDrawCommand，这些Command会在DispatchPassSetup阶段传入进去，而传入的Command比较难找到生成的位置
