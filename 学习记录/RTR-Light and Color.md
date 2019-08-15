@@ -34,4 +34,17 @@
    + HDR10标准，就是如今高端显示器HDR标准，每个像素32位，并且有10位无符号整形，2位给alpha 
    + scRGB，只支持windows操作系统，每个通道16位，兼容于HDR10
    + Dolby Vision，专有格式，没有大规模普及
-   
+## Tone Mapping
+1. Tone Mapping的作用是把场景radiance转换到显示radiance，需要注意的是图片状态，主要有两个，分别是*scene-referred*和*display-referred*,其实际转换流程如下图：
+![image](http://www.realtimerendering.com/figures/RTR4.08.13.png)
+2. Tone Mapping可以理解为图片再制作，利用人眼的视觉系统，就是为了尽可能还原图片的原始色彩。
+3. 因为Reprocuction会存在很多问题，比如低亮度下感知对比会下降；环境中的亮度范围很大，而显示设备有限，所以需要裁剪，然后提高对比度来抵消裁剪掉的值，但是这也会造成sigmoid(s-shaped)tone-reproduction(太专业不是很懂，类似于胶卷电影上出现的现象)。因此曝光度在tone-mapping里是个至关重要的概念。
+### Tone Reproduction Transform
+ + 通常描述为一维曲线把*scene-referred*映射到*display-referred*，计算结果会在显示器的色域范围内，除了会影响亮度，也会造成饱和度和色调的变化。通过给亮度运用tone curve可以解决或减少这些问题，但是会导致结果出显示器色域范围。同时使用非线性转换也会出现一些锯齿问题。
+ + *Academy Color Encoding System(ACES)* 是为动态画面和影视工业推出的一个标准。该标准把*scene-screen*分成两部分，首先是通过*reference renderring transform(RRT)*转换到 *output color encoding specification(OCES)* 空间，然后就是*output device transform(ODT)* 转换到最终的显示颜色。ACES tone mapping被应用于*unreal engine4*。
+ + 需要注意HDR的Tone Mapping的使用，有很多显示器会应用自身的Tone Mapping。例如寒霜引擎提供了SDR的tone production，和不太激进的HDR10的tone mapping
+### Exposure
++ 曝光度分析一般是用上一帧的内容，取平均值有时会显得比较敏感（整体容易受一小块区域影响），所以使用亮度直方图
+
+## Color Grading(颜色分级)
+Color Grading可以发生在*scene-referrd*和*display-referred*。
