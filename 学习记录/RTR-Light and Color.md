@@ -10,12 +10,12 @@
 ## Photometry 光度
 1. radiometry是用衡量物理层面，而photometry是以认为角度进行衡量。
 2. illuminance是照度，luminance是亮度，以下是对比表：
-   | Radiometric Quantity:Units | Photometric Quantity:Units |
-   |:--------------------------:| :-------------------------:|
-   |   radiant flux: *watts*(W) | luminous flux: lumen(lm)   |
-   |   irradiance: W/m$^2$      |   illuminance: lux(lx)     |
-   |  radiant intensity: W/*sr* | luminous intensity: candela(ce)|
-   |   radiance: W/(m$^2$sr)    | luminance: cd/m$^2$ = nit  |
+    | Radiometric Quantity:Units | Photometric Quantity:Units |
+    |:--------------------------:| :-------------------------:|
+    |   radiant flux: *watts*(W) | luminous flux: lumen(lm)   |
+    |   irradiance: W/m$^2$      |   illuminance: lux(lx)     |
+    |  radiant intensity: W/*sr* | luminous intensity: candela(ce)|
+    |   radiance: W/(m$^2$sr)    | luminance: cd/m$^2$ = nit  |
 
 ## Colorimetry 比色法（色度学）
  1. Colorimetry用来处理光谱图能量分部和颜色感知之间的关系  
