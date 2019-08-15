@@ -10,6 +10,7 @@
 ## Photometry 光度
 1. radiometry是用衡量物理层面，而photometry是以认为角度进行衡量。
 2. illuminance是照度，luminance是亮度，以下是对比表：
+
     | Radiometric Quantity:Units | Photometric Quantity:Units |
     |:--------------------------:| :-------------------------:|
     |   radiant flux: *watts*(W) | luminous flux: lumen(lm)   |
