@@ -5,6 +5,13 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "RayMarchingShader.generated.h"
 
+UENUM(BlueprintType)
+enum ERayMarchingShader
+{
+	Seascape,
+	ProteanCloud
+};
+
 USTRUCT(BlueprintType)
 struct FRayMarchingBufferData
 {
@@ -26,5 +33,5 @@ class URayMarchingBlueprintLibrary :public UBlueprintFunctionLibrary
 	GENERATED_UCLASS_BODY()
 
 	UFUNCTION(BlueprintCallable, Category = "UsingShaderPlugin", meta = (WorldContext = "WorldContext"))
-	static void DrawRayMarchingRenderTarget(class UTextureRenderTarget* OutputRenderTarget, AActor* MyActor, FRayMarchingBufferData ShaderStructData);
+	static void DrawRayMarchingRenderTarget(ERayMarchingShader ShaderType, class UTextureRenderTarget* OutputRenderTarget, AActor* MyActor, FRayMarchingBufferData ShaderStructData);
 };

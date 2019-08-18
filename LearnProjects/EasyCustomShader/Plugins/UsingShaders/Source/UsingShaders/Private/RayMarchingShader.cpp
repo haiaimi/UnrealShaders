@@ -20,7 +20,6 @@ SHADER_PARAMETER(float, TimeSeconds)
 SHADER_PARAMETER(FVector2D, MousePos)
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
-
 struct FSVertexInput
 {
 	FVector4 Position;
@@ -167,6 +166,7 @@ static void DrawIndexedPrimitiveUP_cpy4(
 
 static void DrawUniformBufferShaderRenderTarget_RenderThread(
 	FRHICommandListImmediate& RHICmdList,
+	ERayMarchingShader ShaderType,
 	FTextureRenderTargetResource* OutputRenderTargetResource,
 	ERHIFeatureLevel::Type FeatureLevel,
 	FName TextureRenderTargetName,
@@ -190,8 +190,23 @@ static void DrawUniformBufferShaderRenderTarget_RenderThread(
 	RHICmdList.BeginRenderPass(RPInfo, TEXT("RayMarchingShader"));
 
 	TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
-	TShaderMapRef<FRayMarchingShaderVS<2>> VertexShader(GlobalShaderMap);
-	TShaderMapRef<FRayMarchingShaderPS<2>> PixelShader(GlobalShaderMap);        //获取自定义的Shader
+	//TShaderMapRef<FRayMarchingShaderVS<1>> VertexShader(GlobalShaderMap);
+	//TShaderMapRef<FRayMarchingShaderPS<1>> PixelShader(GlobalShaderMap);        //获取自定义的Shader
+
+	FRayMarchingShader* VertexShader = nullptr;
+	FRayMarchingShader* PixelShader = nullptr;
+	
+	switch (ShaderType)
+	{
+	case ERayMarchingShader::Seascape:
+		VertexShader = *TShaderMapRef<FRayMarchingShaderVS<1>>(GlobalShaderMap);
+		PixelShader = *TShaderMapRef<FRayMarchingShaderPS<1>>(GlobalShaderMap); 
+		break;
+	case ERayMarchingShader::ProteanCloud:
+		VertexShader = *TShaderMapRef<FRayMarchingShaderVS<2>>(GlobalShaderMap);
+		PixelShader = *TShaderMapRef<FRayMarchingShaderPS<2>>(GlobalShaderMap); 
+		break;
+	}
 
 	FRayMarchingVertexDeclaration VertexDeclaration;   
 	VertexDeclaration.InitRHI(); //创建定点输入布局
@@ -203,8 +218,8 @@ static void DrawUniformBufferShaderRenderTarget_RenderThread(
 	GraphicPSPoint.RasterizerState = TStaticRasterizerState<>::GetRHI();
 	GraphicPSPoint.PrimitiveType = PT_TriangleList;        //绘制的图元类型
 	GraphicPSPoint.BoundShaderState.VertexDeclarationRHI = VertexDeclaration.VertexDeclarationRHI;
-	GraphicPSPoint.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-	GraphicPSPoint.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+	GraphicPSPoint.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(VertexShader);
+	GraphicPSPoint.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(PixelShader);
 	SetGraphicsPipelineState(RHICmdList, GraphicPSPoint);
 
 	PixelShader->SetParameters(RHICmdList, MyData);    //设置Shader参数，这里一个颜色参数和一个纹理参数
@@ -235,7 +250,7 @@ URayMarchingBlueprintLibrary::URayMarchingBlueprintLibrary(const FObjectInitiali
 {
 }
 
-void URayMarchingBlueprintLibrary::DrawRayMarchingRenderTarget(class UTextureRenderTarget* OutputRenderTarget, AActor* MyActor, FRayMarchingBufferData ShaderStructData)
+void URayMarchingBlueprintLibrary::DrawRayMarchingRenderTarget(ERayMarchingShader ShaderType, class UTextureRenderTarget* OutputRenderTarget, AActor* MyActor, FRayMarchingBufferData ShaderStructData)
 {
 	check(IsInGameThread());
 
@@ -246,8 +261,8 @@ void URayMarchingBlueprintLibrary::DrawRayMarchingRenderTarget(class UTextureRen
 	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
 	FName TextureRenderTargetName = OutputRenderTarget->GetFName();
 	//把渲染加入到渲染线程
-	ENQUEUE_RENDER_COMMAND(CaptureCommand)([TextureRenderTargetResource, FeatureLevel, TextureRenderTargetName, ShaderStructData](FRHICommandListImmediate& RHICmdList)
+	ENQUEUE_RENDER_COMMAND(CaptureCommand)([ShaderType, TextureRenderTargetResource, FeatureLevel, TextureRenderTargetName, ShaderStructData](FRHICommandListImmediate& RHICmdList)
 	{
-		DrawUniformBufferShaderRenderTarget_RenderThread(RHICmdList, TextureRenderTargetResource, FeatureLevel, TextureRenderTargetName, ShaderStructData);
+		DrawUniformBufferShaderRenderTarget_RenderThread(RHICmdList, ShaderType, TextureRenderTargetResource, FeatureLevel, TextureRenderTargetName, ShaderStructData);
 	});
 }

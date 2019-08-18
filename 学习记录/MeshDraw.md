@@ -8,7 +8,7 @@
     ```
     在AddPrimitive函数中还会在渲染线程中调用
     FScene::AddPrimitiveSceneInfo_RenderThread，该函数就是网FScene中填充渲染所需要的信息，如下代码：
-    ```
+    ```cpp
         Primitives.Add(PrimitiveSceneInfo);
         const FMatrix LocalToWorld = PrimitiveSceneInfo->Proxy->GetLocalToWorld();
         PrimitiveTransforms.Add(LocalToWorld);
@@ -35,7 +35,7 @@
 	+ AddMeshBatch会调用其中的Process函数，Process会调用FMeshPassProcessor::BuildMeshDrawCommands从而进行对不同类型Shader的绑定对应的资源的绑定，绑定详细见  FMeshDrawSingleShaderBindings
 	+ 上述流程已经把渲染所需要的所有资源准备完成，接下来就是执行渲染工作
 4. 实际调度渲染操作，在UE4的渲染器中如DeferredShadingRenderer 会调用对应的FParallelMeshDrawCommandPass::DispatchDraw方法进行绘制，代码如下：
-    ```
+    ```cpp
         inline FMeshDraw 
         void FDeferredShadingSceneRenderer::RenderBasePassViewParallel(FViewInfo& View, FRHICommandListImmediate& ParentCmdList, FExclusiveDepthStencil::Type BasePassDepthStencilAccess, const FMeshPassProcessorRenderState& InDrawRenderState)
         {
