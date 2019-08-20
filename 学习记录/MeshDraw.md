@@ -44,3 +44,129 @@
         }
     ```
     在调用DispatchDraw时会调用FRHICommandList中的资源设置方法以及绘制的方法，如SetShaderUniformBuffer、SetShaderSampler、SetShaderTexture以及SetShaderResourceViewParameter，绘制的时候就调用DrawIndexedPrimitive / DrawPrimitive。注意在渲染的时候会使用到这一Pass的FMeshDrawCommand，这些Command会在DispatchPassSetup阶段传入进去，而传入的Command比较难找到生成的位置。
+
+    ## StaticMesh和DynamicMesh
+    这是个比较重要的地方，上面也稍微提到过，StaticMesh的MeshProcessor和DynamicMesh的生成规则不太一样，DynamicMesh需要每帧生成，而StaticMesh会有一个缓存，FPrimitiveSceneInfo会有一个函数用于生成，如下:
+    ```cpp
+    void FPrimitiveSceneInfo::CacheMeshDrawCommands(FRHICommandListImmediate& RHICmdList)
+    {
+        FCachedMeshDrawCommandInfo CommandInfo;
+        CommandInfo.MeshPass = PassType;
+
+        FCachedPassMeshDrawList& SceneDrawList = Scene->CachedDrawLists[PassType];
+        FCachedPassMeshDrawListContext CachedPassMeshDrawListContext(CommandInfo, SceneDrawList, *Scene);
+
+        PassProcessorCreateFunction CreateFunction = FPassProcessorManager::GetCreateFunction(ShadingPath, PassType);
+        FMeshPassProcessor* PassMeshProcessor = CreateFunction(Scene, nullptr, &CachedPassMeshDrawListContext);
+
+        if (PassMeshProcessor != nullptr)
+        {
+            check(!Mesh.bRequiresPerElementVisibility);
+            uint64 BatchElementMask = ~0ull;
+            //生成DrawCommand的位置
+            PassMeshProcessor->AddMeshBatch(Mesh, BatchElementMask, Proxy);
+
+            PassMeshProcessor->~FMeshPassProcessor();
+        }
+
+        if (CommandInfo.CommandIndex != -1 || CommandInfo.StateBucketId != -1)
+        {
+            static_assert(sizeof(MeshRelevance.CommandInfosMask) * 8 >= EMeshPass::Num, "CommandInfosMask is too small to contain all mesh passes.");
+
+            MeshRelevance.CommandInfosMask.Set(PassType);
+            StaticMeshCommandInfos.Add(CommandInfo);
+        }
+    }
+    ```
+简单理一下调用这个这个函数的顺序：
+```cpp
+//First
+void FPrimitiveSceneInfo::AddToScene(FRHICommandListImmediate& RHICmdList, bool bUpdateStaticDrawLists, bool bAddToStaticDrawLists)
+//Second
+void FPrimitiveSceneInfo::AddStaticMeshes(FRHICommandListImmediate& RHICmdList, 
+//Third
+bool bAddToStaticDrawLists)
+void CacheMeshDrawCommands(FRHICommandListImmediate& RHICmdList);
+```
+那么在游戏运行期添加DrawCommand的顺序：
+```cpp
+//First
+bool FDeferredShadingSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdList, FExclusiveDepthStencil::Type BasePassDepthStencilAccess, struct FILCUpdatePrimTaskData& ILCTaskData, FGraphEventArray& UpdateViewCustomDataEvents);
+//Second
+void FSceneRenderer::ComputeViewVisibility(FRHICommandListImmediate& RHICmdList, FExclusiveDepthStencil::Type BasePassDepthStencilAccess, FViewVisibleCommandsPerView& ViewCommandsPerView, 
+	FGlobalDynamicIndexBuffer& DynamicIndexBuffer, FGlobalDynamicVertexBuffer& DynamicVertexBuffer, FGlobalDynamicReadBuffer& DynamicReadBuffer);
+//Third global function
+ComputeAndMarkRelevanceForViewParallel(...)
+{
+    if (StaticMeshCommandInfoIndex >= 0)
+			{
+                //获取已经缓存的DrawCommand
+				const FCachedMeshDrawCommandInfo& CachedMeshDrawCommand = InPrimitiveSceneInfo->StaticMeshCommandInfos[StaticMeshCommandInfoIndex];
+				const FCachedPassMeshDrawList& SceneDrawList = Scene->CachedDrawLists[PassType];
+
+				FVisibleMeshDrawCommand NewVisibleMeshDrawCommand;
+
+				const FMeshDrawCommand* MeshDrawCommand = CachedMeshDrawCommand.StateBucketId >= 0
+					? &Scene->CachedMeshDrawCommandStateBuckets[FSetElementId::FromInteger(CachedMeshDrawCommand.StateBucketId)].MeshDrawCommand
+					: &SceneDrawList.MeshDrawCommands[CachedMeshDrawCommand.CommandIndex];
+
+				NewVisibleMeshDrawCommand.Setup(
+					MeshDrawCommand,
+					PrimitiveIndex,
+					CachedMeshDrawCommand.StateBucketId,
+					CachedMeshDrawCommand.MeshFillMode,
+					CachedMeshDrawCommand.MeshCullMode,
+					CachedMeshDrawCommand.SortKey);
+
+				VisibleCachedDrawCommands[(uint32)PassType].Add(NewVisibleMeshDrawCommand);
+			}
+}
+
+//Fourth global function
+void MarkRelevant()
+//Fifth
+void FDrawCommandRelevancePacket::AddCommandsForMesh()
+```
+
+而DynamicMesh的MeshProcessor需要动态生成，大致的调用流程：
+```cpp
+//First 获取所用的DynamicMesh
+void FSceneRenderer::GatherDynamicMeshElements()
+//Second 
+void FSceneRenderer::SetupMeshPass(FViewInfo& View, FExclusiveDepthStencil::Type BasePassDepthStencilAccess, FViewCommands& ViewCommands)
+{
+    if ((FPassProcessorManager::GetPassFlags(ShadingPath, PassType) & EMeshPassFlags::MainView) != EMeshPassFlags::None)
+		{
+			// Mobile: BasePass and MobileBasePassCSM lists need to be merged and sorted after shadow pass.
+			if (ShadingPath == EShadingPath::Mobile && (PassType == EMeshPass::BasePass || PassType == EMeshPass::MobileBasePassCSM))
+			{
+				continue;
+			}
+
+			PassProcessorCreateFunction CreateFunction = FPassProcessorManager::GetCreateFunction(ShadingPath, PassType);
+            //创建Processor
+			FMeshPassProcessor* MeshPassProcessor = CreateFunction(Scene, &View, nullptr);
+
+			FParallelMeshDrawCommandPass& Pass = View.ParallelMeshDrawCommandPasses[PassIndex];
+
+			if (ShouldDumpMeshDrawCommandInstancingStats())
+			{
+				Pass.SetDumpInstancingStats(GetMeshPassName(PassType));
+			}
+
+            //创建MeshCommand
+			Pass.DispatchPassSetup(
+				Scene,
+				View,
+				PassType,
+				BasePassDepthStencilAccess,
+				MeshPassProcessor,
+				View.DynamicMeshElements,
+				&View.DynamicMeshElementsPassRelevance,
+				View.NumVisibleDynamicMeshElements[PassType],
+				ViewCommands.DynamicMeshCommandBuildRequests[PassType],
+				ViewCommands.NumDynamicMeshCommandBuildRequestElements[PassType],
+				ViewCommands.MeshCommands[PassIndex]);
+		}
+}
+```
