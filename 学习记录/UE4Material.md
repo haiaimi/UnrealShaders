@@ -160,3 +160,32 @@ void FMaterialShaderMap::Compile(...)
 }
 
 ```
+
+## ShaderCompile
+无论是GlobalShader，MaterialShader还是MeshMaterialShader都会进行编译。
+首先要了解一下FShaderCompilingManager类型，这用于管理Shader编译，使用多线程的方式编译。UE4中有一个全局的CompilingManager，如下：
+```cpp
+/** The global shader compiling thread manager. */
+extern ENGINE_API FShaderCompilingManager* GShaderCompilingManager;
+```
+它用于管理所有Shader的编译。
+需要注意的是所有的MaterialShader和MeshMaterialShader都是通过void FMaterialShaderMap::Compile() 里面的流程来编译，如下函数
+```cpp
+/**
+* Compiles the shaders for a material and caches them in this shader map.
+* @param Material - The material to compile shaders for.
+* @param InShaderMapId - the set of static parameters to compile for
+* @param Platform - The platform to compile to
+*/
+void FMaterialShaderMap::Compile(
+	FMaterial* Material,
+	const FMaterialShaderMapId& InShaderMapId, 
+	TRefCountPtr<FShaderCompilerEnvironment> MaterialEnvironment,
+	const FMaterialCompilationOutput& InMaterialCompilationOutput,
+	EShaderPlatform InPlatform,
+	bool bSynchronousCompile,
+	bool bApplyCompletedShaderMapForRendering)
+{}
+```
+而GlobalShader有些不同
+
