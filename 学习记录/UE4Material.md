@@ -63,103 +63,7 @@ void UMaterialExpressionAbs::GetCaption(TArray<FString>& OutCaptions) const
 }
 ```
 
-那么什么时候是Shader生成的，代码如下：
-```cpp
-bool FMaterial::BeginCompileShaderMap(
-	const FMaterialShaderMapId& ShaderMapId, 
-	EShaderPlatform Platform, 
-	TRefCountPtr<FMaterialShaderMap>& OutShaderMap, 
-	bool bApplyCompletedShaderMapForRendering)
-{
-#if WITH_EDITORONLY_DATA
-	bool bSuccess = false;
 
-	STAT(double MaterialCompileTime = 0);
-
-	TRefCountPtr<FMaterialShaderMap> NewShaderMap = new FMaterialShaderMap();
-
-	SCOPE_SECONDS_COUNTER(MaterialCompileTime);
-
-	// Generate the material shader code. 生成对应Shader代码
-	FMaterialCompilationOutput NewCompilationOutput;
-	FHLSLMaterialTranslator MaterialTranslator(this,NewCompilationOutput,ShaderMapId.GetParameterSet(),Platform,GetQualityLevel(),ShaderMapId.FeatureLevel);
-	bSuccess = MaterialTranslator.Translate();
-
-	if(bSuccess)
-	{
-		// Create a shader compiler environment for the material that will be shared by all jobs from this material
-		TRefCountPtr<FShaderCompilerEnvironment> MaterialEnvironment = new FShaderCompilerEnvironment();
-
-		MaterialTranslator.GetMaterialEnvironment(Platform, *MaterialEnvironment);
-		const FString MaterialShaderCode = MaterialTranslator.GetMaterialShaderCode();
-		const bool bSynchronousCompile = RequiresSynchronousCompilation() || !GShaderCompilingManager->AllowAsynchronousShaderCompiling();
-
-		MaterialEnvironment->IncludeVirtualPathToContentsMap.Add(TEXT("/Engine/Generated/Material.ush"), MaterialShaderCode);
-
-		// Compile the shaders for the material. 正式编译代码
-		NewShaderMap->Compile(this, ShaderMapId, MaterialEnvironment, NewCompilationOutput, Platform, bSynchronousCompile, bApplyCompletedShaderMapForRendering);
-    }
-
-```
-
-上面代码中调用的函数，如下：
-```cpp
-/**
-* Compiles the shaders for a material and caches them in this shader map.
-* @param Material - The material to compile shaders for.
-* @param InShaderMapId - the set of static parameters to compile for
-* @param Platform - The platform to compile to
-*/
-void FMaterialShaderMap::Compile(
-	FMaterial* Material,
-	const FMaterialShaderMapId& InShaderMapId, 
-	TRefCountPtr<FShaderCompilerEnvironment> MaterialEnvironment,
-	const FMaterialCompilationOutput& InMaterialCompilationOutput,
-	EShaderPlatform InPlatform,
-	bool bSynchronousCompile,
-	bool bApplyCompletedShaderMapForRendering)
-```
-在平常使用的IMPLEMENT_SHADER_TYPE中本质上也是调用了这个函数进行编译，因为平常使用的本质上是FShaderType这个类，在构造函数中会进行注册，会有个全局的FShaderType链表，如下：
-```cpp
-static TLinkedList<FShaderType*>*			GShaderTypeList = nullptr;
-
-void FMaterialShaderMap::Compile(...)
-{
-    ...
-    // Iterate over all material shader types.
-    //迭代所有的ShaderType选择对应的Shader进行编译
-    TMap<FShaderType*, FShaderCompileJob*> SharedShaderJobs;
-    for(TLinkedList<FShaderType*>::TIterator ShaderTypeIt(FShaderType::GetTypeList());ShaderTypeIt;ShaderTypeIt.Next())
-    {
-        FMaterialShaderType* ShaderType = ShaderTypeIt->GetMaterialShaderType();
-        if (ShaderType &&  ShouldCacheMaterialShader(ShaderType, InPlatform, Material))
-        {
-            // Verify that the shader map Id contains inputs for any shaders that will be put into this shader map
-            check(InShaderMapId.ContainsShaderType(ShaderType));
-
-            // Compile this material shader for this material.
-            TArray<FString> ShaderErrors;
-
-            // Only compile the shader if we don't already have it
-            if (!HasShader(ShaderType, /* PermutationId = */ 0))
-            {
-                auto* Job = ShaderType->BeginCompileShader(
-                    CompilingId,
-                    Material,
-                    MaterialEnvironment,
-                    nullptr,
-                    InPlatform,
-                    NewJobs
-                    );
-                check(!SharedShaderJobs.Find(ShaderType));
-                SharedShaderJobs.Add(ShaderType, Job);
-            }
-            NumShaders++;
-        }
-    }
-}
-
-```
 
 ## ShaderCompile
 无论是GlobalShader，MaterialShader还是MeshMaterialShader都会进行编译。
@@ -168,7 +72,17 @@ void FMaterialShaderMap::Compile(...)
 /** The global shader compiling thread manager. */
 extern ENGINE_API FShaderCompilingManager* GShaderCompilingManager;
 ```
-它用于管理所有Shader的编译。
+它用于管理所有Shader的编译，其中的 FShaderCompileThreadRunnable 会以多线程的方式进行编译Shader，它会调用对应图形接口编译Shader的接口，按照Manager中的Compilejobs进行编译，FShaderCompilingManager有一个比较重要的方法AddJobs是用来向Manager中添加CompileJobs：
+```cpp
+
+	/** 
+	 * Adds shader jobs to be asynchronously compiled. 
+	 * FinishCompilation or ProcessAsyncResults must be used to get the results.
+	 */
+	ENGINE_API void AddJobs(TArray<FShaderCommonCompileJob*>& NewJobs, bool bApplyCompletedShaderMapForRendering, bool bOptimizeForLowLatency, bool bRecreateComponentRenderStateOnCompletion);
+
+```
+
 需要注意的是所有的MaterialShader和MeshMaterialShader都是通过void FMaterialShaderMap::Compile() 里面的流程来编译，如下函数
 ```cpp
 /**
@@ -187,5 +101,82 @@ void FMaterialShaderMap::Compile(
 	bool bApplyCompletedShaderMapForRendering)
 {}
 ```
-而GlobalShader有些不同
+而GlobalShader有些不同，它不与材质或者顶点连接，这是一个比较简单的ShaderType实例。
 
+首先整理一下MaterialShader、MeshMaterialShader的编译流程：
+
+1. 在需要编译Shader的情况下调用FMaterial::CacheShaders，如在材质编辑器的状态下预览的时候就会调用，如下情况：
+```cpp
+//很明显这是材质编辑器中预览材质效果时调用的方法
+FMatExpressionPreview* FMaterialEditor::GetExpressionPreview(UMaterialExpression* MaterialExpression, bool& bNewlyCreated)
+{
+	if( !Preview )
+		{
+			bNewlyCreated = true;
+			Preview = new FMatExpressionPreview(MaterialExpression);
+			ExpressionPreviews.Add(Preview);
+			Preview->CacheShaders(GMaxRHIShaderPlatform, true);
+		}
+}
+```
+2. 在FMaterial::CacheShaders中会调用 FMaterial::BeginCompileShaderMap ，根据传入的id选择对应的ShaderMap编译，该方法在上面有所展示，首先会把材质编辑器的内容转换成Shader文件，然后再开始编译
+```cpp
+/**
+* Compiles this material for Platform, storing the result in OutShaderMap
+*
+* @param ShaderMapId - the set of static parameters to compile
+* @param Platform - the platform to compile for
+* @param OutShaderMap - the shader map to compile
+* @return - true if compile succeeded or was not necessary (shader map for ShaderMapId was found and was complete)
+*/
+bool FMaterial::BeginCompileShaderMap(
+	const FMaterialShaderMapId& ShaderMapId, 
+	EShaderPlatform Platform, 
+	TRefCountPtr<FMaterialShaderMap>& OutShaderMap, 
+	bool bApplyCompletedShaderMapForRendering)
+```
+3. 在翻译完后就会进行编译，会动态创建一个FMaterialShaderMap，然后调用其中的FMaterialShaderMap::Compile方法进行编译，其中也分成几个编译部分，分别如下：
+	+ 迭代所有的FVertexFactoryType，编译ShaderMap对应的MeshMaterialShader
+    	+ 编译对应FMeshMaterialShaderType
+    	+ 编译对应FShaderPipelineType
+	+ 编译ShaderMap对应的所有FMaterialShaderType，得到对应的jobs
+	+ 编译ShaderMap中所有FShaderPipelineType类型（存在多个Shader，PS->GS->DS->HS->VS）的Shader
+	+ 上面的步骤会创建多个FShaderCommonCompileJob，会添加到GShaderCompilingManager
+```cpp
+/**
+* Compiles the shaders for a material and caches them in this shader map.
+* @param Material - The material to compile shaders for.
+* @param InShaderMapId - the set of static parameters to compile for
+* @param Platform - The platform to compile to
+*/
+void FMaterialShaderMap::Compile(
+	FMaterial* Material,
+	const FMaterialShaderMapId& InShaderMapId, 
+	TRefCountPtr<FShaderCompilerEnvironment> MaterialEnvironment,
+	const FMaterialCompilationOutput& InMaterialCompilationOutput,
+	EShaderPlatform InPlatform,
+	bool bSynchronousCompile,
+	bool bApplyCompletedShaderMapForRendering)
+	{
+		//上述步骤都在该方法中
+		...
+		// Note: using Material->IsPersistent() to detect whether this is a preview material which should have higher priority over background compiling 添加到GShaderCompilingManager
+			GShaderCompilingManager->AddJobs(NewJobs, bApplyCompletedShaderMapForRendering && !bSynchronousCompile, bSynchronousCompile || !Material->IsPersistent(), bRecreateComponentRenderStateOnCompletion);
+	}
+```
+
+GlobalShader编译是独立与MaterialShader与MeshMaterialShader，大致步骤如下：
+1. 在某些情况下触发编译GlobalShader时会调用CompileGlobalShaderMap()全局函数，如在切换材质FeatureLevel时：
+```cpp
+extern ENGINE_API void CompileGlobalShaderMap(EShaderPlatform Platform, bool bRefreshShaderMap = false);
+void UEditorEngine::SetMaterialsFeatureLevel(const ERHIFeatureLevel::Type InFeatureLevel)
+{
+	CompileGlobalShaderMap(...)
+}
+```
+2. 在CompileGlobalShaderMap()中首先会加载GlobalShader文件，序列化GlobalShader，然后调用VerifyGlobalShaders编译：
+   + 判断是否已经编译
+   + 迭代所有的GlobalShader，调用FGlobalShaderTypeCompiler::BeginCompileShader()编译，可见GlobalShader有专门的ShaderTypeCompiler，当然其本质上也是调用了GlobalBeginCompileShader()
+   + 迭代所有GlobalPipelineType，FGlobalShaderTypeCompiler::BeginCompileShaderPipeline()编译
+
+3. 同样调用GShaderCompilingManager->AddJobs();来添加所有的jobs
