@@ -180,3 +180,81 @@ void UEditorEngine::SetMaterialsFeatureLevel(const ERHIFeatureLevel::Type InFeat
    + 迭代所有GlobalPipelineType，FGlobalShaderTypeCompiler::BeginCompileShaderPipeline()编译
 
 3. 同样调用GShaderCompilingManager->AddJobs();来添加所有的jobs
+
+
+## Material与MeshPassProcessor
+前面已经研究过UE4中渲染Mesh的流程与Material编译的流程，但是当渲染带有材质的模型是什么样的流程呢？
+
+在HLSLTranslator翻译对应Material的Shader后，这些文件会被临时放在"/Engine/Generated/Material.ush"、顶点定义放在#include "/Engine/Generated/VertexFactory.ush"，而UniformBuffer则是放在#include "/Engine/Generated/GeneratedUniformBuffers.ush" 
+
+首先可以了解一些BasePassRendering，使用FBasePassMeshProcessor，用于渲染基本的mesh，其对应的shader文件中就有包含对应生成的hlsl文件，如下：
+```hlsl
+#include "/Engine/Generated/Material.ush"
+#include "BasePassCommon.ush"
+#include "/Engine/Generated/VertexFactory.ush"
+```
+
+而Common.ush中则包含了生成的Buffer定义文件，如下:
+```hlsl
+// Generated file that contains uniform buffer declarations needed by the shader being compiled 
+#include "/Engine/Generated/GeneratedUniformBuffers.ush" 
+```
+
+而普通模型渲染时候所使用的Shader类就如下：
+```cpp
+template<typename LightMapPolicyType>
+void FBasePassMeshProcessor::Process(
+	const FMeshBatch& RESTRICT MeshBatch,
+	uint64 BatchElementMask,
+	int32 StaticMeshId,
+	const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy,
+	const FMaterialRenderProxy& RESTRICT MaterialRenderProxy,
+	const FMaterial& RESTRICT MaterialResource,
+	EBlendMode BlendMode,
+	EMaterialShadingModel ShadingModel,
+	const LightMapPolicyType& RESTRICT LightMapPolicy,
+	const typename LightMapPolicyType::ElementDataType& RESTRICT LightMapElementData,
+	ERasterizerFillMode MeshFillMode,
+	ERasterizerCullMode MeshCullMode)
+{
+	const FVertexFactory* VertexFactory = MeshBatch.VertexFactory;
+
+	const bool bRenderSkylight = Scene && Scene->ShouldRenderSkylightInBasePass(BlendMode) && ShadingModel != MSM_Unlit;
+	const bool bRenderAtmosphericFog = IsTranslucentBlendMode(BlendMode) && (Scene && Scene->HasAtmosphericFog() && Scene->ReadOnlyCVARCache.bEnableAtmosphericFog);
+
+	//下面就是渲染时使用的Shader类型
+	TMeshProcessorShaders<
+		TBasePassVertexShaderPolicyParamType<LightMapPolicyType>,
+		FBaseHS,
+		FBaseDS,
+		TBasePassPixelShaderPolicyParamType<LightMapPolicyType>> BasePassShaders;
+}
+```
+从这也可以看出我们平常使用的材质编辑器，并不是直接编写一个渲染管线，而是编写其中对应的函数，然后提供给渲染管线中的shader方法进行调用，我们可以在MaterialTemplate.ush中找到对应的方法：
+```hlsl
+half3 GetMaterialWorldDisplacement(FMaterialTessellationParameters Parameters)
+{
+%s;
+}
+
+half GetMaterialMaxDisplacement()
+{
+%s;
+}
+
+half GetMaterialTessellationMultiplier(FMaterialTessellationParameters Parameters)
+{
+%s;
+}
+
+half GetMaterialCustomData0(FMaterialPixelParameters Parameters)
+{
+%s;
+}
+
+half GetMaterialCustomData1(FMaterialPixelParameters Parameters)
+{
+%s;
+}
+```
+是不是很熟悉，他们就是对应于材质编辑器中的那些节点引脚
