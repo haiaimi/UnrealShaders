@@ -1,6 +1,7 @@
 ## HLSLMaterialTranslator
 继承于FMaterialCompiler ，FMaterialCompiler是用来将材质编辑器中的蓝图转变成可执行Shader代码，其中定义了许多Shader中的运算法则，如下：
 ```cpp
+
     virtual int32 Sine(int32 X) = 0;
 	virtual int32 Cosine(int32 X) = 0;
 	virtual int32 Tangent(int32 X) = 0;
@@ -330,4 +331,21 @@ FShader* FMaterial::GetShader(FMeshMaterialShaderType* ShaderType, FVertexFactor
 	FShader* Shader = MeshShaderMap ? MeshShaderMap->GetShader(ShaderType) : nullptr;
 }
 ```
-这些Shader会在编译的过程中加入。
+这些Shader会在编译时加入,要注意这并不是在执行前面所提到的一系列Compile方法得到，因为那些Compile并没有真正进行了Shader的编译，只是向编译的线程中加入任务（前面所提的Jobs）。这些Shader是在编译完成后加入，可以看到如下的声明：
+```cpp
+/** Finalizes the given shader map results and optionally assigns the affected shader maps to materials, while attempting to stay within an execution time budget. */
+	void FShaderCompilingManager::ProcessCompiledShaderMaps(TMap<int32, FShaderMapFinalizeResults>& CompiledShaderMaps, float TimeBudget);
+
+```
+其相对应的调用堆栈（按调用顺序）：
+
+```cpp
+void FEngineLoop:Tick();
+void FShaderCompilingManager::ProcessAsyncResults(bool bLimitExecutionTime, bool bBlockOnGlobalShaderCompletion);
+void FShaderCompilingManager::ProcessCompiledShaderMaps(TMap<int32,FShaderMapFinalizeResults>& CompiledShaderMaps, float TimeBudget);
+bool FMaterialShaderMap::ProcessCompilationResults(const TArray<FShaderCommonCompileJob*>& InCompilationResults, int32& InOutJobIndex, float& TimeBudget, TMap<const FVertexFactoryType*, TArray<const FShaderPipelineType*> >& SharedPipelines);
+FShader* FMaterialShaderMap::ProcessCompilationResultsForSingleJob(FShaderCompileJob* SingleJob, const FShaderPipelineType* ShaderPipeline, const FSHAHash& MaterialShaderMapHash);
+//向Material里添加Shader
+void TShaderMap<FMeshMaterialShaderType>::AddShader(FShaderType* Type, int32 PermutationId, FShader* Shader);
+```
+由上面的调用堆栈看出，添加Shader是在Engine的loop里进行的由GShaderCompilingManager进行管理。
