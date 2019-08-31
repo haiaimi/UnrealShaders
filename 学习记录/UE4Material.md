@@ -349,3 +349,50 @@ FShader* FMaterialShaderMap::ProcessCompilationResultsForSingleJob(FShaderCompil
 void TShaderMap<FMeshMaterialShaderType>::AddShader(FShaderType* Type, int32 PermutationId, FShader* Shader);
 ```
 由上面的调用堆栈看出，添加Shader是在Engine的loop里进行的由GShaderCompilingManager进行管理。
+
+4. 在前面MeshDrawProcessor中已经了解到MeshDraw有很多Pass，BasePass只是其中的一个，还有DepthPass，Velocity等等，他们都有对应的MeshDrawProcessor和Shader。先看一下在为每个Pass配置时的代码：
+```cpp
+void ComputeDynamicMeshRelevance(EShadingPath ShadingPath, bool bAddLightmapDensityCommands, const FPrimitiveViewRelevance& ViewRelevance, const FMeshBatchAndRelevance& MeshBatch, FViewInfo& View, FMeshPassMask& PassMask)
+{
+	const int32 NumElements = MeshBatch.Mesh->Elements.Num();
+
+	if (ViewRelevance.bDrawRelevance && (ViewRelevance.bRenderInMainPass || ViewRelevance.bRenderCustomDepth))
+	{
+		if (ShadingPath == EShadingPath::Mobile)
+		{
+			PassMask.Set(EMeshPass::MobileBasePassCSM);
+			View.NumVisibleDynamicMeshElements[EMeshPass::MobileBasePassCSM] += NumElements;
+		}
+		//设置CustomDepth
+		if (ViewRelevance.bRenderCustomDepth)
+		{
+			PassMask.Set(EMeshPass::CustomDepth);
+			View.NumVisibleDynamicMeshElements[EMeshPass::CustomDepth] += NumElements;
+		}
+		//设置LightmapDensity
+		if (bAddLightmapDensityCommands)
+		{
+			PassMask.Set(EMeshPass::LightmapDensity);
+			View.NumVisibleDynamicMeshElements[EMeshPass::LightmapDensity] += NumElements;
+		}Velocity
+		//设置
+		if (ViewRelevance.bVelocityRelevance)
+		{
+			PassMask.Set(EMeshPass::Velocity);
+			View.NumVisibleDynamicMeshElements[EMeshPass::Velocity] += NumElements;
+		}
+		...
+	}
+```
+
+而FPrimitiveViewRelevance之前则提到过，它是为了配置Mesh的一些参数，在FPrimitiveSceneProxy中会有对应的获取方法，声明如下：
+```cpp
+	/**
+	 * Determines the relevance of this primitive's elements to the given view.
+	 * Called in the rendering thread.
+	 * @param View - The view to determine relevance for.
+	 * @return The relevance of the primitive's elements to the view.
+	 */
+	ENGINE_API virtual FPrimitiveViewRelevance GetViewRelevance(const FSceneView* View) const;
+```
+总之这些数据都是从游戏线程中UPrimitiveComponent中获取的，在渲染的时候会根据这些配置来决定是否要绘制这个MeshPass。
