@@ -396,3 +396,65 @@ void ComputeDynamicMeshRelevance(EShadingPath ShadingPath, bool bAddLightmapDens
 	ENGINE_API virtual FPrimitiveViewRelevance GetViewRelevance(const FSceneView* View) const;
 ```
 总之这些数据都是从游戏线程中UPrimitiveComponent中获取的，在渲染的时候会根据这些配置来决定是否要绘制这个MeshPass。
+
+## VertexFactory
+这主要是定义了顶点相关数据的类型（VertexFactoryType），它与FMeshMaterialShaderMap是一一对应的关系，关系就如下图：
+
+![image](https://github.com/haiaimi/PictureRepository/blob/master/PictureRepository/Rendering%20Learning/UE4_MaterialShader_1.jpg)
+
+编译对应Mesh的Shader会包含对应的VertexFactory的shader文件路径：
+
+```cpp
+	//ShaderFilename就是对应的shader文件路径，
+	void FVertexFactoryType::FlushShaderFileCache(const TMap<FString, TArray<const TCHAR*> >& ShaderFileToUniformBufferVariables)
+	{
+		ReferencedUniformBufferStructsCache.Empty();
+		GenerateReferencedUniformBuffers(ShaderFilename, Name, ShaderFileToUniformBufferVariables, ReferencedUniformBufferStructsCache);
+		bCachedUniformBufferStructDeclarations = false;
+	}
+
+	//该变量会用于添加UniformBuffer头文件
+	TMap<const TCHAR*, FCachedUniformBufferDeclaration> ReferencedUniformBufferStructsCache;
+```
+
+那么它是如何加入到编译文件中，主要就是在FVertexFactoryType中的方法：
+```cpp
+/**
+	* Calls the function ptr for the shader type on the given environment
+	* @param Environment - shader compile environment to modify
+	*/
+	void FVertexFactoryType::ModifyCompilationEnvironment(EShaderPlatform Platform, const FMaterial* Material, FShaderCompilerEnvironment& OutEnvironment){
+		// Set up the mapping from VertexFactory.usf to the vertex factory type's source code.
+		FString VertexFactoryIncludeString = FString::Printf( TEXT("#include \"%s\""), GetShaderFilename() );
+		//加入到虚拟路径中
+		OutEnvironment.IncludeVirtualPathToContentsMap.Add(TEXT("/Engine/Generated/VertexFactory.ush"), VertexFactoryIncludeString);
+
+		OutEnvironment.SetDefine(TEXT("HAS_PRIMITIVE_UNIFORM_BUFFER"), 1);
+
+		(*ModifyCompilationEnvironmentRef)(this, Platform, Material, OutEnvironment);
+	}
+```
+在调用ModifyCompilationEnvironment后就会把文件加入到编译虚拟路径"/Engine/Generated/VertexFactory.ush中，而该路径则在各个MeshPass的shader中包含，如BasePassPixelShader.usf中包含了VertexFactory.ush。它会针对不同的Mesh类型选择不同的文件。
+
+同时在FMeshMaterialShaderType中会调用该方法，如下:
+```cpp
+/**
+ * Enqueues a compilation for a new shader of this type.
+ * @param Platform - The platform to compile for.
+ * @param Material - The material to link the shader with.
+ * @param VertexFactoryType - The vertex factory to compile with.
+ */
+FShaderCompileJob* FMeshMaterialShaderType::BeginCompileShader(
+	uint32 ShaderMapId,
+	EShaderPlatform Platform,
+	const FMaterial* Material,
+	FShaderCompilerEnvironment* MaterialEnvironment,
+	FVertexFactoryType* VertexFactoryType,
+	const FShaderPipelineType* ShaderPipeline,
+	TArray<FShaderCommonCompileJob*>& NewJobs
+	)
+{
+    ...
+	VertexFactoryType->ModifyCompilationEnvironment(Platform, Material, ShaderEnvironment);
+}
+```

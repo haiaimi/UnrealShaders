@@ -22,3 +22,4 @@ FMaterialPixelParameters GetMaterialPixelParameters(FVertexFactoryInterpolantsVS
 #define IMPLEMENT_VERTEX_FACTORY_TYPE
 #define IMPLEMENT_VERTEX_FACTORY_TYPE_EX
 ```
+相关内容可见UE4Material。
