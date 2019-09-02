@@ -458,3 +458,4 @@ FShaderCompileJob* FMeshMaterialShaderType::BeginCompileShader(
 	VertexFactoryType->ModifyCompilationEnvironment(Platform, Material, ShaderEnvironment);
 }
 ```
+关于虚拟路径，这是FShaderCompilerEnvironment里的一成员个变量，TMap<FString, FString> IncludeVirtualPathToContentMap，这个字典里的key就是虚拟路径，value是shader文件的具体内容，它会在编译的时候直接替换已存在shader文件中虚拟路径内容。如BasePassPixelShader.usf中的#include "Engine/Generated/Material.ush" 会被替换为Material 的具体Shader内容（就是以MaterialTemplate为模板生成的文件），同时也会生成很多对应的UniformBuffer对应的代码。
