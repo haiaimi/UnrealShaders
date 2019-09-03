@@ -23,3 +23,40 @@ FMaterialPixelParameters GetMaterialPixelParameters(FVertexFactoryInterpolantsVS
 #define IMPLEMENT_VERTEX_FACTORY_TYPE_EX
 ```
 相关内容可见UE4Material。
+
+## BassPass-MainPS
+在延迟渲染中会有多个RenderTarget，所以在MainPS会有多个RenderTarget可选，如下：
+```hlsl
+void MainPS(
+#if PIXELSHADEROUTPUT_MRT0
+		, out float4 OutTarget0 : SV_Target0
+#endif
+
+#if PIXELSHADEROUTPUT_MRT1
+		, out float4 OutTarget1 : SV_Target1
+#endif
+
+#if PIXELSHADEROUTPUT_MRT2
+		, out float4 OutTarget2 : SV_Target2
+#endif
+
+#if PIXELSHADEROUTPUT_MRT3
+		, out float4 OutTarget3 : SV_Target3
+#endif
+)
+```
+而这些宏是由C++中定义，然后在Shader中二次定义，如下：
+```hlsl
+#define PIXELSHADEROUTPUT_BASEPASS 1
+#define PIXELSHADEROUTPUT_MRT0 (!USES_GBUFFER || !SELECTIVE_BASEPASS_OUTPUTS || NEEDS_BASEPASS_VERTEX_FOGGING || USES_EMISSIVE_COLOR || ALLOW_STATIC_LIGHTING)
+#define PIXELSHADEROUTPUT_MRT1 (USES_GBUFFER && (!SELECTIVE_BASEPASS_OUTPUTS || !MATERIAL_SHADINGMODEL_UNLIT))
+#define PIXELSHADEROUTPUT_MRT2 (USES_GBUFFER && (!SELECTIVE_BASEPASS_OUTPUTS || !MATERIAL_SHADINGMODEL_UNLIT))
+#define PIXELSHADEROUTPUT_MRT3 (USES_GBUFFER && (!SELECTIVE_BASEPASS_OUTPUTS || !MATERIAL_SHADINGMODEL_UNLIT))
+```
+
+这一切宏的设定都是在FShaderCompilerEnvironment::SetDefine()中在ShaderCompiler.cpp中的GlobalBeginCompileShader方法中有很多宏的设置。
+
+### FPixelShaderInOut_MainPS
+下面主要就是理解FPixelShaderInOut_MainPS里的内容，他是计算最终显示效果的PixelShader，与材质编辑器里的内容息息相关。
+
+首先看到的是INSTANCED_STEREO，它主要是VR以及高清前向渲染有关。

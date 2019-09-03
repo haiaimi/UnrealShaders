@@ -402,21 +402,7 @@ void ComputeDynamicMeshRelevance(EShadingPath ShadingPath, bool bAddLightmapDens
 
 ![image](https://github.com/haiaimi/PictureRepository/blob/master/PictureRepository/Rendering%20Learning/UE4_MaterialShader_1.jpg)
 
-编译对应Mesh的Shader会包含对应的VertexFactory的shader文件路径：
-
-```cpp
-	//ShaderFilename就是对应的shader文件路径，
-	void FVertexFactoryType::FlushShaderFileCache(const TMap<FString, TArray<const TCHAR*> >& ShaderFileToUniformBufferVariables)
-	{
-		ReferencedUniformBufferStructsCache.Empty();
-		GenerateReferencedUniformBuffers(ShaderFilename, Name, ShaderFileToUniformBufferVariables, ReferencedUniformBufferStructsCache);
-		bCachedUniformBufferStructDeclarations = false;
-	}
-
-	//该变量会用于添加UniformBuffer头文件
-	TMap<const TCHAR*, FCachedUniformBufferDeclaration> ReferencedUniformBufferStructsCache;
-```
-
+### Compile VertexFactory File
 那么它是如何加入到编译文件中，主要就是在FVertexFactoryType中的方法：
 ```cpp
 /**
@@ -458,4 +444,30 @@ FShaderCompileJob* FMeshMaterialShaderType::BeginCompileShader(
 	VertexFactoryType->ModifyCompilationEnvironment(Platform, Material, ShaderEnvironment);
 }
 ```
-关于虚拟路径，这是FShaderCompilerEnvironment里的一成员个变量，TMap<FString, FString> IncludeVirtualPathToContentMap，这个字典里的key就是虚拟路径，value是shader文件的具体内容，它会在编译的时候直接替换已存在shader文件中虚拟路径内容。如BasePassPixelShader.usf中的#include "Engine/Generated/Material.ush" 会被替换为Material 的具体Shader内容（就是以MaterialTemplate为模板生成的文件），同时也会生成很多对应的UniformBuffer对应的代码。
+### VirtualPath
+
+关于虚拟路径，这是FShaderCompilerEnvironment里的一成员个变量，TMap<FString, FString> IncludeVirtualPathToContentMap，这个字典里的key就是虚拟路径，value是shader文件的具体内容，它会在编译的时候直接替换已存在shader文件中虚拟路径内容。如BasePassPixelShader.usf中的#include "Engine/Generated/Material.ush" 会被替换为Material 的具体Shader内容（就是以MaterialTemplate为模板生成的文件），可以看出虚拟路径并不是真正的路径，它只是shader文件的的代名词。同时也会生成很多对应的UniformBuffer对应的代码，这些UniformBuffer虚拟路径最终会存在/Engine/Generated/GeneratedUniformBuffers.ush的虚拟路径中，然后依次展开，在调试引擎时会生成如下的字符串：
+```cpp
+#include "Engine/Generated/UniformBuffers/Material.ush"  //最先加入到虚拟路径对应文件中
+#include "Engine/Generated/UniformBuffers/Views.ush"
+#include "Engine/Generated/UniformBuffers/DrawRectangleParameters.ush"
+#include "Engine/Generated/UniformBuffers/InstancedViews.ush"
+#include "Engine/Generated/UniformBuffers/Primitive.ush"
+#include "Engine/Generated/UniformBuffers/PrimitiveFade.ush"
+#include "Engine/Generated/UniformBuffers/SceneTextureStruct.ush"
+#include "Engine/Generated/UniformBuffers/ShadowDepthPass.ush"
+...
+```
+而这个虚拟路径则是被/Engine/Private/Common.ush包含，所以之前自定义UniformBuffer时要在Shader文件中包含Common.ush文件。
+#### UniformBuffer
+
+在定义UniformBuffer相关数据的时候，其具体内容是由FShaderParameterMetaData负责，有一个全局的链表用于存放，q其存放格式与ShaderType类似，如下定义:
+```cpp
+static TLinkedList<FShaderParametersMetadata*>* GUniformStructList = nullptr;
+
+TLinkedList<FShaderParametersMetadata*>*& FShaderParametersMetadata::GetStructList()
+{
+	return GUniformStructList;
+}
+
+```
