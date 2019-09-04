@@ -59,4 +59,4 @@ void MainPS(
 ### FPixelShaderInOut_MainPS
 下面主要就是理解FPixelShaderInOut_MainPS里的内容，他是计算最终显示效果的PixelShader，与材质编辑器里的内容息息相关。
 
-首先看到的是INSTANCED_STEREO，它主要是VR以及高清前向渲染有关。
+首先看到的是INSTANCED_STEREO，它主要是VR以及高清前向渲染有关，它涉及到了ViewState这个结构体，它存放了很多数据，
