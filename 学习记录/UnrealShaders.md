@@ -59,4 +59,52 @@ void MainPS(
 ### FPixelShaderInOut_MainPS
 下面主要就是理解FPixelShaderInOut_MainPS里的内容，他是计算最终显示效果的PixelShader，与材质编辑器里的内容息息相关。
 
-首先看到的是INSTANCED_STEREO，它主要是VR以及高清前向渲染有关，它涉及到了ViewState这个结构体，它存放了很多数据，
+1. 首先看到的是INSTANCED_STEREO，它主要是VR以及高清前向渲染有关，它涉及到了ViewState这个结构体，它存放了很多数据来记录当前View的一些状态，如float4x4 TranslatedWorldClip;
+float4x4 ScreenToWorld等等数据。这个结构体同样是在ShaderCompiler.cpp中的方法生成的，同时还对应着ViewState GetPrimaryView(), ViewState GetInstancedView(),ViewState ResolveView(uint ViewIndex)方法。
+
+**值得注意的是PixelShader在接受SV_POSITION的值时，它xy给的是当前渲染像素的位置，就相当于屏幕分辨率。z应该就是NDC空间里的z**
+
+在FPixelShaderInOut_MainPS开始阶段就会调用Common里的方法：
+SvPositionToResolvedScreenPosition()  //转换到视口坐标
+SvPositionToResolvedTranslatedWorld() //同样是转换到视口坐标
+
+2. 获取到对应的坐标位置后，就进行PixelMaterial的计算，这一步就是运行材质编辑器中生成的代码获取到FPixelMaterialInputs类型的值。
+3. 计算Output PixelDepthOffset相关内容，就是把当前像素深度，向后偏移一定位置，其对应的Shader代码:
+```cpp
+float ApplyPixelDepthOffsetToMaterialParameters(inout FMaterialPixelParameters MaterialParameters, FPixelMaterialInputs PixelMaterialInputs, out float OutDepth)
+{
+	// 获取材质编辑器计算的偏移值
+	float PixelDepthOffset = max(GetMaterialPixelDepthOffset(PixelMaterialInputs), 0);
+
+    //ScreenPosition的w分量添加偏移值
+	MaterialParameters.ScreenPosition.w += PixelDepthOffset;
+	MaterialParameters.SvPosition.w = MaterialParameters.ScreenPosition.w;
+    //朝相机方向添加偏移量
+	MaterialParameters.AbsoluteWorldPosition += MaterialParameters.CameraVector * PixelDepthOffset;
+    //计算当前像素的深度值
+	OutDepth = MaterialParameters.ScreenPosition.z / MaterialParameters.ScreenPosition.w;
+
+	return PixelDepthOffset;
+}
+```
+4. 当前像素剔除，这就涉及到DX11中的**clip(In)**方法当In值小于0就直接停止计算。
+5. 存储在第2步获得的值（局部变量），在下面使用。
+6. 计算次表面(Subsurface)相关内容，在FPixelMaterialInputs中可以获取到对应的值，然后根据配置是否加入Disffuse因素。
+7. 计算DBffer相关，就是渲染Decal所需的步骤，这个会涉及4个值DBufferATexture，DBufferBTexture，DBufferCTexture以及DBufferRenderMask（这应该是决定前面几个DBuffer的混合规则），Decal会把所有相关的属性计算进去，代码如下:
+```cpp
+void ApplyDBufferData(
+	FDBufferData DBufferData, inout float3 WorldNormal, inout float3 SubsurfaceColor, inout float Roughness, 
+	inout float3 BaseColor, inout float Metallic, inout float Specular )
+{
+	WorldNormal = WorldNormal * DBufferData.NormalOpacity + DBufferData.PreMulWorldNormal;
+	Roughness = Roughness * DBufferData.RoughnessOpacity + DBufferData.PreMulRoughness;
+	Metallic = Metallic * DBufferData.RoughnessOpacity + DBufferData.PreMulMetallic;
+	Specular = Specular * DBufferData.RoughnessOpacity + DBufferData.PreMulSpecular;
+
+	SubsurfaceColor *= DBufferData.ColorOpacity;
+
+	BaseColor = BaseColor * DBufferData.ColorOpacity + DBufferData.PreMulColor;
+}
+```
+8. 计算体积光相关。
+9. 计算GBuffer相关内容
