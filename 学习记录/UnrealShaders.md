@@ -107,4 +107,21 @@ void ApplyDBufferData(
 }
 ```
 8. 计算体积光相关。
-9. 计算GBuffer相关内容
+9. 计算GBuffer相关内容：
+   * 首先是设置GBuffer相关的数据，通过ShadingModelsMaterial.ush中的SetGBufferForShadingModel()方法设置，其中还有一个GBufferDither值，这是计算的噪声值，用于ClearCloth的ShadingModel。
+   * 添加Velocity因素到GBuffer，就是通过当前屏幕位置与前一帧屏幕位置差来计算，但是还要考虑到TAA的抖动(ResolvedView.TemporalAAJitter)
+10. 计算normal curvature to roughness（官方解释"The ‘Normal to Roughness’ feature can help reduce specular aliasing from detailed normal maps"）相关内容，[Curvature Shader](http://madebyevan.com/shaders/curvature/)。其相关代码：
+```cpp
+float NormalCurvatureToRoughness(float3 WorldNormal)
+{
+	float3 dNdx = ddx(WorldNormal);
+	float3 dNdy = ddy(WorldNormal);
+	float x = dot(dNdx, dNdx);
+	float y = dot(dNdy, dNdy);
+	float CurvatureApprox = pow(max(x, y), View.NormalCurvatureToRoughnessScaleBias.z);
+	return saturate(CurvatureApprox * View.NormalCurvatureToRoughnessScaleBias.x + View.NormalCurvatureToRoughnessScaleBias.y);
+}
+```
+11. PostProcess SubSurface 计算后处理次表面
+12. 开始计算光照相关内容
+
