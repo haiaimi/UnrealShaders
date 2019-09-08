@@ -123,5 +123,13 @@ float NormalCurvatureToRoughness(float3 WorldNormal)
 }
 ```
 11. PostProcess SubSurface 计算后处理次表面
-12. 开始计算光照相关内容
+12. 开始计算光照相关内容，这里需要提及的是，在保存法线向量的时候，有时候只能用两个分量来存，通过对应的Encode和Decode来压缩和获取这里需要涉及一个[Octahedron normal vector encoding](https://knarkowicz.wordpress.com/2014/04/16/octahedron-normal-vector-encoding/)方法
+	* 首先是BentNormal相关（环境法线），就是根据周围环境改变原始法线，在ClearCoat的ShaderingModel中会用到上面的Octahedron normal，还有就是通过GetBentNormal()方法来获得，下面是自动生成的一个方法:
+	```cpp
+	MaterialFloat GetBentNormal0(FMaterialPixelParameters Parameters)
+	{
+		MaterialFloat4 Local1 = ProcessMaterialColorTextureLookup(Texture2DSampleBias(Material.Texture2D_0,Material.Texture2D_0Sampler,Parameters.TexCoords[0].xy,View.MaterialTextureMipBias));
+		return Local1.a;
+	}
+	```
 
