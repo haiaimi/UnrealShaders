@@ -155,9 +155,9 @@ float NormalCurvatureToRoughness(float3 WorldNormal)
 	SHADER_PARAMETER_SAMPLER(SamplerState, IndirectLightingCacheTextureSampler0) // FCachedVolumeIndirectLightingPolicy
 	SHADER_PARAMETER_SAMPLER(SamplerState, IndirectLightingCacheTextureSampler1) // FCachedVolumeIndirectLightingPolicy
 	SHADER_PARAMETER_SAMPLER(SamplerState, IndirectLightingCacheTextureSampler2) // FCachedVolumeIndirectLightingPolicy
-END_GLOBAL_SHADER_PARAMETER_STRUCT()
+    END_GLOBAL_SHADER_PARAMETER_STRUCT()
     ```
-    * 结合上面计算的结果(DiffuseColorForIndirect, DiffuseIndirectLighting, SubsurfaceIndirectLighting)以及AO来计算DiffuseColor
+    *  结合上面计算的结果(DiffuseColorForIndirect, DiffuseIndirectLighting, SubsurfaceIndirectLighting)以及AO来计算DiffuseColor
     * 计算前向渲染相关的光照
     * 计算Fog相关内容，Vertex_Fogging,Pixel_Fogging，还有Volumetric_Fogging(体积雾)
     * 体积光相关
