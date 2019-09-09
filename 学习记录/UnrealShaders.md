@@ -124,7 +124,8 @@ float NormalCurvatureToRoughness(float3 WorldNormal)
 ```
 11. PostProcess SubSurface 计算后处理次表面
 12. 开始计算光照相关内容，这里需要提及的是，在保存法线向量的时候，有时候只能用两个分量来存，通过对应的Encode和Decode来压缩和获取这里需要涉及一个[Octahedron normal vector encoding](https://knarkowicz.wordpress.com/2014/04/16/octahedron-normal-vector-encoding/)方法
-	* 首先是BentNormal相关（环境法线），就是根据周围环境改变原始法线，在ClearCoat的ShaderingModel中会用到上面的Octahedron normal，还有就是通过GetBentNormal()方法来获得，下面是自动生成的一个方法:
+	* 首先是BentNormal相关（环境法线），就是根据周围环境改变原始法线，在ClearCoat的ShaderingModel中会用到上面的Octahedron normal，还有就是通过GetBentNormal()方法来获得，下面是自动生成的一个默认方法:
+  
 	```cpp
 	MaterialFloat GetBentNormal0(FMaterialPixelParameters Parameters)
 	{
@@ -132,4 +133,33 @@ float NormalCurvatureToRoughness(float3 WorldNormal)
 		return Local1.a;
 	}
 	```
-
+    这只是取得一个向量，重要的是还要把曲率(表面弯曲程度)考虑进去，这主要是BassPassPixelShader.usf中的ApplyBentNormal()方法计算。
+    * 计算环境光遮蔽，在AOMultiBounce()方法中计算，这里使用的是[Ground Truth Ambient Occlusion (GTAO)](http://iryoku.com/downloads/Practical-Realtime-Strategies-for-Accurate-Indirect-Occlusion.pdf)算法，传入亮度值和之前计算好的AO值，方法见AOMultiBounce()。
+    * DiffuseColorForIndirect，在SubSurface,PreIntegrated,Cloth,Hair的ShadingModel中有不同的计算方法，尤其是HairShading，使用了[Marschner](http://www.graphics.stanford.edu/papers/hair/hair-sg03final.pdf)和[Pekelis](https://graphics.pixar.com/library/DataDrivenHairScattering/paper.pdf)论文中的技术。
+    * DiffuseIndirectLighting，SubsurfaceIndirectLighting，IndirectIrradiance，通过GetPreComputedIndirectLightingAndSkyLight()方法计算，就是通过预计算的值来计算光照，其预计算光照参数如下定义:
+    ```cpp
+    BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FIndirectLightingCacheUniformParameters, )
+	SHADER_PARAMETER(FVector, IndirectLightingCachePrimitiveAdd) // FCachedVolumeIndirectLightingPolicy
+	SHADER_PARAMETER(FVector, IndirectLightingCachePrimitiveScale) // FCachedVolumeIndirectLightingPolicy
+	SHADER_PARAMETER(FVector, IndirectLightingCacheMinUV) // FCachedVolumeIndirectLightingPolicy
+	SHADER_PARAMETER(FVector, IndirectLightingCacheMaxUV) // FCachedVolumeIndirectLightingPolicy
+	SHADER_PARAMETER(FVector4, PointSkyBentNormal) // FCachedPointIndirectLightingPolicy
+	SHADER_PARAMETER_EX(float, DirectionalLightShadowing, EShaderPrecisionModifier::Half) // FCachedPointIndirectLightingPolicy
+	SHADER_PARAMETER_ARRAY(FVector4, IndirectLightingSHCoefficients0, [3]) // FCachedPointIndirectLightingPolicy
+	SHADER_PARAMETER_ARRAY(FVector4, IndirectLightingSHCoefficients1, [3]) // FCachedPointIndirectLightingPolicy
+	SHADER_PARAMETER(FVector4,	IndirectLightingSHCoefficients2) // FCachedPointIndirectLightingPolicy
+	SHADER_PARAMETER_EX(FVector4, IndirectLightingSHSingleCoefficient, EShaderPrecisionModifier::Half) // FCachedPointIndirectLightingPolicy used in forward Translucent
+	SHADER_PARAMETER_TEXTURE(Texture3D, IndirectLightingCacheTexture0) // FCachedVolumeIndirectLightingPolicy
+	SHADER_PARAMETER_TEXTURE(Texture3D, IndirectLightingCacheTexture1) // FCachedVolumeIndirectLightingPolicy
+	SHADER_PARAMETER_TEXTURE(Texture3D, IndirectLightingCacheTexture2) // FCachedVolumeIndirectLightingPolicy
+	SHADER_PARAMETER_SAMPLER(SamplerState, IndirectLightingCacheTextureSampler0) // FCachedVolumeIndirectLightingPolicy
+	SHADER_PARAMETER_SAMPLER(SamplerState, IndirectLightingCacheTextureSampler1) // FCachedVolumeIndirectLightingPolicy
+	SHADER_PARAMETER_SAMPLER(SamplerState, IndirectLightingCacheTextureSampler2) // FCachedVolumeIndirectLightingPolicy
+END_GLOBAL_SHADER_PARAMETER_STRUCT()
+    ```
+    * 结合上面计算的结果(DiffuseColorForIndirect, DiffuseIndirectLighting, SubsurfaceIndirectLighting)以及AO来计算DiffuseColor
+    * 计算前向渲染相关的光照
+    * 计算Fog相关内容，Vertex_Fogging,Pixel_Fogging，还有Volumetric_Fogging(体积雾)
+    * 体积光相关
+    * 光照Color的叠加计算以及对应Blend模式计算，光照叠加调用LightAccumulator_Add方法来计算
+    * 给FPixelShaderOut的对应的MRT[8]赋值
