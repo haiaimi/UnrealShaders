@@ -7,9 +7,11 @@
 $$𝐿_{𝑖𝑛𝑐𝑜𝑚𝑖𝑛𝑔} = 𝐿_{𝑡𝑟𝑎𝑛𝑠𝑚𝑖𝑡𝑡𝑒𝑑} + 𝐿_{𝑎𝑏𝑠𝑜𝑟𝑏𝑒𝑑} + 𝐿_{𝑠𝑐𝑎𝑡𝑡𝑒𝑟𝑒d}$$
 
 计算到散射值，有一些已有的算法：
-Rayleigh phase function 适用于较低波长
+* Rayleigh phase function 适用于较低波长
 
 $$ p(\theta, g) = \frac{3*(1+cos^2(\theta))}{16*\pi}$$
+
+![](http://latex.codecogs.com/gif.latex?\\p(\theta,g)=\frac{3*(1+cos^2(\theta))}{16*\pi})
 
 * Henyey-Greenstein phase function 可以计算更大波长
  
