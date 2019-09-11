@@ -11,7 +11,7 @@ $$𝐿_{𝑖𝑛𝑐𝑜𝑚𝑖𝑛𝑔} = 𝐿_{𝑡𝑟𝑎𝑛𝑠𝑚𝑖�
 
 $$ p(\theta, g) = \frac{3*(1+cos^2(\theta))}{16*\pi}$$
 
-![](http://latex.codecogs.com/gif.latex?\\p(\theta,g)=\frac{3*(1+cos^2(\theta))}{16*\pi})
+![image](http://latex.codecogs.com/gif.latex?\\p(\theta ,g)=\frac{3*(1+cos^2(\theta))}{16*\pi})
 
 * Henyey-Greenstein phase function 可以计算更大波长
  
