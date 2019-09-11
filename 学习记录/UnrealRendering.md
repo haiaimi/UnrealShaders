@@ -7,17 +7,17 @@
 $$𝐿_{𝑖𝑛𝑐𝑜𝑚𝑖𝑛𝑔} = 𝐿_{𝑡𝑟𝑎𝑛𝑠𝑚𝑖𝑡𝑡𝑒𝑑} + 𝐿_{𝑎𝑏𝑠𝑜𝑟𝑏𝑒𝑑} + 𝐿_{𝑠𝑐𝑎𝑡𝑡𝑒𝑟𝑒d}$$
 
 计算到散射值，有一些已有的算法：
-* Rayleigh phase function 适用于较低波长
+Rayleigh phase function 适用于较低波长
 
-    $$ p(\theta, g) = \frac{3*(1+cos^2(\theta))}{16*\pi}$$
+$$ p(\theta, g) = \frac{3*(1+cos^2(\theta))}{16*\pi}$$
 
 * Henyey-Greenstein phase function 可以计算更大波长
  
-    $$ p(\theta, g) = \frac{1-g^2}{4\pi*(1+g^2-2*g*cos(\theta))^\frac{3}{2}}$$
+$$ p(\theta, g) = \frac{1-g^2}{4\pi*(1+g^2-2*g*cos(\theta))^\frac{3}{2}}$$
 
 * Cornette-Shanks phase function
   
-    $$ p(\theta, g) = \frac{3*(1-g^2)*(1+cos^2(\theta))}{2*(2+g^2)*(1+g^2-2*g*cos(\theta))^\frac{3}{2}}$$
+$$ p(\theta, g) = \frac{3*(1-g^2)*(1+cos^2(\theta))}{2*(2+g^2)*(1+g^2-2*g*cos(\theta))^\frac{3}{2}}$$
 
 在UE4中有对应的方法：
 ```cpp
