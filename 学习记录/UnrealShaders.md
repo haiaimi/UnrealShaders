@@ -154,12 +154,12 @@ float NormalCurvatureToRoughness(float3 WorldNormal)
 	SHADER_PARAMETER_TEXTURE(Texture3D, IndirectLightingCacheTexture2) // FCachedVolumeIndirectLightingPolicy
 	SHADER_PARAMETER_SAMPLER(SamplerState, IndirectLightingCacheTextureSampler0) // FCachedVolumeIndirectLightingPolicy
 	SHADER_PARAMETER_SAMPLER(SamplerState, IndirectLightingCacheTextureSampler1) // FCachedVolumeIndirectLightingPolicy
-	SHADER_PARAMETER_SAMPLER(SamplerState, IndirectLightingCacheTextureSampler2) // FCachedVolumeIndirectLightingPolicy
+	SHADER_PARAMETER_SAMPLER(SamplerState, IndirectLightingCacheTextureSampler2) // FCachedVolumeIndisasrectLightingPolicy
     END_GLOBAL_SHADER_PARAMETER_STRUCT()
     ```
     *  结合上面计算的结果(DiffuseColorForIndirect, DiffuseIndirectLighting, SubsurfaceIndirectLighting)以及AO来计算DiffuseColor
     * 计算前向渲染相关的光照
-    * 计算Fog相关内容，Vertex_Fogging,Pixel_Fogging，还有Volumetric_Fogging(体积雾)
+    * 计算Fog相关内容（注意这些Fog计算只有当前渲染模式是ForwardShading或者是透明的Material），Vertex_Fogging,Pixel_Fogging，这些计算的都是高度雾，也就是普通的雾（一般与深度雾同时使用，更加真实），还有Volumetric_Fogging(体积雾)，这里调用的是CombineVolumetricFog()，因为此时的Volumetric已经计算好了。在延迟渲染中，FDeferredShadingRenderer::RenderFog()是在RenderLight和RenderAtmosphere之后的。
     * 体积光相关
     * 光照Color的叠加计算以及对应Blend模式计算，光照叠加调用LightAccumulator_Add方法来计算
     * 给FPixelShaderOut的对应的MRT[8]赋值
