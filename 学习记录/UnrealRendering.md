@@ -1,4 +1,6 @@
 # Volumetric Fogging（体积雾）
+**以下内容参考自:Raudsepp, Siim. “Siim Raudsepp Volumetric Fog Rendering.” (2018).**
+
 普通的雾如深度雾和高度雾是比较固定的（密度是固定的），不能是动态的（可以通过使用Billboard来解决，也被称作soft particles），并且不能考虑光照的影响，因此需要体积雾。
 
 体积雾需要考虑到光的transmission（透射），absorption（吸收），scattering（散射，同时有Out-scattering,In-scattering），模拟图如下:
@@ -50,3 +52,9 @@ float SchlickPhase(float k, float CosTheta)
     * transmittance，由Deers's law（比尔-朗伯定律）计算得到
 4. 对雾进行模糊
 5. 混合并渲染到屏幕
+
+在UE4中计算体积雾的大致步骤与上面一致，也使用了RayMarching来计算体积雾，主要流程就是下面几个Shader：
+* FVolumetricFogMaterialSetupCS， 初始化计算所需资源
+* 绘制VoxelizeFogVolumePrimitives
+* TVolumetricFogLightScatteringCS
+* FVolumetricFogFinalIntegrationCS
