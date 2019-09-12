@@ -4,22 +4,20 @@
 体积雾需要考虑到光的transmission（透射），absorption（吸收），scattering（散射，同时有Out-scattering,In-scattering），模拟图如下:
 ![image](https://github.com/haiaimi/PictureRepository/blob/master/PictureRepository/Rendering%20Learning/UnrealRendering_VolumeFog_1.png)
 
-$$𝐿_{𝑖𝑛𝑐𝑜𝑚𝑖𝑛𝑔} = 𝐿_{𝑡𝑟𝑎𝑛𝑠𝑚𝑖𝑡𝑡𝑒𝑑} + 𝐿_{𝑎𝑏𝑠𝑜𝑟𝑏𝑒𝑑} + 𝐿_{𝑠𝑐𝑎𝑡𝑡𝑒𝑟𝑒d}$$
+![](https://latex.codecogs.com/gif.latex?L_{incoming}=L_{transmitted}&plus;L_{absorbed}&plus;L_{scattered})
 
 计算到散射值，有一些已有的算法：
 * Rayleigh phase function 适用于较低波长
 
-$$ p(\theta, g) = \frac{3*(1+cos^2(\theta))}{16*\pi}$$
-
-![](http://latex.codecogs.com/gif.latex?\\p(\\theta ,g)=\\frac{3*(1+cos^2(\\theta))}{16*\\pi})
+ ![](https://latex.codecogs.com/gif.latex?p(\theta,g)=\frac{3*(1&plus;cos^2(\theta))}{16*\pi})
 
 * Henyey-Greenstein phase function 可以计算更大波长
  
-$$ p(\theta, g) = \frac{1-g^2}{4\pi*(1+g^2-2*g*cos(\theta))^\frac{3}{2}}$$
+![](https://latex.codecogs.com/gif.latex?p(\theta,g)=\frac{1-g^2}{4\pi*(1&plus;g^2-2*g*cos(\theta))^\frac{3}{2}})
 
 * Cornette-Shanks phase function
-  
-$$ p(\theta, g) = \frac{3*(1-g^2)*(1+cos^2(\theta))}{2*(2+g^2)*(1+g^2-2*g*cos(\theta))^\frac{3}{2}}$$
+
+![](https://latex.codecogs.com/gif.latex?p(\theta,g)=\frac{3*(1-g^2)*(1&plus;cos^2(\theta))}{2*(2&plus;g^2)*(1&plus;g^2-2*g*cos(\theta))^\frac{3}{2}})
 
 在UE4中有对应的方法：
 ```cpp
