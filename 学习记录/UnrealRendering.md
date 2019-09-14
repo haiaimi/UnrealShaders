@@ -55,6 +55,7 @@ float SchlickPhase(float k, float CosTheta)
 
 在UE4中计算体积雾的大致步骤与上面一致，也使用了RayMarching来计算体积雾，主要流程就是下面几个Shader：
 * FVolumetricFogMaterialSetupCS， 初始化计算所需资源
-* 绘制VoxelizeFogVolumePrimitives
+* 绘制VoxelizeFogVolumePrimitives（这个只有在渲染体积材质的时候才会执行，就是材质域为Domain时，而且只能在粒子中使用）它会直接调用DrawDynamicMeshPassPrivate全局方法进行绘制，而不是普通的DispatchDraw方法
+* RenderLocalLightForVolumetricFog，计算局部的体积雾光照
 * TVolumetricFogLightScatteringCS
 * FVolumetricFogFinalIntegrationCS
