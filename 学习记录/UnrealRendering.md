@@ -58,4 +58,4 @@ float SchlickPhase(float k, float CosTheta)
 * 绘制VoxelizeFogVolumePrimitives（这个只有在渲染体积材质的时候才会执行，就是材质域为Domain时，而且只能在粒子中使用）它会直接调用DrawDynamicMeshPassPrivate全局方法进行绘制，而不是普通的DispatchDraw方法
 * RenderLocalLightForVolumetricFog，计算局部的体积雾光照
 * TVolumetricFogLightScatteringCS
-* FVolumetricFogFinalIntegrationCS
+* FVolumetricFogFinalIntegrationCS，计算出最终的结果，并输出到对应得RenderTarget，对应于FViewInfo的 VolumetricFogResources.IntegratedLightScattering，这在后面计算最终的雾时会使用到。
