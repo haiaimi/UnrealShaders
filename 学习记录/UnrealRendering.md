@@ -59,3 +59,5 @@ float SchlickPhase(float k, float CosTheta)
 * RenderLocalLightForVolumetricFog，计算局部的体积雾光照
 * TVolumetricFogLightScatteringCS
 * FVolumetricFogFinalIntegrationCS，计算出最终的结果，并输出到对应得RenderTarget，对应于FViewInfo的 VolumetricFogResources.IntegratedLightScattering，这在后面计算最终的雾时会使用到。
+
+在VolumetricFog.usf的shader文件中第一个就是 ComputeDepthFromZSlice()方法，在渲染体积雾的时候，使用的是3维的计算着色器，默认尺寸是4x4x4，可见体积雾是按立体方式渲染，其z向深度是64，定义在GVloumetricFogGridSizeZ中，C++中会计算出GridZParams参数（根据近、远平面），然后给Shader使用，通过ZSlize来计算深度。
