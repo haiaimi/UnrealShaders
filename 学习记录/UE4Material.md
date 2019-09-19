@@ -186,7 +186,7 @@ void UEditorEngine::SetMaterialsFeatureLevel(const ERHIFeatureLevel::Type InFeat
 ## Material与MeshPassProcessor
 前面已经研究过UE4中渲染Mesh的流程与Material编译的流程，但是当渲染带有材质的模型是什么样的流程呢？
 
-在HLSLTranslator翻译对应Material的Shader后，这些文件会被临时放在"/Engine/Generated/Material.ush"、顶点定义放在#include "/Engine/Generated/VertexFactory.ush"，而UniformBuffer则是放在#include "/Engine/Generated/GeneratedUniformBuffers.ush" 
+在HLSLTranslator翻译对应Material的Shader后，这些文件会被临时放在"/Engine/Generated/Material.ush"、顶点定义放在#include "/Engine/Generated/VertexFactory.ush"，而UniformBuffer则是放在#include "/Engine/Generated/GeneratedUniformBuffers.ush" ，Material的UniformBuffer也是存在这里，就是存放Material编辑器里使用到变量。
 
 1. 首先可以了解一些BasePassRendering，使用FBasePassMeshProcessor，用于渲染基本的mesh，其对应的shader文件中就有包含对应生成的hlsl文件，如下：
 ```hlsl
