@@ -93,8 +93,8 @@ float ComputeDepthFromZSlice(float ZSlice)
 }
 ```
 
-
-  $\ slize=log_2^{(z*B+O)}*S = log_2^{\frac{z*(1-O)+NO}{N}}*S=log_2^{\frac{z-(z-N)*O}{N}}*S$
+可以根据如下公式推导：
+  ![](https://latex.codecogs.com/gif.latex?slize=log_2^{(Z*B&plus;O)}*S=log_2^{\frac{Z*(1-O)&plus;N*O}{N}}*S=log_2^{\frac{Z-(Z-N)*O}{N}}*S)
    
 当Z的值为N时slize = 0，当Z值为F时slize = GridSizeZ，也就是最大slize数。C++中的计算公式应该就是根据 **slice = log2(z*B + O) * S**推导出来 。
 
