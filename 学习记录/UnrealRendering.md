@@ -60,4 +60,41 @@ float SchlickPhase(float k, float CosTheta)
 * TVolumetricFogLightScatteringCS
 * FVolumetricFogFinalIntegrationCS，计算出最终的结果，并输出到对应得RenderTarget，对应于FViewInfo的 VolumetricFogResources.IntegratedLightScattering，这在后面计算最终的雾时会使用到。
 
-在VolumetricFog.usf的shader文件中第一个就是 ComputeDepthFromZSlice()方法，在渲染体积雾的时候，使用的是3维的计算着色器，默认尺寸是4x4x4，可见体积雾是按立体方式渲染，其z向深度是64，定义在GVloumetricFogGridSizeZ中，C++中会计算出GridZParams参数（根据近、远平面），然后给Shader使用，通过ZSlize来计算深度。
+在VolumetricFog.usf的shader文件中第一个就是 ComputeDepthFromZSlice()方法，在渲染体积雾的时候，使用的是3维的计算着色器，默认尺寸是4x4x4，可见体积雾是按立体方式渲染，其z向深度是64，定义在GVloumetricFogGridSizeZ中，C++中会计算出GridZParams参数（根据近、远平面），然后给Shader使用，通过ZSlize来计算深度，通过O，B两个参数来计算，注意的是深度分配不是均匀的，如下代码：
+```cpp
+//code in cpp
+FVector GetVolumetricFogGridZParams(float NearPlane, float FarPlane, int32 GridSizeZ)
+{
+	// S = distribution scale
+	// B, O are solved for given the z distances of the first+last slice, and the # of slices.
+	//
+	// slice = log2(z*B + O) * S
+
+	// Don't spend lots of resolution right in front of the near plane
+	double NearOffset = .095 * 100;
+	// Space out the slices so they aren't all clustered at the near plane
+	double S = GVolumetricFogDepthDistributionScale;
+
+	double N = NearPlane + NearOffset;
+	double F = FarPlane;
+
+	double O = (F - N * FMath::Exp2((GridSizeZ - 1) / S)) / (F - N);
+	double B = (1 - O) / N;
+
+	return FVector(B, O, S);
+}
+
+//code in hlsl
+//这个就是根据 slice = log2(z*B + O) * S 公式来计算结果，Z是要获取的结果，这样计算使得越近，slice就越小，越近计算越精细
+float ComputeDepthFromZSlice(float ZSlice)
+{
+	float SliceDepth = (exp2(ZSlice / VolumetricFog.GridZParams.z) - VolumetricFog.GridZParams.y) / VolumetricFog.GridZParams.x;
+	return SliceDepth;
+}
+```
+
+
+  $\ slize=log_2^{(z*B+O)}*S = log_2^{\frac{z*(1-O)+NO}{N}}*S=log_2^{\frac{z-(z-N)*O}{N}}*S$
+   
+当Z的值为N时slize = 0，当Z值为F时slize = GridSizeZ，也就是最大slize数。C++中的计算公式应该就是根据 **slice = log2(z*B + O) * S**推导出来 。
+
