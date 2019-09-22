@@ -98,3 +98,17 @@ float ComputeDepthFromZSlice(float ZSlice)
    
 当Z的值为N时slize = 0，当Z值为F时slize = GridSizeZ，也就是最大slize数。C++中的计算公式应该就是根据 **slice = log2(z*B + O) * S**推导出来 。
 
+```hlsl
+//根据计算着色器的当前DispatchThreadId来计算世界位置
+float3 ComputeCellWorldPosition(uint3 GridCoordinate, float3 CellOffset, out float SceneDepth)
+{
+	float2 VolumeUV = (GridCoordinate.xy + CellOffset.xy) / VolumetricFog.GridSize.xy;  //计算UV坐标
+	float2 VolumeNDC = (VolumeUV * 2 - 1) * float2(1, -1);    //转换到-1 - 1
+
+	SceneDepth = ComputeDepthFromZSlice(GridCoordinate.z + CellOffset.z);  //计算深度
+
+	float TileDeviceZ = ConvertToDeviceZ(SceneDepth);  //转换到NDC空间深度
+	float4 CenterPosition = mul(float4(VolumeNDC, TileDeviceZ, 1), UnjitteredClipToTranslatedWorld);    //通过逆观察投影矩阵转换到观察空间
+	return CenterPosition.xyz / CenterPosition.w - View.PreViewTranslation;     //View.PreViewTranslation 一般都是 -ViewOrigin，所以是-
+}
+```
