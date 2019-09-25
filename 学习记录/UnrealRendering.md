@@ -95,12 +95,12 @@ float ComputeDepthFromZSlice(float ZSlice)
 
 可以根据如下公式推导：
   ![](https://latex.codecogs.com/gif.latex?slize=log_2^{(Z*B&plus;O)}*S=log_2^{\frac{Z*(1-O)&plus;N*O}{N}}*S=log_2^{\frac{Z-(Z-N)*O}{N}}*S)
-   
-当Z的值为N时slize = 0，当Z值为F时slize = GridSizeZ，也就是最大slize数。C++中的计算公式应该就是根据 **slice = log2(z*B + O) * S**推导出来 。
+
+当Z的值为N时slize = 0，当Z值为F时slize = GridSizeZ，也就是最大slize数。C·++中的计算公式应该就是根据 **slice = log2(z*B + O) * S**推导出来 。
 
 ```hlsl
 //根据计算着色器的当前DispatchThreadId来计算世界位置
-float3 ComputeCellWorldPosition(uint3 GridCoordinate, float3 CellOffset, out float SceneDepth)
+float3 ComputeCellWorldPosition(uint3 GridCoordinate, float3 CellOffset, out float SceneDepth
 {
 	float2 VolumeUV = (GridCoordinate.xy + CellOffset.xy) / VolumetricFog.GridSize.xy;  //计算UV坐标
 	float2 VolumeNDC = (VolumeUV * 2 - 1) * float2(1, -1);    //转换到-1 - 1
@@ -109,6 +109,33 @@ float3 ComputeCellWorldPosition(uint3 GridCoordinate, float3 CellOffset, out flo
 
 	float TileDeviceZ = ConvertToDeviceZ(SceneDepth);  //转换到NDC空间深度
 	float4 CenterPosition = mul(float4(VolumeNDC, TileDeviceZ, 1), UnjitteredClipToTranslatedWorld);    //通过逆观察投影矩阵转换到观察空间
-	return CenterPosition.xyz / CenterPosition.w - View.PreViewTranslation;     //View.PreViewTranslation 一般都是 -ViewOrigin，所以是-
+	return CenterPosition.xyz / CenterPosition.w - View.PreViewTranslation;     //View.PreViewTranslation 一般都是 -ViewOrigin，所以是'-'
 }
 ```
+
+## LightScatteringCS
+
+这个ComputeShader是计算光的散射值，主要是以下步骤：
+
+1. 计算Shadow影响因素（ShadowFactor）
+	* 主要是围绕ForwardLightData来计算，同样是一个C++中定义的Buffer，在其内容在FDeferredShadingSceneRenderer::ComputeLightGrid中计算，在ComputeDirectionalLightStaticShadowing()方法中就是取得阴影值，可以看到其中使用了PCF阴影采样方法，这在DX11和RealTimeRendering书中都有介绍。光的散射值（结合阴影）通过如下代码计算出：
+	```hlsl
+	LightScattering += DirectionalLightColor
+				* (ShadowFactor      //ComputeDirectionalLightStaticShadowing()和ComputeDirectionalLightDynamicShadowing()计算出来的结果，同时还要考虑LightFunction()这只有在材质中定义才会有
+				* ForwardLightData.DirectionalLightVolumetricScatteringIntensity           //DirectionalLigh的散射强度
+				* PhaseFunction(PhaseG, dot(ForwardLightData.DirectionalLightDirection, -CameraVector))); //前面所提到的散射值计算公式，传入的是到眼睛的方向和光线方向夹角，PhaseG 值C++中有相关注释：
+				```cpp
+				/** 
+				* Controls the scattering phase function - how much incoming light scatters in various directions.
+				* A distribution value of 0 scatters equally in all directions, while .9 scatters predominantly in the light direction.  
+				* In order to have visible volumetric fog light shafts from the side, the distribution will need to be closer to 0.
+				*/
+				UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = VolumetricFog, meta=(DisplayName = "Scattering Distribution", UIMin = "-.9", UIMax = ".9"))
+				float VolumetricFogScatteringDistribution;
+				```
+	```
+2. 计算SkyLight相关影响因素
+   * 使用 ComputeInscatteringColor(float3 CameraToReceiver, float CameraToReceiverLength) 计算出 高度雾在散射中的颜色
+   * 涉及到辐照度(Irradiance)：SkyIrradianceSH，计算出SkyLighting
+   * 计算SkyVisibility
+   * 计算LightScattering: LightScattering += (SkyVisibility * SkyLightVolumetricScatteringIntensity) * SkyLighting;
