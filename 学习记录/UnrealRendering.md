@@ -135,6 +135,7 @@ float3 ComputeCellWorldPosition(uint3 GridCoordinate, float3 CellOffset, out flo
 				```
 	```
 2. 计算SkyLight相关影响因素
+   * FTwoBandSHVector RotatedHGZonalHarmonic;  RotatedHGZonalHarmonic.V = float4(1.0f, CameraVector.y, CameraVector.z, CameraVector.x) * float4(1.0f, PhaseG, PhaseG, PhaseG); HG区域谐波
    * 使用 ComputeInscatteringColor(float3 CameraToReceiver, float CameraToReceiverLength) 计算出 高度雾在散射中的颜色
    * 涉及到辐照度(Irradiance)：SkyIrradianceSH，计算出SkyLighting
    * 计算SkyVisibility
