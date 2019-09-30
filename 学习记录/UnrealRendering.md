@@ -140,3 +140,22 @@ float3 ComputeCellWorldPosition(uint3 GridCoordinate, float3 CellOffset, out flo
    * 涉及到辐照度(Irradiance)：SkyIrradianceSH，计算出SkyLighting
    * 计算SkyVisibility
    * 计算LightScattering: LightScattering += (SkyVisibility * SkyLightVolumetricScatteringIntensity) * SkyLighting;
+
+3. 计算光照相关的影响因素
+	* 首先获取Light Grid Cell的Index，这个光照格子的划分与前面的体积雾cell划分相似，根据这个Index来获取ForwardLightData.NumCulledLifhtGrid和ForwardLightData.DataStartIndex（就是FCulledLightsGridData结构体），这个会用于下面计算FDeferredLightData
+	* 计算Distance Bias，Bias一般用于阴影，这里用这个来防止voxel接近光源时产生锯齿
+	* 下面就是通过循环（根据上面的FCulledLightsGridData）来获取FLocalLightData，值来自ForwardLightData的Uniformuffer中ForwardLocalLightBuffer，然后计算FDeferredLightData。
+	* 根据光的类型来计算光的衰减：LightMask，整合光照（就是把相关的辐照度考虑进去计算，根据相应的光照模型来计算）主要就分为CapsuleLight和Rect（只有RectLight类型的计算方法不同）：Lighting，然后计算得出CombineAttenuation = Light * LightMask。
+	* 根据LightColor和LightAttenuation以及VolumetricScatteringIntensity来计算最终的LightScattering，公式如下:
+	```hlsl
+	LightScattering += LightColor * (PhaseFunction(PhaseG, dot(L, -CameraVector)) * CombinedAttenuation * VolumetricScatteringIntensity);
+	```
+4. 考虑超采样（抗锯齿）的影响，需要除以采样数
+5. 加入Shadow Point和Spot Light这些提前计算的值，这是在InjectShadowedLocalLightPS中计算，然后渲染到LocalShadowedLightScattering RenderTarget上
+6. 进行HDR编码，最终存放到RWLightScattering中，如下代码：
+   ```hlsl
+	float4 MaterialScatteringAndAbsorption = VBufferA[GridCoordinate];
+	float Extinction = MaterialScatteringAndAbsorption.w + Luminance(MaterialScatteringAndAbsorption.xyz);
+	float3 MaterialEmissive = VBufferB[GridCoordinate].xyz;
+	float4 ScatteringAndExtinction = EncodeHDR(float4(LightScattering * MaterialScatteringAndAbsorption.xyz + MaterialEmissive, Extinction));
+   ```
