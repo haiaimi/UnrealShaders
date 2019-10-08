@@ -98,7 +98,7 @@ float ComputeDepthFromZSlice(float ZSlice)
 
 当Z的值为N时slize = 0，当Z值为F时slize = GridSizeZ，也就是最大slize数。C·++中的计算公式应该就是根据 **slice = log2(z*B + O) * S**推导出来 。
 
-```hlsl
+```cpp
 //根据计算着色器的当前DispatchThreadId来计算世界位置
 float3 ComputeCellWorldPosition(uint3 GridCoordinate, float3 CellOffset, out float SceneDepth
 {
@@ -119,7 +119,7 @@ float3 ComputeCellWorldPosition(uint3 GridCoordinate, float3 CellOffset, out flo
 
 1. 计算Shadow影响因素（ShadowFactor）
 	* 主要是围绕ForwardLightData来计算，同样是一个C++中定义的Buffer，在其内容在FDeferredShadingSceneRenderer::ComputeLightGrid中计算，在ComputeDirectionalLightStaticShadowing()方法中就是取得阴影值，可以看到其中使用了PCF阴影采样方法，这在DX11和RealTimeRendering书中都有介绍。光的散射值（结合阴影）通过如下代码计算出：
-	```hlsl
+	```cpp
 	LightScattering += DirectionalLightColor
 				* (ShadowFactor      //ComputeDirectionalLightStaticShadowing()和ComputeDirectionalLightDynamicShadowing()计算出来的结果，同时还要考虑LightFunction()这只有在材质中定义才会有
 				* ForwardLightData.DirectionalLightVolumetricScatteringIntensity           //DirectionalLigh的散射强度
@@ -147,15 +147,59 @@ float3 ComputeCellWorldPosition(uint3 GridCoordinate, float3 CellOffset, out flo
 	* 下面就是通过循环（根据上面的FCulledLightsGridData）来获取FLocalLightData，值来自ForwardLightData的Uniformuffer中ForwardLocalLightBuffer，然后计算FDeferredLightData。
 	* 根据光的类型来计算光的衰减：LightMask，整合光照（就是把相关的辐照度考虑进去计算，根据相应的光照模型来计算）主要就分为CapsuleLight和Rect（只有RectLight类型的计算方法不同）：Lighting，然后计算得出CombineAttenuation = Light * LightMask。
 	* 根据LightColor和LightAttenuation以及VolumetricScatteringIntensity来计算最终的LightScattering，公式如下:
-	```hlsl
+	```cpp
 	LightScattering += LightColor * (PhaseFunction(PhaseG, dot(L, -CameraVector)) * CombinedAttenuation * VolumetricScatteringIntensity);
 	```
 4. 考虑超采样（抗锯齿）的影响，需要除以采样数
 5. 加入Shadow Point和Spot Light这些提前计算的值，这是在InjectShadowedLocalLightPS中计算，然后渲染到LocalShadowedLightScattering RenderTarget上
-6. 进行HDR编码，最终存放到RWLightScattering中，如下代码：
-   ```hlsl
+6. 进行HDR编码（这里实际上就是直接返回），最终存放到RWLightScattering中，如下代码：
+   ```cpp
 	float4 MaterialScatteringAndAbsorption = VBufferA[GridCoordinate];
 	float Extinction = MaterialScatteringAndAbsorption.w + Luminance(MaterialScatteringAndAbsorption.xyz);
 	float3 MaterialEmissive = VBufferB[GridCoordinate].xyz;
 	float4 ScatteringAndExtinction = EncodeHDR(float4(LightScattering * MaterialScatteringAndAbsorption.xyz + MaterialEmissive, Extinction));
+
+	if (all(GridCoordinate < VolumetricFog.GridSizeInt))
+	{
+		ScatteringAndExtinction = MakePositiveFinite(ScatteringAndExtinction);  //判断当前值是否是有限大小
+		RWLightScattering[GridCoordinate] = ScatteringAndExtinction;
+	}
+   ```
+   上面所提到的浮点数有限大小，实际上就是运用IEEE浮点数规范来判断，判断指数位的大小，首先把浮点数转化为uint来表示，然后和 0x7F800000 比较，注意该数就是 二进制 0111 1111 1000 0000 0000 0000 0000 0000，可以看到指数位都为1，只要指数为小于它那么就是有限数。
+7. 这时候值已经写入到RWLightScattering中，这个是UAV资源，所以其对应的Texture3D值已经改变，因为它们指向的是同一块内存。
+
+## FinalIntegrationCS
+1. 光的散射值已经计算出来，就是LightScattering的Texture3D，下面就需要整合起来
+2. 该计算着色器是个二维的（z向为1），因为z向是确定值，所以这里是直接迭代计算出不同z深度的值（因为要计算当前深度的光照值也需要前一个深度的值），因为会有累加的属性，AccumulatedLighting（累加的光照值）和AccumulatedTransmittance（累加的穿透率），如下代码：
+   ```cpp
+    float3 AccumulatedLighting = 0;
+	float AccumulatedTransmittance = 1.0f;
+	float3 PreviousSliceWorldPosition = View.WorldCameraOrigin;
+   //按照深度进行迭代，VolumetricFog.GridSizeInt.z默认为64
+   for (uint LayerIndex = 0; LayerIndex < VolumetricFog.GridSizeInt.z; LayerIndex++)
+	{
+		uint3 LayerCoordinate = uint3(GridCoordinate.xy, LayerIndex);
+		float4 ScatteringAndExtinction = DecodeHDR(LightScattering[LayerCoordinate]);
+
+		float3 LayerWorldPosition = ComputeCellWorldPosition(LayerCoordinate, .5f);
+		float StepLength = length(LayerWorldPosition - PreviousSliceWorldPosition);
+		PreviousSliceWorldPosition = LayerWorldPosition;
+
+		//计算当前深度的穿透率
+		float Transmittance = exp(-ScatteringAndExtinction.w * StepLength);
+
+		// See "Physically Based and Unified Volumetric Rendering in Frostbite"
+		#define ENERGY_CONSERVING_INTEGRATION 1
+		#if ENERGY_CONSERVING_INTEGRATION
+			float3 ScatteringIntegratedOverSlice = (ScatteringAndExtinction.rgb - ScatteringAndExtinction.rgb * Transmittance) / max(ScatteringAndExtinction.w, .00001f);
+			//累加的光，越来越大
+			AccumulatedLighting += ScatteringIntegratedOverSlice * AccumulatedTransmittance;
+		#else
+			AccumulatedLighting += ScatteringAndExtinction.rgb * AccumulatedTransmittance * StepLength;
+		#endif
+		
+		AccumulatedTransmittance *= Transmittance;  //累计穿透率，越来越小
+
+		RWIntegratedLightScattering[LayerCoordinate] = float4(AccumulatedLighting, AccumulatedTransmittance);
+	}
    ```
