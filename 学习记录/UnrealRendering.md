@@ -192,14 +192,15 @@ float3 ComputeCellWorldPosition(uint3 GridCoordinate, float3 CellOffset, out flo
 		#define ENERGY_CONSERVING_INTEGRATION 1
 		#if ENERGY_CONSERVING_INTEGRATION
 			float3 ScatteringIntegratedOverSlice = (ScatteringAndExtinction.rgb - ScatteringAndExtinction.rgb * Transmittance) / max(ScatteringAndExtinction.w, .00001f);
-			//累加的光，越来越大
+			//累加的光，距离增加，层数越高光叠加的就越多，因为IntegratedLightScattering每个Z分量计算的是当前深度的累加值
 			AccumulatedLighting += ScatteringIntegratedOverSlice * AccumulatedTransmittance;
 		#else
 			AccumulatedLighting += ScatteringAndExtinction.rgb * AccumulatedTransmittance * StepLength;
 		#endif
 		
-		AccumulatedTransmittance *= Transmittance;  //累计穿透率，越来越小
+		AccumulatedTransmittance *= Transmittance;  //累计穿透率，越来越小，因为随着距离增加，光的穿透率肯定是越来愈小，因为透过的雾越来越大
 
 		RWIntegratedLightScattering[LayerCoordinate] = float4(AccumulatedLighting, AccumulatedTransmittance);
 	}
    ```
+  IntegratedLightScattering 3D贴图会在FogStruct的Buffer中有引用，在计算HeightFog中会有 float4 CombineVolumetricFog(float4 GlobalFog, float3 VolumeUV) 方法把VolumetricFog与进行HeightFog进行混合。
