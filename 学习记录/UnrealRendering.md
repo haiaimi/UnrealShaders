@@ -141,10 +141,10 @@ float3 ComputeCellWorldPosition(uint3 GridCoordinate, float3 CellOffset, out flo
    * 计算SkyVisibility
    * 计算LightScattering: LightScattering += (SkyVisibility * SkyLightVolumetricScatteringIntensity) * SkyLighting;
 
-3. 计算光照相关的影响因素
+3. 计算光照相关的影响因素，体积雾的最直接表现方式就是通过光源如聚光灯
 	* 首先获取Light Grid Cell的Index，这个光照格子的划分与前面的体积雾cell划分相似，根据这个Index来获取ForwardLightData.NumCulledLifhtGrid和ForwardLightData.DataStartIndex（就是FCulledLightsGridData结构体），这个会用于下面计算FDeferredLightData
 	* 计算Distance Bias，Bias一般用于阴影，这里用这个来防止voxel接近光源时产生锯齿
-	* 下面就是通过循环（根据上面的FCulledLightsGridData）来获取FLocalLightData，值来自ForwardLightData的Uniformuffer中ForwardLocalLightBuffer，然后计算FDeferredLightData。
+	* 下面就是通过循环（根据上面的FCulledLightsGridData，会依次计算当前视口可见光源，因为场景中可能会有多个光源）来获取FLocalLightData，值来自ForwardLightData的Uniformuffer中ForwardLocalLightBuffer，然后计算FDeferredLightData。
 	* 根据光的类型来计算光的衰减：LightMask，整合光照（就是把相关的辐照度考虑进去计算，根据相应的光照模型来计算）主要就分为CapsuleLight和Rect（只有RectLight类型的计算方法不同）：Lighting，然后计算得出CombineAttenuation = Light * LightMask。
 	* 根据LightColor和LightAttenuation以及VolumetricScatteringIntensity来计算最终的LightScattering，公式如下:
 	```cpp
@@ -203,4 +203,50 @@ float3 ComputeCellWorldPosition(uint3 GridCoordinate, float3 CellOffset, out flo
 		RWIntegratedLightScattering[LayerCoordinate] = float4(AccumulatedLighting, AccumulatedTransmittance);
 	}
    ```
-  IntegratedLightScattering 3D贴图会在FogStruct的Buffer中有引用，在计算HeightFog中会有 float4 CombineVolumetricFog(float4 GlobalFog, float3 VolumeUV) 方法把VolumetricFog与进行HeightFog进行混合。
+  IntegratedLightScattering 3D贴图会在FogStruct的Buffer中有引用，在计算HeightFog中会有 float4 CombineVolumetricFog(float4 GlobalFog, float3 VolumeUV) 方法把VolumetricFog与进行HeightFog进行混合。其中还会考虑到 [light shafts](https://docs.unrealengine.com/en-US/Engine/Rendering/LightingAndShadows/LightShafts/index.html) 的影响。这个会渲染到SceneColor的RenderTarget（这个在FSceneRenderTarget）中，此时这个RT存在了已经渲染图元的颜色，然后把雾的颜色与该背景色进行混合，如下代码：
+  ```cpp
+	bool FDeferredShadingSceneRenderer::RenderFog(FRHICommandListImmediate& RHICmdList, const FLightShaftsOutput& LightShaftsOutput)
+	{
+		check(RHICmdList.IsOutsideRenderPass());
+
+		if (Scene->ExponentialFogs.Num() > 0 
+			// Fog must be done in the base pass for MSAA to work
+			&& !IsForwardShadingEnabled(ShaderPlatform))
+		{
+			//设置RenderTarget 为SceneColor
+			FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+			SceneContext.BeginRenderingSceneColor(RHICmdList, ESimpleRenderTargetMode::EExistingColorAndDepth, FExclusiveDepthStencil::DepthRead_StencilWrite, true);
+
+			...
+			//执行RenderViewFog
+			RenderViewFog(RHICmdList, View, LightShaftsOutput);
+			...
+
+			SceneContext.FinishRenderingSceneColor(RHICmdList);
+		}
+	}
+
+	void FDeferredShadingSceneRenderer::RenderViewFog(FRHICommandList& RHICmdList, const FViewInfo& View, const FLightShaftsOutput& LightShaftsOutput)
+	{
+		FGraphicsPipelineStateInitializer GraphicsPSOInit;
+		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+
+		// Set the device viewport for the view.
+		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
+				
+		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
+				
+		// disable alpha writes in order to preserve scene depth values on PC，设置混合模式，这里Source使用的是Alpha混合，这是RenderTarget对应的值
+		GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGB, BO_Add, BF_One, BF_SourceAlpha>::GetRHI();
+
+		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
+		//设置FogShader参数
+		SetFogShaders(RHICmdList, GraphicsPSOInit, Scene, View, ShouldRenderVolumetricFog(), LightShaftsOutput);
+
+		// Draw a quad covering the view.
+		// 开始渲染
+		RHICmdList.SetStreamSource(0, GScreenSpaceVertexBuffer.VertexBufferRHI, 0);
+		RHICmdList.DrawIndexedPrimitive(GTwoTrianglesIndexBuffer.IndexBufferRHI, 0, 0, 4, 0, 2, 1);
+	}
+  ```
