@@ -45,6 +45,18 @@ void MainPS(
 #endif
 )
 ```
+
+这些RenderTarget会在渲染BasePass前设置好数据看，主要是在 FSceneRenderTargets::FillGBufferRenderPassInfo 中，一共有8张RT，他们都有对应的用处，下面就依次列举他们对应的作用：
+	* SV_Target0: SceneColor
+	* SV_Target1: GBufferA
+	* SV_Target2: GBufferB
+	* SV_Target3: GBufferC
+	* SV_Target4: SceneVelocity
+	* SV_Target5: GBufferD
+	* SV_Target6: GBufferE
+	* SV_Target7: 
+这些RenderTarget一般在调用RHICmdList.BeginRenderPass()设置
+
 而这些宏是由C++中定义，然后在Shader中二次定义，如下：
 ```hlsl
 #define PIXELSHADEROUTPUT_BASEPASS 1
