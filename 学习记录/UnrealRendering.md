@@ -250,3 +250,10 @@ float3 ComputeCellWorldPosition(uint3 GridCoordinate, float3 CellOffset, out flo
 		RHICmdList.DrawIndexedPrimitive(GTwoTrianglesIndexBuffer.IndexBufferRHI, 0, 0, 4, 0, 2, 1);
 	}
   ```
+
+# Light Rendering(光照渲染)
+UE4中的光照渲染在之前已经接触过，在渲染体积雾的时候也会用到光照相关内容。
+
+FDeferredLightUniformStruct 就是计算光照时所需要的数据，这些数据又是从FLightSceneInfo中获取。
+TDeferredLightVS，该顶点着色器会针对不同的光源使用不同的几何体，directional light是矩形，point light是球体，spot light是锥形，这些几何体都是动态生成
+FDeferredLightPS, 该PixelShader就是计算光照内容
