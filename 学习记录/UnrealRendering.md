@@ -254,6 +254,50 @@ float3 ComputeCellWorldPosition(uint3 GridCoordinate, float3 CellOffset, out flo
 # Light Rendering(光照渲染)
 UE4中的光照渲染在之前已经接触过，在渲染体积雾的时候也会用到光照相关内容。
 
-FDeferredLightUniformStruct 就是计算光照时所需要的数据，这些数据又是从FLightSceneInfo中获取。
+FDeferredLightUniformStruct 就是计算光照时所需要的数据，这些数据又是从FLightSceneInfo中获取,其中有一个值比较特殊，就是SourceTexture，这个texture一般是给RectLight使用，而这个texture一般在游戏线程中设置
 TDeferredLightVS，该顶点着色器会针对不同的光源使用不同的几何体，directional light是矩形，point light是球体，spot light是锥形，这些几何体都是动态生成
-FDeferredLightPS, 该PixelShader就是计算光照内容
+FDeferredLightPS，该PixelShader就是计算光照内容
+
+FDeferredLightPS主要就是通过GetDynamicLighting()来计算光照结果，主要有以下步骤：
+ * 计算当前ShadingModel为coat时的法线，这会通过GBuffer中的CustomData.za分量和当前法线的Octahrdron值计算得出
+ * 计算光的衰减（当前光源有Radial属性），不同的光源衰减计算方式也不相同，如下：
+  ```cpp
+	float GetLocalLightAttenuation(
+	float3 WorldPosition, 
+	FDeferredLightData LightData, 
+	inout float3 ToLight, 
+	inout float3 L)
+	{
+		ToLight = LightData.Position - WorldPosition;
+			
+		float DistanceSqr = dot( ToLight, ToLight );
+		L = ToLight * rsqrt( DistanceSqr );
+
+		float LightMask;
+		if (LightData.bInverseSquared)
+		{
+			LightMask = Square( saturate( 1 - Square( DistanceSqr * Square(LightData.InvRadius) ) ) );
+		}
+		else
+		{
+			//计算放射光源的衰减
+			LightMask = RadialAttenuation(ToLight * LightData.InvRadius, LightData.FalloffExponent);
+		}
+
+		if (LightData.bSpotLight)
+		{
+			//聚光灯的衰减
+			LightMask *= SpotAttenuation(L, -LightData.Direction, LightData.SpotAngles);
+		}
+
+		//Rect光源的衰减
+		if( LightData.bRectLight )
+		{
+			// Rect normal points away from point
+			LightMask = dot( LightData.Direction, L ) < 0 ? 0 : LightMask;
+		}
+
+		return LightMask;
+	}
+  ```
+  * 计算阴影相关，如果是RadialLight主要就是计算StaticShadowing，非RadialLight就要考虑DynamicShadow。同时还要计算 [ContactShadow](https://docs.unrealengine.com/en-US/Engine/Rendering/LightingAndShadows/ContactShadows/index.html) 相关，然后代入渲染方程中计算 IntegratedBxDF()方法
