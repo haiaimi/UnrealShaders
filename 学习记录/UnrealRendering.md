@@ -300,4 +300,35 @@ FDeferredLightPS主要就是通过GetDynamicLighting()来计算光照结果，�
 		return LightMask;
 	}
   ```
-  * 计算阴影相关，如果是RadialLight主要就是计算StaticShadowing，非RadialLight就要考虑DynamicShadow。同时还要计算 [ContactShadow](https://docs.unrealengine.com/en-US/Engine/Rendering/LightingAndShadows/ContactShadows/index.html) 相关，然后代入渲染方程中计算 IntegratedBxDF()方法
+  * 计算阴影相关，如果是RadialLight主要就是计算StaticShadowing，非RadialLight就要考虑DynamicShadow。同时还要计算 [ContactShadow](https://docs.unrealengine.com/en-US/Engine/Rendering/LightingAndShadows/ContactShadows/index.html) 相关，然后代入渲染方程中计算IntegratedBxDF()方法，RectLight与其他光源计算的方式也不相同，同时在函数里会调用不同ShaderModel对应的计算方法，如下：
+  ```cpp
+  FDirectLighting IntegrateBxDF( FGBufferData GBuffer, half3 N, half3 V, half3 L, float Falloff, float NoL, FAreaLight AreaLight, FShadowTerms Shadow )
+{
+	switch( GBuffer.ShadingModelID )
+	{
+		case SHADINGMODELID_DEFAULT_LIT:
+			return DefaultLitBxDF( GBuffer, N, V, L, Falloff, NoL, AreaLight, Shadow );
+		case SHADINGMODELID_SUBSURFACE:
+			return SubsurfaceBxDF( GBuffer, N, V, L, Falloff, NoL, AreaLight, Shadow );
+		case SHADINGMODELID_PREINTEGRATED_SKIN:
+			return PreintegratedSkinBxDF( GBuffer, N, V, L, Falloff, NoL, AreaLight, Shadow );
+		case SHADINGMODELID_CLEAR_COAT:
+			return ClearCoatBxDF( GBuffer, N, V, L, Falloff, NoL, AreaLight, Shadow );
+		case SHADINGMODELID_SUBSURFACE_PROFILE:
+			return SubsurfaceProfileBxDF( GBuffer, N, V, L, Falloff, NoL, AreaLight, Shadow );
+		case SHADINGMODELID_TWOSIDED_FOLIAGE:
+			return TwoSidedBxDF( GBuffer, N, V, L, Falloff, NoL, AreaLight, Shadow );
+		case SHADINGMODELID_HAIR:
+			return HairBxDF( GBuffer, N, V, L, Falloff, NoL, AreaLight, Shadow );
+		case SHADINGMODELID_CLOTH:
+			return ClothBxDF( GBuffer, N, V, L, Falloff, NoL, AreaLight, Shadow );
+		case SHADINGMODELID_EYE:
+			return EyeBxDF( GBuffer, N, V, L, Falloff, NoL, AreaLight, Shadow );
+		default:
+			return (FDirectLighting)0;
+	}
+}
+  ```
+   * 最后就是光的累加，LightAccumulator_GetResult()
+
+渲染光照的时候，所对应的RenderTarget也是SceneColor
