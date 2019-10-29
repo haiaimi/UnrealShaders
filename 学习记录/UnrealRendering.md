@@ -350,8 +350,47 @@ UE4的遮挡剔除执行的比较靠前，在InitView的时候执行，主要是
 
 Occlusion准备阶段，在Render方法里：
 * RenderOcclusion，在不使用HZB的情况，使用FOcclusionQueryVS，FOcclusionQueryPS
-	a. 这个PixelShader很简单，就是直接往RT（注意这个RenderTarget一般是SceneDepth）上渲染固定值 float4(1, 0, 0, 1)，就是把包围盒绘制在RT上，然后后面再进行比较。
-	b. 在检测的时候会直接进行
+	a. 这个PixelShader很简单，就是直接往RT（注意这个RenderTarget一般是SceneDepth，SceneDepth在PrePass也就是EarlyZ中已经计算好）上渲染固定值 float4(1, 0, 0, 1)因为这里不需要这个值，只需要VS里输出的深度值，就是把包围盒绘制在RT上。
+	b. 在渲染这些包围盒的时候就已经比较了，这就考虑到图形API的Query特性，在D3D11中有 [ID3D11Query](https://s0docs0microsoft0com.icopy.site/en-us/windows/win32/api/d3d11/nn-d3d11-id3d11query) 接口，以及其对应的Qury类型 [D3D11_QUERY](https://s0docs0microsoft0com.icopy.site/zh-cn/windows/win32/api/d3d11/ne-d3d11-d3d11_query)， 在UE4中也有对应的枚举，如下：
+	```cpp
+	enum ERenderQueryType
+	{
+		// e.g. WaitForFrameEventCompletion()
+		RQT_Undefined,
+		// Result is the number of samples that are not culled (divide by MSAACount to get pixels)
+		RQT_Occlusion,
+		// Result is current time in micro seconds = 1/1000 ms = 1/1000000 sec (not a duration).
+		RQT_AbsoluteTime,
+	};
+	```
+	显然这里使用的就是RQT_Occlusion，这在MSDN上有对应的文档 *获取在ID3D11DeviceContext :: Begin和ID3D11DeviceContext :: End之间通过深度和模具测试的样本数. ID3D11DeviceContext :: GetData返回一个UINT64. 如果禁用了深度或模板测试，则这些测试中的每一个都将计为通过.*
+	UE4中对应的渲染代码：
+	```cpp
+	// Draw the batches.
+	// BatchOcclusionQueries里有多个batch需要渲染，一个batch有多个primitive
+	for(int32 BatchIndex = 0, NumBatches = BatchOcclusionQueries.Num();BatchIndex < NumBatches;BatchIndex++)
+	{
+		FOcclusionBatch& Batch = BatchOcclusionQueries[BatchIndex];
+		FRenderQueryRHIParamRef BatchOcclusionQuery = Batch.Query;
+		FVertexBufferRHIParamRef VertexBufferRHI = Batch.VertexAllocation.VertexBuffer->VertexBufferRHI;
+		uint32 VertexBufferOffset = Batch.VertexAllocation.VertexOffset;
+		const int32 NumPrimitivesThisBatch = (BatchIndex != (NumBatches-1)) ? MaxBatchedPrimitives : NumBatchedPrimitives;
+			
+		RHICmdList.BeginRenderQuery(BatchOcclusionQuery);
+		RHICmdList.SetStreamSource(0, VertexBufferRHI, VertexBufferOffset);
+		RHICmdList.DrawIndexedPrimitive(
+			IndexBufferRHI,
+			/*BaseVertexIndex=*/ 0,
+			/*MinIndex=*/ 0,
+			/*NumVertices=*/ 8 * NumPrimitivesThisBatch,
+			/*StartIndex=*/ 0,
+			/*NumPrimitives=*/ 12 * NumPrimitivesThisBatch,
+			/*NumInstances=*/ 1
+			);
+		RHICmdList.EndRenderQuery(BatchOcclusionQuery);
+	}
+	```
+	在渲染结束的时候已经计算出比较结果了
 * RenderHzb，是用来渲染HZB所需要的Texture，分为BuildHZB和Submit
 
 
