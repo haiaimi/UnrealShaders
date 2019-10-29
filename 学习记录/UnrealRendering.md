@@ -347,16 +347,27 @@ UE4的遮挡剔除执行的比较靠前，在InitView的时候执行，主要是
 	4. 在Wireframe模式下，没有遮挡剔除剔除
 	5. 遮挡剔除，比较复杂的一部分，主要实现就是在OcclusionCull中
 
+
+Occlusion准备阶段，在Render方法里：
+* RenderOcclusion，在不使用HZB的情况，使用FOcclusionQueryVS，FOcclusionQueryPS
+	a. 这个PixelShader很简单，就是直接往RT（注意这个RenderTarget一般是SceneDepth）上渲染固定值 float4(1, 0, 0, 1)，就是把包围盒绘制在RT上，然后后面再进行比较。
+	b. 在检测的时候会直接进行
+* RenderHzb，是用来渲染HZB所需要的Texture，分为BuildHZB和Submit
+
+
 OcclusionCull的大致流程：
 
 	1. 判断当前是否支持HZB，OpenGl和Switch平台不支持，UE4默认关闭
 	2. 使用PreomputedVisibilityData进行第一轮剔除
 	3. 判断使用软剔除还是硬件剔除
-		+ 软剔除
-		+ 硬件剔除，只支持FeatureLevel >= ES_3_1
-			调用FetchVisibilityForPrimitives，其中本质上还是调用FetchVisibilityForPrimitives_Range
+      a. 软剔除
+      b. 硬件剔除，只支持FeatureLevel >= ES_3_1，硬件剔除也分两种，其中一种是HZB，还有就是正常的Occlusion
+	  c. 调用FetchVisibilityForPrimitives，其中本质上还是调用FetchVisibilityForPrimitives_Range，这个方法除了检测遮挡还会提前填充检测用的OcclusionBounds，在FViewInfo中会有下面两个成员变量用于非HZB的OcclusionCull渲染，如下：
+	  ```cpp
+	  	FOcclusionQueryBatcher IndividualOcclusionQueries;
+		FOcclusionQueryBatcher GroupedOcclusionQueries;
+	  ```
+	  这个类会存储多个待检测的batch，通过BatchPrimitive方法加入，Flush来绘制
 
-还有Occlusion准备阶段，在Render方法里：
-	* RenderOcclusion，在不使用HZB的情况，使用FOcclusionQueryVS，FOcclusionQueryPS
-	* RenderHzb，是用来渲染HZB所需要的Texture，分为BuildHZB和Submit
+
   
