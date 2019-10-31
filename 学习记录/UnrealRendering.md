@@ -393,13 +393,15 @@ Occlusion准备阶段，在Render方法里：
 	}
 	```
 	在渲染结束的时候已经计算出比较结果了
-* RenderHzb，是用来渲染HZB所需要的Texture，分为BuildHZB和Submit，HZB也属于硬件剔除，下面分别来看这两个方法
+* RenderHzb，是用来渲染HZB所需要的Texture，分为BuildHZB和Submit，HZB也属于硬件剔除，主要就是FHZBOcclusionTester，下面分别来看这两个方法
 	1. BuildHZB，就是构建HZB(Hierarchical Z-Buffering)
 		a. 根据视口大小来确定MipMap的大小以及数目
 		b. 对ScenceDepth进行相对应的采样来获取对应的深度，注意这个MipMap都是对上一级的结果再采样，在FHZBuildPS对应的Shader中
 	2. Submit，要利用上面计算的MipMap
-		a. 填充两个float4的Texture资源，BoundsCenterTexture和BoundsExtentTexture，这两个资源代表了需要遮挡检测图元的包围盒
-		b. 在FHZBTestPS中进行数据的计算，这里就牵扯到HZB算法
+		a. 填充两个float4的Texture资源，BoundsCenterTexture和BoundsExtentTexture，这两个资源代表了需要遮挡检测图元的包围盒（在HZB方法中则是使用 HZBOcclusionTests.AddBounds() 添加primitive的包围盒）
+		b. 在FHZBTestPS中进行数据的计算，其计算结果可以供后面查询使用，这里就牵扯到HZB算法
+		c. 把计算好的数据从GPU转到CPU(FHZBOcclusionTester::ResultsTextureCPU)中，之后会通过FHZBOcclusionTester::MapResults()方法来把数据映射到FHZBOcclusionTester::ResultsBuffer(uint8*类型)上
+		d. 调用HZBOcclusionTester::IsVisible()方法就可以判断是否可见
 
 OcclusionCull的大致流程：
 
@@ -414,7 +416,7 @@ OcclusionCull的大致流程：
 		FOcclusionQueryBatcher GroupedOcclusionQueries;
 	  ```
 	  这个类会存储多个待检测的batch，通过BatchPrimitive方法加入，Flush来绘制。
-	  而在HZB方法中则是使用 HZBOcclusionTests.AddBounds() 添加primitive的包围盒
+
 
 
   
