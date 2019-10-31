@@ -1,3 +1,5 @@
+UE4的渲染线程中会常见RDG，这是指Render Graph，依托于FRDGBuilder类，从AddPass到Execute完成一个渲染流程
+
 # Volumetric Fogging（体积雾）
 **以下内容参考自:Raudsepp, Siim. “Siim Raudsepp Volumetric Fog Rendering.” (2018).**
 
@@ -391,8 +393,13 @@ Occlusion准备阶段，在Render方法里：
 	}
 	```
 	在渲染结束的时候已经计算出比较结果了
-* RenderHzb，是用来渲染HZB所需要的Texture，分为BuildHZB和Submit
-
+* RenderHzb，是用来渲染HZB所需要的Texture，分为BuildHZB和Submit，HZB也属于硬件剔除，下面分别来看这两个方法
+	1. BuildHZB，就是构建HZB(Hierarchical Z-Buffering)
+		a. 根据视口大小来确定MipMap的大小以及数目
+		b. 对ScenceDepth进行相对应的采样来获取对应的深度，注意这个MipMap都是对上一级的结果再采样，在FHZBuildPS对应的Shader中
+	2. Submit，要利用上面计算的MipMap
+		a. 填充两个float4的Texture资源，BoundsCenterTexture和BoundsExtentTexture，这两个资源代表了需要遮挡检测图元的包围盒
+		b. 在FHZBTestPS中进行数据的计算，这里就牵扯到HZB算法
 
 OcclusionCull的大致流程：
 
@@ -406,7 +413,8 @@ OcclusionCull的大致流程：
 	  	FOcclusionQueryBatcher IndividualOcclusionQueries;
 		FOcclusionQueryBatcher GroupedOcclusionQueries;
 	  ```
-	  这个类会存储多个待检测的batch，通过BatchPrimitive方法加入，Flush来绘制
+	  这个类会存储多个待检测的batch，通过BatchPrimitive方法加入，Flush来绘制。
+	  而在HZB方法中则是使用 HZBOcclusionTests.AddBounds() 添加primitive的包围盒
 
 
   
