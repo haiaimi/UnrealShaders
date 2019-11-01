@@ -339,11 +339,48 @@ FDeferredLightPS主要就是通过GetDynamicLighting()来计算光照结果，�
 
 UE4的遮挡剔除执行的比较靠前，在InitView的时候执行，主要是在FSceneRenderer::ComputeViewVisibility中执行。剔除时有两种方法，分为软剔除（也就是通过CPU运算）和硬件剔除（正常使用HZBOcclusion）。
 
+## HZB原理
+
+遮挡检测主要有三种类型：
+	1. Object-Space：基于空间，如Ray Cast
+	2. Image-Space：图片空间，基于像素的检测，一般是由硬件支持，但是不支持透明物体检测
+	3. temporal coherence：时间关联性，一般就是使用上一帧的内容进行检测
+上面3中方式各有优点，HZB就是把这三种方式结合起来。
+
+* HZB在空间上使用Octree（八叉树），使用Octree可以剔除掉大部分不需要渲染的图元，八叉树会通过递归与视锥体进行相交检测，从而筛选出需要渲染的块（就是八叉树中分出的块）
+* 结合Image-Space，HZB会使用深度信息，所以需要绘制一个含有深度信息的MipMap，根据图元所占屏幕区域大小来选择对应level的mipmap进行采样，区域越大所需mipmap等级越低，因为这样会使采样次数固定（UE4中是4x4）的情况下结果更加精确
+* 在时间关联性上，HZB会使用前一帧可见图元的数据，当前帧检测完还会更新这些数据
+
+UE4 HZB Shader代码如下：
+```cpp
+	// 4x4 samples ，进行16次采样
+	float2 Scale = HZBUvFactor.xy * ( Rect.zw - Rect.xy ) / 3; //Rect的scale，相对于HZBTexture，因为在构建HZBTexture尺寸缩放过
+	float2 Bias = HZBUvFactor.xy * Rect.xy;  //基础UV坐标
+
+	float4 MinDepth = 1;
+	UNROLL for( int i = 0; i < 4; i++ )
+	{
+		// TODO could vectorize this
+		float4 Depth;
+		Depth.x = HZBTexture.SampleLevel( HZBSampler, float2( i, 0 ) * Scale + Bias, Level ).r;
+		Depth.y = HZBTexture.SampleLevel( HZBSampler, float2( i, 1 ) * Scale + Bias, Level ).r;
+		Depth.z = HZBTexture.SampleLevel( HZBSampler, float2( i, 2 ) * Scale + Bias, Level ).r;
+		Depth.w = HZBTexture.SampleLevel( HZBSampler, float2( i, 3 ) * Scale + Bias, Level ).r;
+		MinDepth = min( MinDepth, Depth );
+	}
+	//筛选最小的深度
+	MinDepth.x = min( min(MinDepth.x, MinDepth.y), min(MinDepth.z, MinDepth.w) );
+
+	// Inverted Z buffer，最小深度大于该图元最大深度，那么它必定被遮挡
+	OutColor = RectMax.z >= MinDepth.x ? 1 : 0;
+```
+
+
 首先看一下硬件剔除，硬件剔除分为两个步骤，要有准备阶段和检测阶段，UE4中遮挡检测使用的是前一帧计算的内容。
 
 遮挡检测在 FSceneRenderer::ComputeViewVisibility() 方法中这个方法在之前也见到过，在执行完这个步骤后才会网渲染管线中加入需要渲染的模型，当然这个方法不仅包含了遮挡剔除的操作，还有其他的剔除，主要有如下：
 
-	1. FrustumCull，接锥体剔除
+	1. FrustumCull，截锥体剔除
 	2. Hidden Primitives，指定隐藏的prim，就是在游戏线程中设置Hidden属性
 	3. ShowOnlyPrimitives，指定渲染的prims，其他一概不渲染
 	4. 在Wireframe模式下，没有遮挡剔除剔除
@@ -416,6 +453,8 @@ OcclusionCull的大致流程：
 		FOcclusionQueryBatcher GroupedOcclusionQueries;
 	  ```
 	  这个类会存储多个待检测的batch，通过BatchPrimitive方法加入，Flush来绘制。
+
+上面主要都是GPU硬件剔除，UE4支持软件剔除，使用的是Potential Visible Set(PVS)，这些数据需要提前烘焙，消耗的时间比较多
 
 
 
