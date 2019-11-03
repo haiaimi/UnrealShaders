@@ -333,7 +333,7 @@ FDeferredLightPS主要就是通过GetDynamicLighting()来计算光照结果，�
   ```
    * 最后就是光的累加，LightAccumulator_GetResult()
 
-渲染光照的时候，所对应的RenderTarget也是SceneColor
+渲染光照的时候，所对应的RenderTarget也是SceneColor，混合模式是TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_One, BF_One>，RGB和Alpha都是直接相加
 
 # Occlusion Cull（遮挡剔除）
 
