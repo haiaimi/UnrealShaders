@@ -10,7 +10,7 @@
 3. 常见名词、公式
     + GGX 就是即Trowbridge-Reitz分布其分布公式：
   
-    ![image](https://latex.codecogs.com/gif.latex?D_{GGX}(m)=\frac{a^2}{\pi(n\cdot&space;m)^2(a^2-1)&plus;1)^2})
+    ![image](https://latex.codecogs.com/gif.latex?D_{GGX}(m)=\frac{a^2}{\pi(n&space;\cdot&space;m)^2(a^2-1)&plus;1)^2})
 
     在UE4中有相对应的实现：
     ```cpp
