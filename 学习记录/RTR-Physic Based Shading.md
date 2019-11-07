@@ -36,3 +36,28 @@
 
  可见入射光 *l* 和出射视线方向 *v* 是有两个自由度，所以正常情况四个标量值就能表示，两个角度$\theta$表示两个线相对于法线的角度，两个 $\phi$ 表示相对于平面切线（一般会有个切线）的角度，而Isotropic BRDF是个特例，它只有3个标量，如下图:
  ![image](http://www.realtimerendering.com/figures/RTR4.09.17.png)
+
+ 光的入射和反射都会考虑光的波长，光的反射会收到波长的影响，所以有两种模型来表示，第一种是把波长当成参数传入，这在离线渲染中使用较多，另一种是BRDF返回光谱的分布值，这在实时渲染中使用较多，因为实时渲染只需要返回RGB值即可。其对应反射公式如下：
+
+ $L_o(p,v)=\int_{l\in\Omega}f(l,v)L_i(p,l)(n\cdot l)dl$
+
+ $l$不是光源的方向，它是半球体里连续的区域，伴随着辐射度使用$dl$表示它的微分（differential）立体角。上述等式可见出射辐射量等于入射辐射的积分（integral）就是$l$相对于$\Omega$的积分。下面会简化，会把$p$省略掉，所以就剩如下公式：
+
+  $L_o(v)=\int_{l\in\Omega}f(l,v)L_i(l)(n\cdot l)dl$
+
+半球体通常会要参数化，通常就是用$\theta$和$\phi$来表示半球，上述公式的$L_o(v)$就可以替换为$L_o(\theta,\phi)$，立体角微分（$dl$）就是$sin\theta_id\theta_id\phi_i$ 那么对应的$n\cdot l$对应的可以改为$cos\theta_i$，那么上述的公式既可以推导为双重积分，如下:
+
+$L_o(\theta_o,\phi_o)=\int_{\phi_i=0}^{2\pi}\int_{\theta_i=0}^{\pi/2}f(\theta_i,\phi_i,\theta_o,\phi_o)L_i(\theta_i,\phi_i)cos\theta_isin\theta_id\theta_id\phi_i$
+
+在有些情况下，参数表示还会发生变化，可能会使用$\mu_i=cos\theta_i$，$\mu_o=cos\theta_o$，这就形成如下的表达式：
+
+$L_o(\mu_o,\phi_o)=\int_{\phi_i=0}^{2\pi}\int_{\mu_i=0}^{1}f(\mu_i,\phi_i,\mu_o,\phi_o)L_i(\mu_i,\phi_i)\mu_id\mu_id\phi_i$
+
+注意上式$sin\theta_id\theta_i$可以换元到$dcos\theta_i$ 。
+
+在物理渲染中，BRDF都需要遵循两个法则，第一个就是，入射角和出射角交换所得的值应该一样：$f(l,v)=f(v,l)$，在实时渲染中一般不会注重这个，一般只是用来判断这个BRDF是否具有物理特性。第二种就是能量守恒，在实时渲染中不会太注重，但是不能相差太多。
+
+*directional-hemispherical reflectance* $R(l)$，这个用来计算光的损耗程度，就是根据入射光方向来计算，公式如下：
+$R(l)=\int_{l\in\Omega}f(l,v)(n\cdot v)dv$
+
+这里的$v$就相当于之前反射公式的$l$，它代表的是一块区域，不是一个方向。$R(l)$的值在[0,1]区间内，0表示全部吸收，1表示全部反射。最简单的BRDF就是Lambertian光照，它会经常被用到次表面散射中
