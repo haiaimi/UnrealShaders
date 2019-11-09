@@ -1,4 +1,5 @@
 ## Physic of Light
+
 1. 辐照度与振幅的平方是成比例的  $E = ka^2$，a就是振幅
 
 ![image](http://www.realtimerendering.com/figures/RTR4.09.03.png)
@@ -13,18 +14,21 @@
     ![image](https://latex.codecogs.com/gif.latex?D_%7BGGX%7D%28m%29%3D%5Cfrac%7Ba%5E2%7D%7B%5Cpi%28n%5Ccdot%20m%29%5E2%28a%5E2-1%29&plus;1%29%5E2%7D)
 
     在UE4中有相对应的实现：
+
     ```cpp
     // GGX / Trowbridge-Reitz
     // [Walter et al. 2007, "Microfacet models for refraction through rough surfaces"]
     float D_GGX( float a2, float NoH )
     {
-        float d = ( NoH * a2 - NoH ) * NoH + 1;	// 2 mad
-        return a2 / ( PI*d*d );					// 4 mul, 1 rcp
+        float d = ( NoH * a2 - NoH ) * NoH + 1; // 2 mad
+        return a2 / ( PI*d*d );     // 4 mul, 1 rcp
     }
     ```
 
 ## BRDF
-###基本信息
+
+### 基本信息
+
 1. 对于入射光的辐射率，可以大致简写为： $L_i(c,-v)$，c是camera的位置，v是视线。光在传播过程中一般会有中间介质，但是现在不考虑这些，所以入射辐射率等于出射辐射率，如下:
  $L_i(c,-v)=L_o(p,v)$， p是视线与最近物体表面交点
 
@@ -33,7 +37,8 @@
 3. 现实世界中物体表面往往不是统一的，不同的区域会有不同的效果，这就提出了基于空间位置的BRDF就是spatially varying BRDF (SVBRDF) 或 spatial BRDF (SBRDF)。可见入射光 *l* 和出射视线方向 *v* 是有两个自由度，所以正常情况四个标量值就能表示，两个角度$\theta$表示两个线相对于法线的角度，两个 $\phi$ 表示相对于平面切线（一般会有个切线）的角度，而Isotropic BRDF是个特例，它只有3个标量，如下图:
  ![image](http://www.realtimerendering.com/figures/RTR4.09.17.png)
 
-###BRDF详细内容
+### BRDF详细内容
+
 1. **BRDF**，光的入射和反射都会考虑光的波长，光的反射会收到波长的影响，所以有两种模型来表示，第一种是把波长当成参数传入，这在离线渲染中使用较多，另一种是BRDF返回光谱的分布值，这在实时渲染中使用较多，因为实时渲染只需要返回RGB值即可。其对应反射公式如下：
 
  $L_o(p,v)=\int_{l\in\Omega}f(l,v)L_i(p,l)(n\cdot l)dl$
@@ -48,6 +53,7 @@ $f(l,v)=\frac{dL_o(l)}{dE(l)}$
 $E$是辐照度，$E=\frac{d\phi}{dA}$，如果光不是垂直照射，那么面积就会改变，但是光通量不变，有该公式$E=\frac{d\phi}{dA^{\perp}}=\frac{d\phi}{dAcos\theta_i}$ ，$\phi$是辐射通量，$A$是面积，所以辐照度就是单位面积受到的辐射通量。
 
 $L_i(l)$就是辐射率，$L_i(l)=\frac{dE}{dw}=\frac{d\phi}{dwdAcos\theta_i}$，这里的$dw$立体角的微分，也就是前面的$dl$，结合前面的公式可以得知，$dE(l)=L_i(l)cos\theta_id_w$，$(n\cdot l)$就是对应于$cos\theta$。至于为什么是微分辐射率与微分辐照度的比值，因为在现实世界中，反射方向通量通常只占整个反射通量很小部分，如果分母是入射光通量并且立体角趋于0那么这比值也会接近0，如果分母是微分辐照度那么它同样会有个立体角微分，这样会有意义。
+在实际的实时渲染中，对于点光源、方向光等理想光源求辐射率不需要积分，只需要把每个光源的计算结果累加起来就行。
 
 2. 而半球体通常会要参数化，通常就是用$\theta$和$\phi$来表示半球，上述公式的$L_o(v)$就可以替换为$L_o(\theta,\phi)$，立体角微分（$dl$）就是$sin\theta_id\theta_id\phi_i$ 那么对应的$n\cdot l$对应的可以改为$cos\theta_i$，那么上述的公式既可以推导为双重积分，如下:
 
@@ -64,4 +70,29 @@ $L_o(\mu_o,\phi_o)=\int_{\phi_i=0}^{2\pi}\int_{\mu_i=0}^{1}f(\mu_i,\phi_i,\mu_o,
 3. *directional-hemispherical reflectance* $R(l)$，这个用来计算光的损耗程度，就是根据入射光方向来计算，公式如下：
 $R(l)=\int_{l\in\Omega}f(l,v)(n\cdot v)dv$
 
-这里的$v$就相当于之前反射公式的$l$，它代表的是一块区域，不是一个方向。$R(l)$的值在[0,1]区间内，0表示全部吸收，1表示全部反射。最简单的BRDF就是Lambertian光照，它会经常被用到次表面散射中
+这里的$v$就相当于之前反射公式的$l$，它代表的是一块区域，不是一个方向。$R(l)$的值在[0,1]区间内，0表示全部吸收，1表示全部反射。最简单的BRDF就是Lambertian光照，它通常会用来计算Diffuse（漫反射），但是在本章节中就主要是次表面散射。如下一个公式：
+
+$f(l,v)=\frac{C_{diff}}{\pi}$
+
+分子就是漫反射Color值，这个$\frac{1}{\pi}$系数是通过对整个半球面积分得出的结果。
+
+### Illumination
+
+1. 本章主要是介绍局部光照相关内容。
+2. 在局部光照中计算精准光源（Punctual Light）和平行光（Directional Light）是比较简单的，不需要积分，计算公式如下：
+   $L_o(v)=\pi f(l_c,v)C_{light}(n\cdot l)$
+
+其中$C_{light}$就是光的颜色，它是通过光垂直照射到Lambert反射模型（$f_{Lambert}(l,v)$）上获取到的值（Albedo = 1），就像当于一束光垂直照到一张白纸上，这就定义了光源颜色，然后在指定的反射模型$f(l,v)$上计算出结果。而$\pi$就是用来抵消Lambert中的$\frac{1}{\pi}$系数。
+
+### Fresnel Reflectance
+
+正常的平面理想反射，如下图：
+
+![image](http://www.realtimerendering.com/figures/RTR4.09.19.png)
+
+其中反射的方向 $r_i=2(n\cdot l)n$
+
+$n_1为表面上方的折光率，n_2为表面下方的折光率$
+
+1. External Reflection（外部反射）
+    当$n_1<n_2$就是外部反射，如光从空气找到水面反射，反射方程定义为$F(\theta_i)$，它的值取决于入射角大小，以及波长。当$\theta_i=0^{\circ}$为0，$\theta_i=90^{\circ}$为1。
