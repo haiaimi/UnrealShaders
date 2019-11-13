@@ -115,3 +115,11 @@ $n_1为表面上方的折光率，n_2为表面下方的折光率$
 
 3. Parameterizing Fresnel Values
    菲涅尔涉及一些参数，diffuse color（UE4里的BaseColor，$\rho_{ss}$）、metallic，如果metallic=1，$F_0=\rho_{ss}$。通常还会有一个specular（高光度）来控制非金属表面上的高光量，这应用在UE4中。
+
+4. Internal Reflection（内部反射）
+与外部反射相对应，它会有一个临界角度$\theta_c$，当过了这个临界角度，$F_0$的值就会变为1，因为$F_0$最大就是1。它的曲线比Exernal Reflection陡，如下图：
+![image](http://www.realtimerendering.com/figures/RTR4.09.24.png)
+
+有一个现象就比较明显的表现出这种情况，就是水下的气泡看起来很有金属光泽，比较亮。
+
+### Microgeometry（微几何）
