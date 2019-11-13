@@ -123,3 +123,32 @@ $n_1为表面上方的折光率，n_2为表面下方的折光率$
 有一个现象就比较明显的表现出这种情况，就是水下的气泡看起来很有金属光泽，比较亮。
 
 ### Microgeometry（微几何）
+
+介绍微表面的一些特性，在实际中一些微表面信息可能要小于一个像素，所以就需要一些形式来表示。物体表面的粗糙度可以用一些统计学方面的东西来表示，roughness就是用来表示这个，在UE4的材质编辑器中就有对应的值。
+
+微观结构的几何效应主要就是三种有Shadowing、Masking、interreflection of light，主要由下图：
+![image](http://www.realtimerendering.com/figures/RTR4.09.27.png)
+
+### Microfacet Theory（微表面理论）
+
+很多基于微表面几何研究的BRDF数学模型就是微表面理论（Microfacet Theory），它先后由Blinn和Cook and Torrance提出，所有微表面反射综合就会得到表面的BRDF反射，通常由Speclular $micro-BRDF_s$（用于表面反射），Diffuse  $micro-BRDF_s$（次表面散射），Diffraction  $micro-BRDF_s$（几何和波光学效应）。
+
+微表面理论比较重要的就是表面法线的分布也就是 **normal distribution function(NDF)**，通常用$D(m)$来表示NDF，对整个球面积分的结果是1，其公式如下：
+
+$\int_{m\in\Theta}D(m)(n\cdot m)dm=1$
+
+$\Theta$就是表示整个球体，与之前的半球体不一样，$n$就是当前微表面的法线，$m$就是所需要计算的法线。
+同时相对于视角$v$的积分公式：
+
+$\int_{m\in\Theta}D(m)(v\cdot m)dm=v\cdot n$
+
+如下图：
+
+![image](http://www.realtimerendering.com/figures/RTR4.09.31.png)
+
+
+上面的公式没有考虑不可见的微表面，但是实际上只需要可见微表面，所以就加入*masking function* $G_1(m,v)$，公式如下：
+
+$\int_{m\in\Theta}G_1(m,v)D(m)(v\cdot m)^+ dm=v\cdot n$
+
+注意这里的$(v\cdot m)$是clamp大于0的，$G_1(m,v)D(m)$又被称为 *distribution of visible normals*，就是可见法线分布。
