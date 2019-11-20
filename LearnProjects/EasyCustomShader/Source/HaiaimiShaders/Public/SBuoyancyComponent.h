@@ -3,12 +3,12 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Components/ActorComponent.h"
+#include "Components/SphereComponent.h"
 #include "SBuoyancyComponent.generated.h"
 
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
-class HAIAIMISHADERS_API USBuoyancyComponent : public UActorComponent
+class HAIAIMISHADERS_API USBuoyancyComponent : public USphereComponent
 {
 	GENERATED_BODY()
 
@@ -20,12 +20,19 @@ protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
 
+	void UpdatePhysics(float DeltaTime, FBodyInstance* BodyInstance);
+
+	float GetWaterSurfaceHeight(FVector DetectPos = FVector::ZeroVector);
+
 public:	
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
-
-public:
-	UPROPERTY(BlueprintReadOnly)
-	class USphereComponent* BuoyancyViewComponent;
 		
+	void SetUpdatedComponent(class UPrimitiveComponent* PrimComp);
+
+private:
+	FCalculateCustomPhysics CustomPhysics;
+
+	UPROPERTY()
+	class UPrimitiveComponent* UpdatedComponent;
 };
