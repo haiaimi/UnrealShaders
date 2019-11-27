@@ -1,0 +1,37 @@
+#include "/Engine/Public/Platform.ush"
+
+float2 ViewResolution;
+float  TimeSeconds;
+int WaveSize;
+int StartIndex;
+RWTexture2D<float2> HeightBuffer;
+RWTexture2D<float4> SlopeBuffer;
+RWTexture2D<float4> DisplacementBuffer;
+RWTexture2D<float2> Spectrum;
+
+float4 FFT(float2 w,float4 input1,float4 input2)
+{
+	input1.x += w.x * input2.x - w.y * input2.y;
+	input1.y += w.y * input2.x + w.x * input2.y;
+	input1.z += w.x * input2.z - w.y * input2.w;
+	input1.w += w.y * input2.z + w.x * input2.w;
+	
+	return input1;
+}
+
+float2 FFT(float2 w, float2 input1, float2 input2)
+{
+	input1.x += w.x * input2.x - w.y * input2.y;
+	input1.y += w.y * input2.x + w.x * input2.y;
+	
+	return input1;
+}
+
+[numthreads(8, 8, 8)]
+void PerformFFTCS(
+	uint3 GroupId : SV_GroupID, 
+	uint3 GroupThreadID : SV_GroupThreadID,
+	uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+	
+}
