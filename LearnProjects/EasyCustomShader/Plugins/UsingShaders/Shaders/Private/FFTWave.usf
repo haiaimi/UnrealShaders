@@ -1,13 +1,52 @@
 #include "/Engine/Public/Platform.ush"
+#include "/Engine/Private/Random.ush"
 
-float2 ViewResolution;
-float  TimeSeconds;
+#define PI 3.1415
 int WaveSize;
+float3 WindDirection;
+
+float2 GaussianRandomVariable(uint2 RandSeed)
+{
+	float x1, x2, w;
+	do
+	{
+		x1 = 2.0f * RandFast(RandSeed) - 1.0f;
+		x2 = 2.0f * RandFast(RandSeed + uint2(WaveSize, WaveSize)) - 1.0f;
+		w = x1 * x1 + x2 * x2;
+	} while (w >= 1.0f);
+	
+	w = sqrt((-2.0f * log(w)) / w);
+	return float2(x1 * w, x2 * w);
+}
+
+float PhillipsSpectrum(int n, int m)
+{
+	float2 k = float2(PI * (2 * n - WaveSize) / WaveSize, PI * (2 * m - WaveSize) / WaveSize);
+	float klength = length(k);
+	if (k < 0.000001f)
+		return 0.0f;
+	float klength2 = klength * klength;
+	float klength4 = klength2 * klength2;
+	k = normalize(k);
+	
+	float kdotw = dot(k, WindDirection.xy);
+
+}
+
+[numthreads(8, 8, 8)]
+void PhillipsSpectrumCS(
+	uint3 GroupId : SV_GroupID,
+	uint3 GroupThreadID : SV_GroupThreadID,
+	uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+	
+}
+
+float  TimeSeconds;
 int StartIndex;
 RWTexture2D<float2> HeightBuffer;
 RWTexture2D<float4> SlopeBuffer;
 RWTexture2D<float4> DisplacementBuffer;
-RWTexture2D<float2> Spectrum;
 float4 ButterflyLookupTable[];
 
 float4 FFT(float2 w,float4 input1,float4 input2)
@@ -52,7 +91,7 @@ void PerformFFTCS2(
 	uint3 GroupThreadID : SV_GroupThreadID,
 	uint3 DispatchThreadID : SV_DispatchThreadID)
 {
-	int passes = log2(WaveSize);
+	int passes = log2(WaveSize); // equal to log(WaveSize)/log(2)
 	int idx = (DispatchThreadID.z + passes) % 2;
 	int idx1 = (DispatchThreadID.z + passes + 1) % 2;
 	int bftIdx = 4 * (DispatchThreadID.y + DispatchThreadID.z * WaveSize);

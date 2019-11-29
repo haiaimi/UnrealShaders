@@ -23,6 +23,12 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
+	void CreateWaveGrid();
+
+#if WITH_EDITOR
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)override;
+#endif
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	class UProceduralMeshComponent* WaveMesh;
 
@@ -31,4 +37,7 @@ public:
 
 	UPROPERTY(EditAnywhere)
 	int32 SizeY;
+
+	UPROPERTY(EditAnywhere)
+	FVector WindDirection;
 };

@@ -13,6 +13,7 @@ AFFTWaveSimulator::AFFTWaveSimulator():
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 
+	WindDirection = FVector(1.f, 1.f, 0.f);
 	WaveMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("WaveMesh"));
 }
 
@@ -30,3 +31,9 @@ void AFFTWaveSimulator::Tick(float DeltaTime)
 
 }
 
+#if WITH_EDITOR
+void AFFTWaveSimulator::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+}
+#endif

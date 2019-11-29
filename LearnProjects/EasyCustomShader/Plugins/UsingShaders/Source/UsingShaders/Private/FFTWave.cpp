@@ -11,33 +11,82 @@
 #include "Engine/Public/SceneView.h"
 #include "ShaderParameterStruct.h"
 
-class FWaveFFTComputeShader : public FGlobalShader
+class FPhillipsSpectrumCS : public FGlobalShader
 {
-	DECLARE_SHADER_TYPE(FWaveFFTComputeShader, Global)
+	DECLARE_SHADER_TYPE(FPhillipsSpectrumCS, Global)
 
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FVector2D, ViewResolution)
-		SHADER_PARAMETER(float, TimeSeconds)
-		SHADER_PARAMETER(int32, WaveSize)
-		SHADER_PARAMETER(int32, StartIndex)
-		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, HeightBuffer)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, SlopeBuffer)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, DisplacementBuffer)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, Spectrum)
-	END_SHADER_PARAMETER_STRUCT()
+public:
+	FPhillipsSpectrumCS() {};
+
+	FPhillipsSpectrumCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
+		FGlobalShader(Initializer)
+	{
+		WindDirection.Bind(Initializer.ParameterMap, TEXT("WindDirection"));
+		Spectrum.Bind(Initializer.ParameterMap, TEXT("Spectrum"));
+	}
+
+	void SetParameters(
+		FRHICommandListImmediate& RHICmdList,
+		int32 InWaveSize,
+		FVector InWindDirection,
+		FUnorderedAccessViewRHIRef SpectrumUAV
+	)
+	{
+		SetShaderValue(RHICmdList, GetComputeShader(), WindDirection, InWindDirection);
+		if (Spectrum.IsBound())
+			RHICmdList.SetUAVParameter(GetComputeShader(), Spectrum.GetBaseIndex(), SpectrumUAV);
+	}
+
+	void UnbindUAV(FRHICommandList& RHICmdList)
+	{
+			RHICmdList.SetUAVParameter(GetComputeShader(), Spectrum.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
+	}
+
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << Spectrum;
+
+		return bShaderHasOutdatedParameters;
+	}
+
+private:
+	FShaderResourceParameter Spectrum;
+	FShaderParameter WindDirection;
+};
+
+template<int T>
+class FWaveFFTCS : public FGlobalShader
+{
+	DECLARE_SHADER_TYPE(FWaveFFTCS, Global)
+
+	//BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+	//	SHADER_PARAMETER(FVector2D, ViewResolution)
+	//	SHADER_PARAMETER(float, TimeSeconds)
+	//	SHADER_PARAMETER(int32, WaveSize)
+	//	SHADER_PARAMETER(int32, StartIndex)
+	//	SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
+	//	SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, HeightBuffer)
+	//	SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, SlopeBuffer)
+	//	SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, DisplacementBuffer)
+	//	SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, Spectrum)
+	//END_SHADER_PARAMETER_STRUCT()
 
 public:
 	
-	FWaveFFTComputeShader() {}
+	FWaveFFTCS() {}
 
-	FWaveFFTComputeShader(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
+	FWaveFFTCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
 		FGlobalShader(Initializer)
 	{
+		TimeSeconds.Bind(Initializer.ParameterMap, TEXT("TimeSeconds"));
+		WaveSize.Bind(Initializer.ParameterMap, TEXT("WaveSize"));
+		StartIndex.Bind(Initializer.ParameterMap, TEXT("StartIndex"));
 		ButterflyLookupTable.Bind(Initializer.ParameterMap, TEXT("ButterflyLookUpTable"));
-		InputSurface.Bind(Initializer.ParameterMap, TEXT("InputTexture"));
-		InputSampler.Bind(Initializer.ParameterMap, TEXT("TextureSampler"));
-		OutputSurface.Bind(Initializer.ParameterMap, TEXT("OutputTexture"));
+
+		HeightBuffer.Bind(Initializer.ParameterMap, TEXT("HeightBuffer"));
+		SlopeBuffer.Bind(Initializer.ParameterMap, TEXT("SlopeBuffer"));
+		DisplacementBuffer.Bind(Initializer.ParameterMap, TEXT("DisplacementBuffer"));
 	}
 
 	static bool ShouldCache(EShaderPlatform Platform)
@@ -53,46 +102,72 @@ public:
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-		OutEnvironment.SetDefine(TEXT("BLUR_MICRO"), 1);
+		//OutEnvironment.SetDefine(TEXT("BLUR_MICRO"), 1);
 	}
 
-	void SetParameters(FRHICommandListImmediate& RHICmdList, const FTextureRHIParamRef& InTexture, FUnorderedAccessViewRHIRef OutputUAV, const TArray<FVector4, TInlineAllocator<4>>& InButterflyLookupTable)
+	void SetParameters(
+		FRHICommandListImmediate& RHICmdList, 
+		float InTimeSeconds,
+		int32 InWaveSize,
+		int32 InStartIndex,
+		const TArray<FVector4, TInlineAllocator<4>>& InButterflyLookupTable,
+		FUnorderedAccessViewRHIRef HeightBufferUAV, 
+		FUnorderedAccessViewRHIRef SlopeBufferUAV, 
+		FUnorderedAccessViewRHIRef DisplacementBufferUAV
+		)
 	{
-		if (OutputSurface.IsBound())
-			RHICmdList.SetUAVParameter(GetComputeShader(), OutputSurface.GetBaseIndex(), OutputUAV);
-
-
+		SetShaderValue(RHICmdList, GetComputeShader(), TimeSeconds, InTimeSeconds);
+		SetShaderValue(RHICmdList, GetComputeShader(), WaveSize, InWaveSize);
+		SetShaderValue(RHICmdList, GetComputeShader(), StartIndex, InStartIndex);
 		SetShaderValueArray(RHICmdList, GetComputeShader(), ButterflyLookupTable, InButterflyLookupTable.GetData(), InButterflyLookupTable.Num());
-		SetTextureParameter(RHICmdList, GetComputeShader(), InputSurface, InputSampler, TStaticSamplerState<SF_AnisotropicLinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InTexture);
 
-		//SetUniformBufferParameter(RHICmdList, GetPixelShader(), GetUniformBufferParameter<FBlurComputeShaderData>(), FBlurComputeShaderData::CreateUniformBuffer(BlurData, EUniformBufferUsage::UniformBuffer_SingleDraw));
+		if (HeightBuffer.IsBound())
+			RHICmdList.SetUAVParameter(GetComputeShader(), HeightBuffer.GetBaseIndex(), HeightBufferUAV);
+		if (SlopeBuffer.IsBound())
+			RHICmdList.SetUAVParameter(GetComputeShader(), SlopeBuffer.GetBaseIndex(), SlopeBufferUAV);
+		if (DisplacementBuffer.IsBound())
+			RHICmdList.SetUAVParameter(GetComputeShader(), DisplacementBuffer.GetBaseIndex(), DisplacementBufferUAV);
 	}
 
 	//UAV需要解绑，以便其他地方使用
 	void UnbindUAV(FRHICommandList& RHICmdList)
 	{
-		if (OutputSurface.IsBound())
-			RHICmdList.SetUAVParameter(GetComputeShader(), OutputSurface.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
-		if (InputSurface.IsBound())
-			RHICmdList.SetShaderTexture(GetComputeShader(), InputSurface.GetBaseIndex(), FTextureRHIParamRef());
+		if (HeightBuffer.IsBound())
+			RHICmdList.SetUAVParameter(GetComputeShader(), HeightBuffer.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
+		if (SlopeBuffer.IsBound())
+			RHICmdList.SetUAVParameter(GetComputeShader(), SlopeBuffer.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
+		if (DisplacementBuffer.IsBound())
+			RHICmdList.SetUAVParameter(GetComputeShader(), DisplacementBuffer.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
+		if (Spectrum.IsBound())
+			RHICmdList.SetUAVParameter(GetComputeShader(), Spectrum.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
 	}
 
 	virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << InputSurface << OutputSurface;
+		Ar << TimeSeconds;
+		Ar << WaveSize; 
+		Ar << StartIndex;
+		Ar << ButterflyLookupTable;
+		Ar << HeightBuffer;
+		Ar << SlopeBuffer;
+		Ar << DisplacementBuffer;
 		return bShaderHasOutdatedParameters;
 	}
 
 private:
+	FShaderParameter TimeSeconds;
+	FShaderParameter WaveSize;
+	FShaderParameter StartIndex;
 	FShaderParameter ButterflyLookupTable;
 
-	FShaderResourceParameter InputSurface;
-
-	FShaderResourceParameter InputSampler;
-
-	FShaderResourceParameter OutputSurface;
+	FShaderResourceParameter HeightBuffer;
+	FShaderResourceParameter SlopeBuffer;
+	FShaderResourceParameter DisplacementBuffer;
 };
+
+IMPLEMENT_SHADER_TYPE(template<>, FWaveFFTCS<1>,  TEXT("/Plugins/Shaders/Private/FFTWaveShader.usf"), TEXT("PerformFFTCS1"), SF_Compute)
+IMPLEMENT_SHADER_TYPE(template<>, FWaveFFTCS<1>,  TEXT("/Plugins/Shaders/Private/FFTWaveShader.usf"), TEXT("PerformFFTCS2"), SF_Compute)
 
 int32 BitReverse(int32 i, int32 Size)
 {
