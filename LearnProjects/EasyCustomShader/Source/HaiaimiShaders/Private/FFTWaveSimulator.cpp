@@ -63,6 +63,8 @@ void AFFTWaveSimulator::CreateWaveGrid()
 			WaveNormals[Index] = FVector(0.f, 0.f, 1.f);
 			WavePosition[Index] = WaveVertices[Index];
 			WavePosition[Index].Z = 0.f;
+
+			DispersionTable[Index] = Dispersion(j, i);
 		}
 
 	if (WaveMesh)
@@ -150,6 +152,10 @@ void AFFTWaveSimulator::ComputePositionAndNormal()
 				WaveNormals[TileIndex].Z = Normal.Z;
 			}
 		}
+		// Unlock the buffers
+		GDynamicRHI->RHIUnlockTexture2D(HeightBuffer, 0, false);
+		GDynamicRHI->RHIUnlockTexture2D(SlopeBuffer, 0, false);
+		GDynamicRHI->RHIUnlockTexture2D(DisplacementBuffer, 0, false);
 	}
 }
 

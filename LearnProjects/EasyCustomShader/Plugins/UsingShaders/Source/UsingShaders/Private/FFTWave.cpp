@@ -10,6 +10,7 @@
 #include "Engine/Engine.h"
 #include "Engine/Public/SceneView.h"
 #include "ShaderParameterStruct.h"
+#include "FFTWaveSimulator.h"
 
 class FPhillipsSpectrumCS : public FGlobalShader
 {
@@ -251,5 +252,26 @@ void ComputeButterflyLookuptable(int32 Size, int32 Passes, TArray<float>& OutTab
 				OutTable[Offset2 + 3] = -WI;
 			}
 		}
+	}
+}
+
+void AFFTWaveSimulator::EvaluateWavesFFT(float TimeSeconds)
+{
+	FUnorderedAccessViewRHIRef HeightBufferUAV;
+	FUnorderedAccessViewRHIRef SlopeBufferUAV;
+	FUnorderedAccessViewRHIRef DisplacementBufferUAV;
+	if (HeightBuffer->IsValid())
+	{
+		HeightBufferUAV = RHICreateUnorderedAccessView(HeightBuffer);
+	}
+
+	if (SlopeBuffer->IsValid())
+	{
+		SlopeBufferUAV = RHICreateUnorderedAccessView(SlopeBuffer);
+	}
+
+	if (SlopeBuffer->IsValid())
+	{
+		DisplacementBufferUAV = RHICreateUnorderedAccessView(DisplacementBuffer);
 	}
 }

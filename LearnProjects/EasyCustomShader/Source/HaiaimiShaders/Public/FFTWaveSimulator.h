@@ -24,7 +24,13 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
+	void EvaluateWavesFFT(float TimeSeconds);
+
+	void InitSpectrum(float TimeSeconds, int32 n, int32 m);
+
 	float Dispersion(int32 n, int32 m);
+
+	void ComputeSpectrum();
 
 	void CreateWaveGrid();
 
