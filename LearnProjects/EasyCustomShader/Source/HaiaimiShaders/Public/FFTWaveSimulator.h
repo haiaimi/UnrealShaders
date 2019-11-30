@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "RHIResources.h"
 #include "FFTWaveSimulator.generated.h"
 
 UCLASS()
@@ -23,7 +24,13 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
+	float Dispersion(int32 n, int32 m);
+
 	void CreateWaveGrid();
+
+	void CreateResources();
+
+	void ComputePositionAndNormal();
 
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)override;
@@ -33,11 +40,23 @@ public:
 	class UProceduralMeshComponent* WaveMesh;
 
 	UPROPERTY(EditAnywhere)
-	int32 SizeX;
+	int32 WaveSize;
 
 	UPROPERTY(EditAnywhere)
-	int32 SizeY;
+	float GridLength;
 
 	UPROPERTY(EditAnywhere)
 	FVector WindDirection;
+
+private:
+	TArray<FVector> WavePosition;
+	TArray<FVector> WaveVertices;
+	TArray<FVector> WaveNormals;
+
+	TArray<float> DispersionTable;
+
+	// Render resources
+	FTexture2DRHIRef HeightBuffer;
+	FTexture2DRHIRef SlopeBuffer;
+	FTexture2DRHIRef DisplacementBuffer;
 };

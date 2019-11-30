@@ -21,38 +21,56 @@ public:
 	FPhillipsSpectrumCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
 		FGlobalShader(Initializer)
 	{
-		WindDirection.Bind(Initializer.ParameterMap, TEXT("WindDirection"));
+		WaveSize.Bind(Initializer.ParameterMap, TEXT("WaveSize"));
+		WaveAmplitude.Bind(Initializer.ParameterMap, TEXT("WaveAmplitude"));
+		WindSpeed.Bind(Initializer.ParameterMap, TEXT("WindSpeed"));
 		Spectrum.Bind(Initializer.ParameterMap, TEXT("Spectrum"));
+		SpectrumConj.Bind(Initializer.ParameterMap, TEXT("SpectrumConj"));
 	}
 
 	void SetParameters(
 		FRHICommandListImmediate& RHICmdList,
 		int32 InWaveSize,
-		FVector InWindDirection,
-		FUnorderedAccessViewRHIRef SpectrumUAV
+		float InWaveAmplitude,
+		FVector InWindSpeed,
+		FUnorderedAccessViewRHIRef SpectrumUAV,
+		FUnorderedAccessViewRHIRef SpectrumConjUAV
 	)
 	{
-		SetShaderValue(RHICmdList, GetComputeShader(), WindDirection, InWindDirection);
+		SetShaderValue(RHICmdList, GetComputeShader(), WaveSize, InWaveSize);
+		SetShaderValue(RHICmdList, GetComputeShader(), WindSpeed, InWindSpeed);
+		SetShaderValue(RHICmdList, GetComputeShader(), WaveAmplitude, InWaveAmplitude);
 		if (Spectrum.IsBound())
 			RHICmdList.SetUAVParameter(GetComputeShader(), Spectrum.GetBaseIndex(), SpectrumUAV);
+		if (SpectrumConj.IsBound())
+			RHICmdList.SetUAVParameter(GetComputeShader(), SpectrumConj.GetBaseIndex(), SpectrumConjUAV);
 	}
 
 	void UnbindUAV(FRHICommandList& RHICmdList)
 	{
-			RHICmdList.SetUAVParameter(GetComputeShader(), Spectrum.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
+		RHICmdList.SetUAVParameter(GetComputeShader(), Spectrum.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
+		RHICmdList.SetUAVParameter(GetComputeShader(), SpectrumConj.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
 	}
 
 	virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << WaveSize;
+		Ar << WaveAmplitude;
+		Ar << WindSpeed;
 		Ar << Spectrum;
+		Ar << SpectrumConj;
 
 		return bShaderHasOutdatedParameters;
 	}
 
 private:
+	FShaderParameter WaveSize;
+	FShaderParameter WaveAmplitude;
+	FShaderParameter WindSpeed;
+
 	FShaderResourceParameter Spectrum;
-	FShaderParameter WindDirection;
+	FShaderResourceParameter SpectrumConj;
 };
 
 template<int T>
