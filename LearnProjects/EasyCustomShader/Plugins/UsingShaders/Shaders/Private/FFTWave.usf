@@ -8,8 +8,8 @@ static float GridLength = 100.f;
 float WaveAmplitude;
 float3 WindSpeed;
 
-RWTexture1D<float2> Spectrum;
-RWTexture1D<float2> SpectrumConj;
+RWTexture2D<float2> Spectrum;
+RWTexture2D<float2> SpectrumConj;
 
 float2 GaussianRandomVariable(uint2 RandSeed)
 {
@@ -53,16 +53,16 @@ float2 GetSpectrum(int n, int m)
 	return r * sqrt(PhillipsSpectrum(n, m) / 2.f);
 }
 
-[numthreads(8, 8, 8)]
+[numthreads(4, 4, 4)]
 void PhillipsSpectrumCS(
 	uint3 GroupId : SV_GroupID,
 	uint3 GroupThreadID : SV_GroupThreadID,
 	uint3 DispatchThreadID : SV_DispatchThreadID)
 {
 	int index = DispatchThreadID.x * (WaveSize + 1) + DispatchThreadID.y;
-	Spectrum[index] = GetSpectrum(-DispatchThreadID.x, -DispatchThreadID.y);
-	SpectrumConj[index] = GetSpectrum(-DispatchThreadID.x, -DispatchThreadID.y);
-	SpectrumConj[index].y *= -1.0f;
+	Spectrum[uint2(0, index)] = GetSpectrum(-DispatchThreadID.y, -DispatchThreadID.x);
+	SpectrumConj[uint2(0, index)] = GetSpectrum(-DispatchThreadID.y, -DispatchThreadID.x);
+	SpectrumConj[uint2(0, index)].y *= -1.0f;
 }
 
 float  TimeSeconds;
@@ -70,7 +70,7 @@ int StartIndex;
 RWTexture2D<float2> HeightBuffer;
 RWTexture2D<float4> SlopeBuffer;
 RWTexture2D<float4> DisplacementBuffer;
-float4 ButterflyLookupTable[];
+float ButterflyLookupTable[];
 
 float4 FFT(float2 w,float4 input1,float4 input2)
 {
@@ -90,7 +90,7 @@ float2 FFT(float2 w, float2 input1, float2 input2)
 	return input1;
 }
 
-[numthreads(8, 8, 8)]
+[numthreads(4, 4, 4)]
 void PerformFFTCS1(
 	uint3 GroupId : SV_GroupID, 
 	uint3 GroupThreadID : SV_GroupThreadID,
@@ -114,7 +114,7 @@ void PerformFFTCS2(
 	uint3 GroupThreadID : SV_GroupThreadID,
 	uint3 DispatchThreadID : SV_DispatchThreadID)
 {
-	int passes = log2(WaveSize); // equal to log(WaveSize)/log(2)
+	int passes = round(log2(WaveSize)); // equal to log(WaveSize)/log(2)
 	int idx = (DispatchThreadID.z + passes) % 2;
 	int idx1 = (DispatchThreadID.z + passes + 1) % 2;
 	int bftIdx = 4 * (DispatchThreadID.y + DispatchThreadID.z * WaveSize);

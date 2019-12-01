@@ -26,7 +26,7 @@ public:
 
 	void EvaluateWavesFFT(float TimeSeconds);
 
-	void InitSpectrum(float TimeSeconds, int32 n, int32 m);
+	FVector2D InitSpectrum(float TimeSeconds, int32 n, int32 m);
 
 	float Dispersion(int32 n, int32 m);
 
@@ -52,7 +52,12 @@ public:
 	float GridLength;
 
 	UPROPERTY(EditAnywhere)
-	FVector WindDirection;
+	FVector WindSpeed;
+
+	UPROPERTY(EditAnywhere)
+	float WaveAmplitude;
+
+	TArray<float> ButterflyLookupTable;
 
 private:
 	TArray<FVector> WavePosition;
@@ -62,6 +67,9 @@ private:
 	TArray<float> DispersionTable;
 
 	// Render resources
+	FTexture2DRHIRef Spectrum;
+	FTexture2DRHIRef SpectrumConj;
+
 	FTexture2DRHIRef HeightBuffer;
 	FTexture2DRHIRef SlopeBuffer;
 	FTexture2DRHIRef DisplacementBuffer;

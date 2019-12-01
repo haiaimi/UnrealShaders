@@ -8,6 +8,8 @@
 
 #define GRAVITY 9.8f
 
+extern void ComputeButterflyLookuptable(int32 Size, int32 Passes, TArray<float>& OutTable);
+
 // Sets default values
 AFFTWaveSimulator::AFFTWaveSimulator():
 	WaveMesh(nullptr),
@@ -17,7 +19,8 @@ AFFTWaveSimulator::AFFTWaveSimulator():
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 
-	WindDirection = FVector(1.f, 1.f, 0.f);
+	WindSpeed = FVector(10.f, 10.f, 0.f);
+	WaveAmplitude = 0.05f;
 	WaveMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("WaveMesh"));
 }
 
@@ -33,6 +36,35 @@ void AFFTWaveSimulator::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+}
+
+FVector2D AFFTWaveSimulator::InitSpectrum(float TimeSeconds, int32 n, int32 m)
+{
+	int32 Index = m * (WaveSize + 1) + n;
+	float Omegat = DispersionTable[Index] * TimeSeconds;
+
+	float Cos = FMath::Cos(Omegat);
+	float Sin = FMath::Sin(Omegat);
+
+	uint32 Stride;
+	if (Spectrum->GetSizeY() > Index && SpectrumConj->GetSizeY() > Index)
+	{
+		FVector2D* SpectrumData = static_cast<FVector2D*>(GDynamicRHI->RHILockTexture2D(Spectrum, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
+		float C0a = SpectrumData[Index].X*Cos - SpectrumData[Index].Y*Sin;
+		float C0b = SpectrumData[Index].X*Sin - SpectrumData[Index].Y*Cos;
+
+		FVector2D* SpectrumConjData = static_cast<FVector2D*>(GDynamicRHI->RHILockTexture2D(SpectrumConj, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
+		float C1a = SpectrumConjData[Index].X*Cos - SpectrumConjData[Index].Y*-Sin;
+		float C1b = SpectrumConjData[Index].X*-Sin - SpectrumConjData[Index].Y*Cos;
+
+		//Unlock
+		GDynamicRHI->RHIUnlockTexture2D(Spectrum, 0, false);
+		GDynamicRHI->RHIUnlockTexture2D(SpectrumConj, 0, false);
+
+		return FVector2D(C0a + C1a, C0b + C1b);
+	}
+
+	return FVector2D::ZeroVector;
 }
 
 float AFFTWaveSimulator::Dispersion(int32 n, int32 m)
@@ -76,28 +108,27 @@ void AFFTWaveSimulator::CreateWaveGrid()
 void AFFTWaveSimulator::CreateResources()
 {
 	FRHIResourceCreateInfo RHIResourceCreateInfo;
+	
+	Spectrum = RHICreateTexture2D(1, (WaveSize + 1)*(WaveSize + 1), PF_G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo);
+	SpectrumConj = RHICreateTexture2D(1, (WaveSize + 1)*(WaveSize + 1), PF_G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo);
 	HeightBuffer = RHICreateTexture2D(2, WaveSize * WaveSize, PF_G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo); //float2
 	SlopeBuffer = RHICreateTexture2D(2, WaveSize * WaveSize, PF_A32B32G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo); //float4
 	DisplacementBuffer = RHICreateTexture2D(2, WaveSize * WaveSize, PF_A32B32G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo); //float4
 	//FUnorderedAccessViewRHIRef TempTextureUAV = RHICreateUnorderedAccessView(TempTexture);
+
+	ComputeButterflyLookuptable(WaveSize, (int32)FMath::Log2(WaveSize), ButterflyLookupTable);
 }
 
 void AFFTWaveSimulator::ComputePositionAndNormal()
 {
-	//FProcMeshSection* MeshSection = WaveMesh->GetProcMeshSection(0);
-	//if (MeshSection)
-	//{
-
-	//}
-
 	if (HeightBuffer->GetSizeY() >= WaveSize * WaveSize && 
 		SlopeBuffer->GetSizeY() >= WaveSize * WaveSize && 
 		DisplacementBuffer->GetSizeY() >= WaveSize * WaveSize)
 	{
 		uint32 Stride;
 		FVector2D* HeightBufferData = static_cast<FVector2D*>(GDynamicRHI->RHILockTexture2D(HeightBuffer, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
-		FVector* SlopeBufferData = static_cast<FVector*>(GDynamicRHI->RHILockTexture2D(SlopeBuffer, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
-		FVector* DisplacementBufferData = static_cast<FVector*>(GDynamicRHI->RHILockTexture2D(DisplacementBuffer, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
+		FVector4* SlopeBufferData = static_cast<FVector4*>(GDynamicRHI->RHILockTexture2D(SlopeBuffer, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
+		FVector4* DisplacementBufferData = static_cast<FVector4*>(GDynamicRHI->RHILockTexture2D(DisplacementBuffer, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
 
 		int32 Sign;
 		static float Signs[2] = { 1.f,-1.f };
