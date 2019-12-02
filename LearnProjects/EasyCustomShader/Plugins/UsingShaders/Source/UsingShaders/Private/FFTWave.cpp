@@ -334,27 +334,29 @@ static void EvaluateWavesFFT_RenderThread(
 
 void AFFTWaveSimulator::ComputeSpectrum()
 {
-	UWorld* World = GetWorld();
-	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
-	FUnorderedAccessViewRHIRef SpectrumUAV;
-	FUnorderedAccessViewRHIRef SpectrumConjUAV;
+	ENQUEUE_RENDER_COMMAND(CaptureCommand)([this](FRHICommandListImmediate& RHICmdList)
+	{
+		UWorld* World = GetWorld();
+		ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
+		FUnorderedAccessViewRHIRef SpectrumUAV;
+		FUnorderedAccessViewRHIRef SpectrumConjUAV;
 
-	if (Spectrum->IsValid())
-	{
-		SpectrumUAV = RHICreateUnorderedAccessView(Spectrum);
-	}
+		CreateResources();
 
-	if (SpectrumConj->IsValid())
-	{
-		SpectrumConjUAV = RHICreateUnorderedAccessView(SpectrumConj);
-	}
-	ENQUEUE_RENDER_COMMAND(CaptureCommand)([FeatureLevel, this ,SpectrumUAV, SpectrumConjUAV](FRHICommandListImmediate& RHICmdList)
-	{
+		if (Spectrum->IsValid())
+		{
+			SpectrumUAV = RHICreateUnorderedAccessView(Spectrum);
+		}
+
+		if (SpectrumConj->IsValid())
+		{
+			SpectrumConjUAV = RHICreateUnorderedAccessView(SpectrumConj);
+		}
 		ComputePhillipsSpecturm_RenderThread(RHICmdList, FeatureLevel, WaveSize, WaveAmplitude, WindSpeed, SpectrumUAV, SpectrumConjUAV);
 	});
 }
 
-void AFFTWaveSimulator::EvaluateWavesFFT(float TimeSeconds)
+void AFFTWaveSimulator::PrepareForFFT(float TimeSeconds)
 {
 	float KX, KY, Len, Lambda = -1.f;
 	int32 Index;
@@ -403,34 +405,38 @@ void AFFTWaveSimulator::EvaluateWavesFFT(float TimeSeconds)
 	GDynamicRHI->RHIUnlockTexture2D(HeightBuffer, 0, false);
 	GDynamicRHI->RHIUnlockTexture2D(SlopeBuffer, 0, false);
 	GDynamicRHI->RHIUnlockTexture2D(DisplacementBuffer, 0, false);
+}
 
-	FUnorderedAccessViewRHIRef HeightBufferUAV;
-	FUnorderedAccessViewRHIRef SlopeBufferUAV;
-	FUnorderedAccessViewRHIRef DisplacementBufferUAV;
-	if (HeightBuffer->IsValid())
-	{
-		HeightBufferUAV = RHICreateUnorderedAccessView(HeightBuffer);
-	}
-
-	if (SlopeBuffer->IsValid())
-	{
-		SlopeBufferUAV = RHICreateUnorderedAccessView(SlopeBuffer);
-	}
-
-	if (SlopeBuffer->IsValid())
-	{
-		DisplacementBufferUAV = RHICreateUnorderedAccessView(DisplacementBuffer);
-	}
-
+void AFFTWaveSimulator::EvaluateWavesFFT(float TimeSeconds)
+{
 	UWorld* World = GetWorld();
 	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
 
 	TWeakObjectPtr<AFFTWaveSimulator> WaveSimulatorPtr(this);
 
-	ENQUEUE_RENDER_COMMAND(CaptureCommand)([FeatureLevel, TimeSeconds, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV, WaveSimulatorPtr](FRHICommandListImmediate& RHICmdList)
+	ENQUEUE_RENDER_COMMAND(CaptureCommand)([FeatureLevel, TimeSeconds, WaveSimulatorPtr](FRHICommandListImmediate& RHICmdList)
 	{
-		if (WaveSimulatorPtr.IsValid())
+		if (WaveSimulatorPtr.Get())
 		{
+			WaveSimulatorPtr->PrepareForFFT(TimeSeconds);
+
+			FUnorderedAccessViewRHIRef HeightBufferUAV;
+			FUnorderedAccessViewRHIRef SlopeBufferUAV;
+			FUnorderedAccessViewRHIRef DisplacementBufferUAV;
+			if (WaveSimulatorPtr->HeightBuffer.IsValid())
+			{
+				HeightBufferUAV = RHICreateUnorderedAccessView(WaveSimulatorPtr->HeightBuffer);
+			}
+
+			if (WaveSimulatorPtr->SlopeBuffer.IsValid())
+			{
+				SlopeBufferUAV = RHICreateUnorderedAccessView(WaveSimulatorPtr->SlopeBuffer);
+			}
+
+			if (WaveSimulatorPtr->SlopeBuffer.IsValid())
+			{
+				DisplacementBufferUAV = RHICreateUnorderedAccessView(WaveSimulatorPtr->DisplacementBuffer);
+			}
 			EvaluateWavesFFT_RenderThread(RHICmdList, FeatureLevel, TimeSeconds, WaveSimulatorPtr->WaveSize, 0, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV, WaveSimulatorPtr);
 			WaveSimulatorPtr->ComputePositionAndNormal();
 		}

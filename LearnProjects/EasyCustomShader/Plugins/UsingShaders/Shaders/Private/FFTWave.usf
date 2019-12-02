@@ -114,7 +114,7 @@ void PerformFFTCS1(
 	DisplacementBuffer[uint2(idx, DispatchThreadID.x + DispatchThreadID.y * WaveSize)] = FFT(w, DisplacementBuffer[uint2(idx1, X + DispatchThreadID.y * WaveSize)], DisplacementBuffer[uint2(idx1, Y + DispatchThreadID.y * WaveSize)]);
 }
 
-[numthreads(8, 8, 8)]
+[numthreads(4, 4, 4)]
 void PerformFFTCS2(
 	uint3 GroupId : SV_GroupID,
 	uint3 GroupThreadID : SV_GroupThreadID,

@@ -29,6 +29,7 @@ void AFFTWaveSimulator::BeginPlay()
 {
 	Super::BeginPlay();
 	
+	InitWaveResource();
 }
 
 // Called every frame
@@ -36,6 +37,22 @@ void AFFTWaveSimulator::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	FProcMeshSection* MeshSection = WaveMesh->GetProcMeshSection(0);
+	if (MeshSection)
+	{
+		TArray<FColor> Colors;
+		TArray<FProcMeshTangent> Tangents;
+		WaveMesh->UpdateMeshSection(0, WaveVertices, WaveNormals, UVs, Colors, Tangents);
+	}
+
+	if (GetWorld())
+		EvaluateWavesFFT(GetWorld()->TimeSeconds);
+}
+
+void AFFTWaveSimulator::InitWaveResource()
+{
+	ComputeSpectrum();
+	CreateWaveGrid();
 }
 
 FVector2D AFFTWaveSimulator::InitSpectrum(float TimeSeconds, int32 n, int32 m)
@@ -78,18 +95,17 @@ float AFFTWaveSimulator::Dispersion(int32 n, int32 m)
 void AFFTWaveSimulator::CreateWaveGrid()
 {
 	TArray<int32> Triangles;
-	TArray<FVector2D> UVs;
 	TArray<FVector2D> UV1;
 	TArray<FColor> Colors;
 	TArray<FProcMeshTangent> Tangents;
-	UKismetProceduralMeshLibrary::CreateGridMeshSplit(WaveSize + 1, WaveSize + 1, Triangles, WaveVertices, UVs, UV1, GridLength);
+	UKismetProceduralMeshLibrary::CreateGridMeshWelded(WaveSize + 1, WaveSize + 1, Triangles, WaveVertices, UVs, GridLength);
 
 	WaveNormals.SetNum((WaveSize + 1) * (WaveSize + 1));
 	WavePosition.SetNum((WaveSize + 1) * (WaveSize + 1));
 	DispersionTable.SetNum((WaveSize + 1) * (WaveSize + 1));
 
 	for (int32 i = 0; i < WaveSize + 1; ++i)
-		for (int32 j = 0; i < WaveSize + 1; ++j)
+		for (int32 j = 0; j < WaveSize + 1; ++j)
 		{
 			int32 Index = i * (WaveSize + 1) + j;
 			WaveNormals[Index] = FVector(0.f, 0.f, 1.f);

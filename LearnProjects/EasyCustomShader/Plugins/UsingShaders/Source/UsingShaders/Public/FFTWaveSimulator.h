@@ -24,6 +24,10 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
+	void InitWaveResource();
+
+	void PrepareForFFT(float TimeSeconds);
+
 	void EvaluateWavesFFT(float TimeSeconds);
 
 	FVector2D InitSpectrum(float TimeSeconds, int32 n, int32 m);
@@ -65,6 +69,7 @@ private:
 	TArray<FVector> WavePosition;
 	TArray<FVector> WaveVertices;
 	TArray<FVector> WaveNormals;
+	TArray<FVector2D> UVs;
 
 	TArray<float> DispersionTable;
 
