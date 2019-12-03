@@ -314,22 +314,24 @@ static void EvaluateWavesFFT_RenderThread(
 	TShaderMapRef<FWaveFFTCS<1>> WaveFFTCS1(GetGlobalShaderMap(FeatureLevel));
 	TShaderMapRef<FWaveFFTCS<2>> WaveFFTCS2(GetGlobalShaderMap(FeatureLevel));
 
-	/*void* CapsuleShapeLockedData = RHILockVertexBuffer(View.ViewState->IndirectShadowCapsuleShapesVertexBuffer, 0, DataSize, RLM_WriteOnly);
-	FPlatformMemory::Memcpy(CapsuleShapeLockedData, CapsuleShapeData.GetData(), DataSize);
-	RHIUnlockVertexBuffer(View.ViewState->IndirectShadowCapsuleShapesVertexBuffer);*/
-
 	FShaderResourceViewRHIRef IndirectShadowCapsuleShapesSRV;
 
 	int32 Passes = FMath::RoundToInt(FMath::Log2(WaveSize));
-	RHICmdList.SetComputeShader(WaveFFTCS1->GetComputeShader());
-	WaveFFTCS1->SetParameters(RHICmdList, TimeSeconds, WaveSize, StartIndex, WaveSimulator->ButterflyLookupTableSRV, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV);
-	DispatchComputeShader(RHICmdList, *WaveFFTCS1, FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), FMath::DivideAndRoundUp(Passes, WAVE_GROUP_THREAD_COUNTS)); 
-	WaveFFTCS1->UnbindUAV(RHICmdList);
+	for (int32 i = 0; i < Passes; ++i)
+	{
+		RHICmdList.SetComputeShader(WaveFFTCS1->GetComputeShader());
+		WaveFFTCS1->SetParameters(RHICmdList, TimeSeconds, WaveSize, i, WaveSimulator->ButterflyLookupTableSRV, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV);
+		DispatchComputeShader(RHICmdList, *WaveFFTCS1, FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), 1);
+		WaveFFTCS1->UnbindUAV(RHICmdList);
+	}
 
-	RHICmdList.SetComputeShader(WaveFFTCS2->GetComputeShader());
-	WaveFFTCS2->SetParameters(RHICmdList, TimeSeconds, WaveSize, StartIndex, WaveSimulator->ButterflyLookupTableSRV, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV);
-	DispatchComputeShader(RHICmdList, *WaveFFTCS2, FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), FMath::DivideAndRoundUp(Passes, WAVE_GROUP_THREAD_COUNTS)); 
-	WaveFFTCS2->UnbindUAV(RHICmdList);
+	for (int32 i = 0; i < Passes; ++i)
+	{
+		RHICmdList.SetComputeShader(WaveFFTCS2->GetComputeShader());
+		WaveFFTCS2->SetParameters(RHICmdList, TimeSeconds, WaveSize, i, WaveSimulator->ButterflyLookupTableSRV, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV);
+		DispatchComputeShader(RHICmdList, *WaveFFTCS2, FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), 1);
+		WaveFFTCS2->UnbindUAV(RHICmdList);
+	}
 }
 
 void AFFTWaveSimulator::ComputeSpectrum()

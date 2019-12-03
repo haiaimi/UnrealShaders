@@ -96,15 +96,15 @@ float2 FFT(float2 w, float2 input1, float2 input2)
 	return input1;
 }
 
-[numthreads(4, 4, 4)]
+[numthreads(4, 4, 1)]
 void PerformFFTCS1(
 	uint3 GroupId : SV_GroupID, 
 	uint3 GroupThreadID : SV_GroupThreadID,
 	uint3 DispatchThreadID : SV_DispatchThreadID)
 {
-	int idx = DispatchThreadID.z % 2;
-	int idx1 = (DispatchThreadID.z + 1) % 2;
-	int bftIdx = 4 * (DispatchThreadID.x + DispatchThreadID.z * WaveSize);
+	int idx = StartIndex % 2;
+	int idx1 = (StartIndex + 1) % 2;
+	int bftIdx = 4 * (DispatchThreadID.x + StartIndex * WaveSize);
 	
 	int X = (int) ButterflyLookupTable[bftIdx + 0];
 	int Y = (int) ButterflyLookupTable[bftIdx + 1];
@@ -114,16 +114,16 @@ void PerformFFTCS1(
 	DisplacementBuffer[uint2(idx, DispatchThreadID.x + DispatchThreadID.y * WaveSize)] = FFT(w, DisplacementBuffer[uint2(idx1, X + DispatchThreadID.y * WaveSize)], DisplacementBuffer[uint2(idx1, Y + DispatchThreadID.y * WaveSize)]);
 }
 
-[numthreads(4, 4, 4)]
+[numthreads(4, 4, 1)]
 void PerformFFTCS2(
 	uint3 GroupId : SV_GroupID,
 	uint3 GroupThreadID : SV_GroupThreadID,
 	uint3 DispatchThreadID : SV_DispatchThreadID)
 {
 	int passes = round(log2(WaveSize)); // equal to log(WaveSize)/log(2)
-	int idx = (DispatchThreadID.z + passes) % 2;
-	int idx1 = (DispatchThreadID.z + passes + 1) % 2;
-	int bftIdx = 4 * (DispatchThreadID.y + DispatchThreadID.z * WaveSize);
+	int idx = (StartIndex + passes) % 2;
+	int idx1 = (StartIndex + passes + 1) % 2;
+	int bftIdx = 4 * (DispatchThreadID.y + StartIndex * WaveSize);
 	
 	int X = (int) ButterflyLookupTable[bftIdx + 0];
 	int Y = (int) ButterflyLookupTable[bftIdx + 1];
