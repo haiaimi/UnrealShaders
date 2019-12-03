@@ -131,6 +131,11 @@ public:
 		HeightBuffer.Bind(Initializer.ParameterMap, TEXT("HeightBuffer"));
 		SlopeBuffer.Bind(Initializer.ParameterMap, TEXT("SlopeBuffer"));
 		DisplacementBuffer.Bind(Initializer.ParameterMap, TEXT("DisplacementBuffer"));
+		InputSampler.Bind(Initializer.ParameterMap, TEXT("BufferSampler"));
+
+		RWHeightBuffer.Bind(Initializer.ParameterMap, TEXT("RWHeightBuffer"));
+		RWSlopeBuffer.Bind(Initializer.ParameterMap, TEXT("RWSlopeBuffer"));
+		RWDisplacementBuffer.Bind(Initializer.ParameterMap, TEXT("RWDisplacementBuffer"));
 	}
 
 	static bool ShouldCache(EShaderPlatform Platform)
@@ -155,6 +160,9 @@ public:
 		int32 InWaveSize,
 		int32 InStartIndex,
 		FShaderResourceViewRHIParamRef InButterflyLookupTable,
+		FTextureRHIParamRef InHeightBuffer,
+		FTextureRHIParamRef InSlopeBuffer,
+		FTextureRHIParamRef InDisplacementBuffer,
 		FUnorderedAccessViewRHIRef HeightBufferUAV, 
 		FUnorderedAccessViewRHIRef SlopeBufferUAV, 
 		FUnorderedAccessViewRHIRef DisplacementBufferUAV
@@ -164,6 +172,10 @@ public:
 		SetShaderValue(RHICmdList, GetComputeShader(), WaveSize, InWaveSize);
 		SetShaderValue(RHICmdList, GetComputeShader(), StartIndex, InStartIndex);
 		//SetShaderValueArray(RHICmdList, GetComputeShader(), ButterflyLookupTable, InButterflyLookupTable.GetData(), InButterflyLookupTable.Num());
+
+		SetTextureParameter(RHICmdList, GetComputeShader(), HeightBuffer, InputSampler, TStaticSamplerState<SF_AnisotropicLinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InHeightBuffer);
+		SetTextureParameter(RHICmdList, GetComputeShader(), SlopeBuffer, InputSampler, TStaticSamplerState<SF_AnisotropicLinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InSlopeBuffer);
+		SetTextureParameter(RHICmdList, GetComputeShader(), DisplacementBuffer, InputSampler, TStaticSamplerState<SF_AnisotropicLinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InDisplacementBuffer);
 
 		if (HeightBuffer.IsBound())
 			RHICmdList.SetUAVParameter(GetComputeShader(), HeightBuffer.GetBaseIndex(), HeightBufferUAV);
@@ -206,9 +218,15 @@ private:
 	FShaderParameter StartIndex;
 
 	FShaderResourceParameter ButterflyLookupTable;
+
 	FShaderResourceParameter HeightBuffer;
 	FShaderResourceParameter SlopeBuffer;
 	FShaderResourceParameter DisplacementBuffer;
+	FShaderResourceParameter InputSampler;
+
+	FShaderResourceParameter RWHeightBuffer;
+	FShaderResourceParameter RWSlopeBuffer;
+	FShaderResourceParameter RWDisplacementBuffer;
 };
 
 IMPLEMENT_SHADER_TYPE(template<>, FWaveFFTCS<1>,  TEXT("/Plugins/Shaders/Private/FFTWave.usf"), TEXT("PerformFFTCS1"), SF_Compute)
@@ -304,6 +322,9 @@ static void EvaluateWavesFFT_RenderThread(
 	float TimeSeconds,
 	int32 WaveSize,
 	int32 StartIndex,
+	FTextureRHIParamRef HeightBuffer,
+	FTextureRHIParamRef SlopeBuffer,
+	FTextureRHIParamRef DisplacementBuffer,
 	FUnorderedAccessViewRHIRef HeightBufferUAV,
 	FUnorderedAccessViewRHIRef SlopeBufferUAV,
 	FUnorderedAccessViewRHIRef DisplacementBufferUAV,
@@ -320,7 +341,7 @@ static void EvaluateWavesFFT_RenderThread(
 	for (int32 i = 0; i < Passes; ++i)
 	{
 		RHICmdList.SetComputeShader(WaveFFTCS1->GetComputeShader());
-		WaveFFTCS1->SetParameters(RHICmdList, TimeSeconds, WaveSize, i, WaveSimulator->ButterflyLookupTableSRV, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV);
+		WaveFFTCS1->SetParameters(RHICmdList, TimeSeconds, WaveSize, i, WaveSimulator->ButterflyLookupTableSRV, HeightBuffer, SlopeBuffer, DisplacementBuffer, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV);
 		DispatchComputeShader(RHICmdList, *WaveFFTCS1, FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), 1);
 		WaveFFTCS1->UnbindUAV(RHICmdList);
 	}
@@ -328,7 +349,7 @@ static void EvaluateWavesFFT_RenderThread(
 	for (int32 i = 0; i < Passes; ++i)
 	{
 		RHICmdList.SetComputeShader(WaveFFTCS2->GetComputeShader());
-		WaveFFTCS2->SetParameters(RHICmdList, TimeSeconds, WaveSize, i, WaveSimulator->ButterflyLookupTableSRV, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV);
+		WaveFFTCS2->SetParameters(RHICmdList, TimeSeconds, WaveSize, i, WaveSimulator->ButterflyLookupTableSRV, HeightBuffer, SlopeBuffer, DisplacementBuffer, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV);
 		DispatchComputeShader(RHICmdList, *WaveFFTCS2, FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), 1);
 		WaveFFTCS2->UnbindUAV(RHICmdList);
 	}
@@ -338,6 +359,26 @@ void AFFTWaveSimulator::ComputeSpectrum()
 {
 	ENQUEUE_RENDER_COMMAND(CaptureCommand)([this](FRHICommandListImmediate& RHICmdList)
 	{
+		FRHIResourceCreateInfo RHIResourceCreateInfo;
+	
+		/// Test texture stride
+		/*FTexture2DRHIRef TestTexture = RHICreateTexture2D(256, 3, PF_R32_FLOAT, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo);
+		uint32 Stride;
+		int32* Data = static_cast<int32*>(RHILockTexture2D(TestTexture, 0, EResourceLockMode::RLM_WriteOnly, Stride, false));
+		*Data++ = 1;
+		*Data++ = 2;
+		*Data++ = 3;
+		*Data++ = 4;
+		RHIUnlockTexture2D(TestTexture, 0, false);
+
+		int8* Data2 = static_cast<int8*>(RHILockTexture2D(TestTexture, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
+		int32 a = *(int32*)Data2;
+		int32 b = *(int32*)(Data2 + 4);
+		Data2 += Stride;
+		int32 c = *(int32*)Data2;
+		int32 d = *(int32*)(Data2 + 4);
+		RHIUnlockTexture2D(TestTexture, 0, false);*/
+
 		UWorld* World = GetWorld();
 		ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
 		FUnorderedAccessViewRHIRef SpectrumUAV;
@@ -363,9 +404,12 @@ void AFFTWaveSimulator::PrepareForFFT(float TimeSeconds)
 	float KX, KY, Len, Lambda = -1.f;
 	int32 Index;
 	uint32 Stride;
-	FVector2D* HeightBufferData = static_cast<FVector2D*>(GDynamicRHI->RHILockTexture2D(HeightBuffer, 0, EResourceLockMode::RLM_WriteOnly, Stride, false));
-	FVector4* SlopeBufferData = static_cast<FVector4*>(GDynamicRHI->RHILockTexture2D(SlopeBuffer, 0, EResourceLockMode::RLM_WriteOnly, Stride, false));
-	FVector4* DisplacementBufferData = static_cast<FVector4*>(GDynamicRHI->RHILockTexture2D(DisplacementBuffer, 0, EResourceLockMode::RLM_WriteOnly, Stride, false));
+	FVector2D* HeightBufferData = static_cast<FVector2D*>(RHILockTexture2D(HeightBuffer, 0, EResourceLockMode::RLM_WriteOnly, Stride, false));
+	HeightBufferData += Stride / sizeof(FVector2D);
+	FVector4* SlopeBufferData = static_cast<FVector4*>(RHILockTexture2D(SlopeBuffer, 0, EResourceLockMode::RLM_WriteOnly, Stride, false));
+	SlopeBufferData += Stride / sizeof(FVector4);
+	FVector4* DisplacementBufferData = static_cast<FVector4*>(RHILockTexture2D(DisplacementBuffer, 0, EResourceLockMode::RLM_WriteOnly, Stride, false));
+	DisplacementBufferData += Stride / sizeof(FVector4);
 
 	for (int32 m = 0; m < WaveSize; ++m)
 	{
@@ -378,35 +422,35 @@ void AFFTWaveSimulator::PrepareForFFT(float TimeSeconds)
 
 			FVector2D C = InitSpectrum(TimeSeconds, n, m);
 
-			HeightBufferData[WaveSize * WaveSize + Index].X = C.X;
-			HeightBufferData[WaveSize * WaveSize + Index].Y = C.Y;
+			HeightBufferData[Index].X = C.X;
+			HeightBufferData[Index].Y = C.Y;
 
-			SlopeBufferData[WaveSize*WaveSize + Index].X = -C.Y * KX;
-			SlopeBufferData[WaveSize*WaveSize + Index].Z = C.X * KX;
-			SlopeBufferData[WaveSize*WaveSize + Index].Y = -C.Y * KY;
-			SlopeBufferData[WaveSize*WaveSize + Index].Z = C.X * KY;
+			SlopeBufferData[Index].X = -C.Y * KX;
+			SlopeBufferData[Index].Z = C.X * KX;
+			SlopeBufferData[Index].Y = -C.Y * KY;
+			SlopeBufferData[Index].Z = C.X * KY;
 
 			if (Len < 0.000001f)
 			{
-				DisplacementBufferData[WaveSize*WaveSize + Index].X = 0.f;
-				DisplacementBufferData[WaveSize*WaveSize + Index].Y = 0.f;
-				DisplacementBufferData[WaveSize*WaveSize + Index].Z = 0.f;
-				DisplacementBufferData[WaveSize*WaveSize + Index].W = 0.f;
+				DisplacementBufferData[Index].X = 0.f;
+				DisplacementBufferData[Index].Y = 0.f;
+				DisplacementBufferData[Index].Z = 0.f;
+				DisplacementBufferData[Index].W = 0.f;
 			}
 			else
 			{
-				DisplacementBufferData[WaveSize*WaveSize + Index].X = -C.Y * -(KX / Len);
-				DisplacementBufferData[WaveSize*WaveSize + Index].Y = C.X * -(KX / Len);
-				DisplacementBufferData[WaveSize*WaveSize + Index].Z = -C.Y * -(KY / Len);
-				DisplacementBufferData[WaveSize*WaveSize + Index].W = C.X * -(KY / Len);
+				DisplacementBufferData[Index].X = -C.Y * -(KX / Len);
+				DisplacementBufferData[Index].Y = C.X * -(KX / Len);
+				DisplacementBufferData[Index].Z = -C.Y * -(KY / Len);
+				DisplacementBufferData[Index].W = C.X * -(KY / Len);
 			}
 		}
 	}
 
 	// Unlock the buffers
-	GDynamicRHI->RHIUnlockTexture2D(HeightBuffer, 0, false);
-	GDynamicRHI->RHIUnlockTexture2D(SlopeBuffer, 0, false);
-	GDynamicRHI->RHIUnlockTexture2D(DisplacementBuffer, 0, false);
+	RHIUnlockTexture2D(HeightBuffer, 0, false);
+	RHIUnlockTexture2D(SlopeBuffer, 0, false);
+	RHIUnlockTexture2D(DisplacementBuffer, 0, false);
 }
 
 void AFFTWaveSimulator::EvaluateWavesFFT(float TimeSeconds)
@@ -425,21 +469,21 @@ void AFFTWaveSimulator::EvaluateWavesFFT(float TimeSeconds)
 			FUnorderedAccessViewRHIRef HeightBufferUAV;
 			FUnorderedAccessViewRHIRef SlopeBufferUAV;
 			FUnorderedAccessViewRHIRef DisplacementBufferUAV;
-			if (WaveSimulatorPtr->HeightBuffer.IsValid())
+			if (WaveSimulatorPtr->HeightBuffer.GetReference())
 			{
 				HeightBufferUAV = RHICreateUnorderedAccessView(WaveSimulatorPtr->HeightBuffer);
 			}
 
-			if (WaveSimulatorPtr->SlopeBuffer.IsValid())
+			if (WaveSimulatorPtr->SlopeBuffer.GetReference())
 			{
 				SlopeBufferUAV = RHICreateUnorderedAccessView(WaveSimulatorPtr->SlopeBuffer);
 			}
 
-			if (WaveSimulatorPtr->SlopeBuffer.IsValid())
+			if (WaveSimulatorPtr->SlopeBuffer.GetReference())
 			{
 				DisplacementBufferUAV = RHICreateUnorderedAccessView(WaveSimulatorPtr->DisplacementBuffer);
 			}
-			EvaluateWavesFFT_RenderThread(RHICmdList, FeatureLevel, TimeSeconds, WaveSimulatorPtr->WaveSize, 0, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV, WaveSimulatorPtr);
+			EvaluateWavesFFT_RenderThread(RHICmdList, FeatureLevel, TimeSeconds, WaveSimulatorPtr->WaveSize, 0, WaveSimulatorPtr->HeightBuffer, WaveSimulatorPtr->SlopeBuffer,WaveSimulatorPtr->DisplacementBuffer, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV, WaveSimulatorPtr);
 			WaveSimulatorPtr->ComputePositionAndNormal();
 		}
 	});
