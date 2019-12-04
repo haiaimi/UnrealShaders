@@ -177,10 +177,10 @@ public:
 		SetTextureParameter(RHICmdList, GetComputeShader(), SlopeBuffer, InputSampler, TStaticSamplerState<SF_AnisotropicLinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InSlopeBuffer);
 		SetTextureParameter(RHICmdList, GetComputeShader(), DisplacementBuffer, InputSampler, TStaticSamplerState<SF_AnisotropicLinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InDisplacementBuffer);
 
-		if (HeightBuffer.IsBound())
-			RHICmdList.SetUAVParameter(GetComputeShader(), HeightBuffer.GetBaseIndex(), HeightBufferUAV);
-		if (SlopeBuffer.IsBound())
-			RHICmdList.SetUAVParameter(GetComputeShader(), SlopeBuffer.GetBaseIndex(), SlopeBufferUAV);
+		if (RWHeightBuffer.IsBound())
+			RHICmdList.SetUAVParameter(GetComputeShader(), RWHeightBuffer.GetBaseIndex(), HeightBufferUAV);
+		if (RWSlopeBuffer.IsBound())
+			RHICmdList.SetUAVParameter(GetComputeShader(), RWSlopeBuffer.GetBaseIndex(), SlopeBufferUAV);
 		if (DisplacementBuffer.IsBound())
 			RHICmdList.SetUAVParameter(GetComputeShader(), DisplacementBuffer.GetBaseIndex(), DisplacementBufferUAV);
 
@@ -195,8 +195,8 @@ public:
 			RHICmdList.SetUAVParameter(GetComputeShader(), HeightBuffer.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
 		if (SlopeBuffer.IsBound())
 			RHICmdList.SetUAVParameter(GetComputeShader(), SlopeBuffer.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
-		if (DisplacementBuffer.IsBound())
-			RHICmdList.SetUAVParameter(GetComputeShader(), DisplacementBuffer.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
+		if (RWDisplacementBuffer.IsBound())
+			RHICmdList.SetUAVParameter(GetComputeShader(), RWDisplacementBuffer.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
 	}
 
 	virtual bool Serialize(FArchive& Ar) override
