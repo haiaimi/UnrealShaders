@@ -82,7 +82,7 @@ public:
 
 	void SmoothPhysics(float DeltaTime, FBodyInstance* BodyInstance);
 
-	void AdjustVehicleOrientation();
+	void AdjustVehicleOrientation(const FVehicleState& InState);
 
 	FVehicleState MovementPrediction(float DestTime, FVehicleState* PreState, FVehicleState* StartState, FVehicleState* EndState = nullptr);
 

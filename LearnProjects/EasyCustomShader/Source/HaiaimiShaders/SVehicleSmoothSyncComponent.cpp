@@ -236,8 +236,8 @@ void USVehicleSmoothSyncComponent::Interpolate(float DestTime, FVehicleState* St
 		FBodyInstance* BodyInstance = UpdatedComponent->GetBodyInstance();
 
 		float LerpAlpha = (DestTime - StartState->OwnerTime) / (EndState->OwnerTime - StartState->OwnerTime);
-		TargetVehicleState.Position = EndState->Position;
-		TargetVehicleState.Rotation = EndState->Rotation;
+		TargetVehicleState.Position = FMath::Lerp(FVector(BodyState.Position), EndState->Position, LerpAlpha);
+		TargetVehicleState.Rotation = FQuat::Slerp(BodyState.Quaternion, EndState->Rotation, LerpAlpha);
 		FVector DiffVec = TargetVehicleState.Position - BodyState.Position;
 		/*if (GetOwnerRole() == ROLE_SimulatedProxy)
 			UKismetSystemLibrary::PrintString(this, TEXT("Interpolate:")+FString::SanitizeFloat(DiffVec.Size()));*/
@@ -254,7 +254,7 @@ void USVehicleSmoothSyncComponent::Interpolate(float DestTime, FVehicleState* St
 		{
 			if ((TargetVehicleState.Position  - BodyState.Position).Size() > 5.f)
 				BodyInstance->SetLinearVelocity(TargetVehicleState.LinearVelocity, false, false);
-			FQuat DeltaQuat = BodyState.Quaternion.Inverse() * EndState->Rotation;
+			FQuat DeltaQuat = BodyState.Quaternion.Inverse() * TargetVehicleState.Rotation;
 			FVector AngDiffAxis;
 			float AngDiff;
 			DeltaQuat.ToAxisAndAngle(AngDiffAxis, AngDiff);
@@ -299,7 +299,7 @@ void USVehicleSmoothSyncComponent::Extrapolate(float DestTime, FVehicleState* La
 			FBodyInstance* BodyInstance = UpdatedComponent->GetBodyInstance();
 			FVector DiffVec = LastState->Position - BodyState.Position;
 			FVector AngularVelocity = FMath::Lerp(FVector(BodyState.AngVel), LastState->AngularVelocity, AngleVelocityLerp);
-			FQuat DeltaQuat = BodyState.Quaternion.Inverse() * LastState->Rotation;
+			FQuat DeltaQuat = BodyState.Quaternion.Inverse() * FQuat::Slerp(BodyState.Quaternion, LastState->Rotation, 0.7f);
 			FVector AngDiffAxis;
 			float AngDiff;
 			DeltaQuat.ToAxisAndAngle(AngDiffAxis, AngDiff);
@@ -308,6 +308,7 @@ void USVehicleSmoothSyncComponent::Extrapolate(float DestTime, FVehicleState* La
 			FVector NewPosition = FMath::Lerp(FVector(BodyState.Position), LastState->Position, PositionLerp);
 			FQuat NewRotation = FQuat::Slerp(BodyState.Quaternion, LastState->Rotation, AngleLerp);
 			//BodyInstance->SetBodyTransform(FTransform(NewRotation, NewPosition), ETeleportType::TeleportPhysics);
+			//UpdatedComponent->SetWorldRotation(NewRotation, false, nullptr, ETeleportType::TeleportPhysics);
 
 			FVehicleState TempState;
 			TempState.CopyFromRigidState(BodyState);
@@ -318,12 +319,24 @@ void USVehicleSmoothSyncComponent::Extrapolate(float DestTime, FVehicleState* La
 			{
 				FVector NewLinVel = FMath::Lerp(CurState->LinearVelocity, LastState->LinearVelocity, LinearVelocityLerp) + DiffVec * GetWorld()->GetDeltaSeconds() * ExtrapolationCoefficient;
 				BodyInstance->SetLinearVelocity(NewLinVel, false, false);
+
+				if (GetOwnerRole() == ROLE_SimulatedProxy)
+				{
+					UKismetSystemLibrary::PrintString(this, TEXT("Velocity length:") + FString::SanitizeFloat(NewLinVel.Size()));
+					//UKismetSystemLibrary::PrintString(this, TEXT("Extrapolate:") + FString::SanitizeFloat((LastState->LinearVelocity + DiffVec).Size()));
+				}
 			}
 
 			if (FMath::Abs(AngDiff) > MinAngleTolerance && FMath::Abs(AngDiff) < MaxAngleTolerance)
 			{
 				FVector NewAngVel = AngularVelocity + AngDiffAxis * AngDiff * GetWorld()->GetDeltaSeconds() * InterAngCoefficient;
 				BodyInstance->SetAngularVelocityInRadians(FMath::DegreesToRadians(NewAngVel), false, false);
+				
+				if (GetOwnerRole() == ROLE_SimulatedProxy)
+				{
+					UKismetSystemLibrary::PrintString(this, TEXT("Angula Vel length:") + FString::SanitizeFloat(NewAngVel.Size()));
+					//UKismetSystemLibrary::PrintString(this, TEXT("Extrapolate:") + FString::SanitizeFloat((LastState->LinearVelocity + DiffVec).Size()));
+				}
 			}
 			else if (FMath::Abs(AngDiff) >= MaxAngleTolerance)
 			{
@@ -357,7 +370,7 @@ FVehicleState* USVehicleSmoothSyncComponent::GetNearestStateSnapshot(const FVehi
 		i++;
 		const FVector FromForward = HeadState->GetValue().Position - InState.Position;
 		const FVector FromBackward = HeadState->GetNextNode()->GetValue().Position - InState.Position;
-		if (FVector::DotProduct(FromForward, FromBackward) < 0.f)
+		if (FVector::DotProduct(FromForward, FromBackward) < 0.f && FVector::DotProduct(InState.LinearVelocity, HeadState->GetValue().LinearVelocity) >= 0.f)
 		{
 			const FVector SnapshotInterval = HeadState->GetValue().Position - HeadState->GetNextNode()->GetValue().Position;
 			const float Mid = FVector::DotProduct(InState.Position - HeadState->GetNextNode()->GetValue().Position, SnapshotInterval) / (FMath::Pow(SnapshotInterval.Size(), 2));
@@ -390,6 +403,8 @@ void USVehicleSmoothSyncComponent::AdjustVehicleOrientation(const FVehicleState&
 	FRigidBodyState BodyState;
 	UpdatedComponent->GetRigidBodyState(BodyState);
 	FVector DestRightDir = InState.Rotation.GetRightVector();
+	FVector DestForwardDir = InState.Rotation.GetForwardVector();
+	FVector DestUpDir = InState.Rotation.GetUpVector();
 	FVector RightVec = BodyState.Quaternion.GetRightVector();
 }
 
