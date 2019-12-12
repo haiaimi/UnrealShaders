@@ -72,6 +72,10 @@ public:
 
 	void AddState(FVehicleState NewState);
 
+	UFUNCTION(BlueprintCallable)
+	static void AdjustOrientation(class UStaticMeshComponent* LMesh, class UStaticMeshComponent* RMesh);
+
+private:
 	void SmoothVehicleMovement(float DeltaTime);
 
 	void Interpolate(float DestTime, FVehicleState* StartState, FVehicleState* EndState);
@@ -85,6 +89,8 @@ public:
 	void AdjustVehicleOrientation(const FVehicleState& InState);
 
 	FVehicleState MovementPrediction(float DestTime, FVehicleState* PreState, FVehicleState* StartState, FVehicleState* EndState = nullptr);
+
+	void PrintDebug(FString&& InString);
 
 private:
 	UPROPERTY(EditDefaultsOnly, meta = (ClampMin = 1, ClampMax = 50), Category = BaseConfig)
