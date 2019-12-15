@@ -223,7 +223,7 @@ void USVehicleSmoothSyncComponent::SmoothVehicleMovement(float DeltaTime)
 			if (UpdatedComponent)
 			{
 				FVector DiffVec = TargetState->GetValue().Position - BodyState.Position;
-				UpdatedComponent->SetPhysicsLinearVelocity(BodyState.LinVel + DiffVec * GetWorld()->GetDeltaSeconds() * InterVelCoefficient);
+				//UpdatedComponent->SetPhysicsLinearVelocity(BodyState.LinVel + DiffVec * GetWorld()->GetDeltaSeconds() * InterVelCoefficient);
 				FQuat DeltaQuat = BodyState.Quaternion.Inverse() * EndState.Rotation;
 				FVector AngDiffAxis;
 				float AngDiff;
@@ -290,11 +290,13 @@ void USVehicleSmoothSyncComponent::Interpolate(float DestTime, FVehicleState* St
 			float AngDiff;
 			DeltaQuat.ToAxisAndAngle(AngDiffAxis, AngDiff);
 			AngDiff = FMath::RadiansToDegrees(FMath::UnwindRadians(AngDiff));
-			DrawDebugDirectionalArrow(GetWorld(), BodyState.Position, BodyState.Position + AngDiffAxis * AngDiffAxis * 100.f, 100.f, FColor::Green, false, -1, 0, 3.f);
+			DrawDebugDirectionalArrow(GetWorld(), BodyState.Position, BodyState.Position + AngDiffAxis * AngDiff*10.f, 100.f, FColor::Green, false, -1, 0, 3.f);
 			FQuat OutDiff;
+			if (AngDiff < 3.f)return;
 			bool bTeleportRotation = AdjustVehicleOrientation(TargetVehicleState, OutDiff);
 			if (bTeleportRotation)
 			{
+				PrintDebug(TEXT("In correction"));
 				UpdatedComponent->SetWorldRotation(OutDiff * BodyState.Quaternion, false, nullptr, ETeleportType::TeleportPhysics);
 			}
 			else
@@ -441,10 +443,10 @@ bool USVehicleSmoothSyncComponent::AdjustVehicleOrientation(const FVehicleState&
 	FVector Pitch2D = (FVector::PointPlaneProject(CurState.Position + CurForwardDir, PlaneUpForward) - FVector::PointPlaneProject(CurState.Position, PlaneUpForward)).GetSafeNormal();
 	float CosValue_Up = FVector::DotProduct(Pitch2D, DestUpDir);
 	
-	const FVector RightUp = FVector(FMath::Cos(FMath::DegreesToRadians(YawDiffTolerance)), FMath::Sin(FMath::DegreesToRadians(YawDiffTolerance)), FMath::Sin(FMath::DegreesToRadians(PitchDiffTolerance)));
-	const FVector RightDown = FVector(FMath::Cos(FMath::DegreesToRadians(YawDiffTolerance)), FMath::Sin(FMath::DegreesToRadians(YawDiffTolerance)), -FMath::Sin(FMath::DegreesToRadians(PitchDiffTolerance)));
-	const FVector LeftUp = FVector(FMath::Cos(FMath::DegreesToRadians(YawDiffTolerance)), -FMath::Sin(FMath::DegreesToRadians(YawDiffTolerance)), FMath::Sin(FMath::DegreesToRadians(PitchDiffTolerance)));
-	const FVector LeftDown = FVector(FMath::Cos(FMath::DegreesToRadians(YawDiffTolerance)), -FMath::Sin(FMath::DegreesToRadians(YawDiffTolerance)), -FMath::Sin(FMath::DegreesToRadians(PitchDiffTolerance)));
+	const FVector RightUp = FVector(FMath::Cos(FMath::DegreesToRadians(YawDiffTolerance)), FMath::Sin(FMath::DegreesToRadians(YawDiffTolerance)), FMath::Tan(FMath::DegreesToRadians(PitchDiffTolerance)));
+	const FVector RightDown = FVector(FMath::Cos(FMath::DegreesToRadians(YawDiffTolerance)), FMath::Sin(FMath::DegreesToRadians(YawDiffTolerance)), -FMath::Tan(FMath::DegreesToRadians(PitchDiffTolerance)));
+	const FVector LeftUp = FVector(FMath::Cos(FMath::DegreesToRadians(YawDiffTolerance)), -FMath::Sin(FMath::DegreesToRadians(YawDiffTolerance)), FMath::Tan(FMath::DegreesToRadians(PitchDiffTolerance)));
+	const FVector LeftDown = FVector(FMath::Cos(FMath::DegreesToRadians(YawDiffTolerance)), -FMath::Sin(FMath::DegreesToRadians(YawDiffTolerance)), -FMath::Tan(FMath::DegreesToRadians(PitchDiffTolerance)));
 
 	///For pitch,yaw
 	FPlane PlaneYZ(InState.Position, InState.Position + DestForwardDir, InState.Position + CurForwardDir);
@@ -453,20 +455,20 @@ bool USVehicleSmoothSyncComponent::AdjustVehicleOrientation(const FVehicleState&
 	
 	if (FVector::DotProduct(CurForwardDir, DestUpDir) > 0.f)
 	{
-		PlaneVert = FPlane(InState.Position, InState.Position + RightUp, InState.Position + LeftUp);
+		PlaneVert = FPlane(InState.Position, FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(RightUp), FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(LeftUp));
 	}
 	else
 	{
-		PlaneVert = FPlane(InState.Position, InState.Position + RightDown, InState.Position + LeftDown);
+		PlaneVert = FPlane(InState.Position, FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(RightDown), FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(LeftDown));
 	}
 
 	if (FVector::DotProduct(CurForwardDir, DestRightDir) > 0.f)
 	{
-		PlaneHoriz = FPlane(InState.Position, InState.Position + RightUp, InState.Position + RightDown);
+		PlaneHoriz = FPlane(InState.Position, FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(RightUp), FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(RightDown));
 	}
 	else
 	{
-		PlaneHoriz = FPlane(InState.Position, InState.Position + LeftUp, InState.Position + LeftDown);
+		PlaneHoriz = FPlane(InState.Position, FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(LeftUp), FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(LeftDown));
 	}
 	bPitchInDiff = IsPointInCone(PlaneVert, InState.Position + CurForwardDir, InState.Position + DestForwardDir);
 	bYawInDiff = IsPointInCone(PlaneHoriz, InState.Position + CurForwardDir, InState.Position + DestForwardDir);
@@ -486,11 +488,11 @@ bool USVehicleSmoothSyncComponent::AdjustVehicleOrientation(const FVehicleState&
 		{
 			if(IsPointInCone(PlaneYZ, InState.Position + VertInteractDir, InState.Position + DestForwardDir))
 			{
-				RotateAngleRadian = FMath::Acos(FVector::DotProduct(CurForwardDir, VertInteractDir));
+				RotateAngleRadian = FMath::Acos(FVector::DotProduct(CurForwardDir, VertInteractDir.GetSafeNormal()));
 			}
 			else
 			{
-				RotateAngleRadian = FMath::Acos(FVector::DotProduct(CurForwardDir, HorizInteractDir));
+				RotateAngleRadian = FMath::Acos(FVector::DotProduct(CurForwardDir, HorizInteractDir.GetSafeNormal()));
 			}
 		}
 		OutDiffQuat = FQuat(CrossVec.GetSafeNormal(), RotateAngleRadian);
@@ -517,7 +519,7 @@ bool USVehicleSmoothSyncComponent::AdjustVehicleOrientation(const FVehicleState&
 			OutDiffQuat = YawQuat * OutDiffQuat;
 	}
 
-	return bPitchInDiff || bYawInDiff || bRollInDiff;
+	return !(bPitchInDiff && bYawInDiff && bRollInDiff);
 	//DrawDebugDirectionalArrow(GetWorld(), InState.Position, InState.Position + DestForwardDir * 1500.f, 50.f, FColor::Blue, false, 5.f);
 	//DrawDebugDirectionalArrow(GetWorld(), InState.Position, InState.Position + Pitch2D * 1500.f, 50.f, FColor::Red, false, 5.f);
 	//DrawDirectionalArrow()
