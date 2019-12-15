@@ -86,9 +86,11 @@ private:
 
 	void SmoothPhysics(float DeltaTime, FBodyInstance* BodyInstance);
 
-	void AdjustVehicleOrientation(const FVehicleState& InState);
+	bool AdjustVehicleOrientation(const FVehicleState& InState, FQuat& OutDiffQuat);
 
-	FVehicleState MovementPrediction(float DestTime, FVehicleState* PreState, FVehicleState* StartState, FVehicleState* EndState = nullptr);
+	bool IsPointInCone(const FPlane& ComparedPlane, const FVector& StartPoint, const FVector& EndPoint);
+
+	FVehicleState CurveMovement(float DestTime, FVehicleState* PreState, FVehicleState* StartState, FVehicleState* EndState = nullptr);
 
 	void PrintDebug(FString&& InString);
 
@@ -119,6 +121,15 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, meta = (ClampMin = 0.0f), Category = Interpolation)
 	float MaxAngleTolerance;
+
+	UPROPERTY(EditDefaultsOnly, meta = (ClampMin = 0.0f, ClampMax = 90.0f), Category = Interpolation)
+	float RollDiffTolerance;
+
+	UPROPERTY(EditDefaultsOnly, meta = (ClampMin = 0.0f, ClampMax = 90.0f), Category = Interpolation)
+	float YawDiffTolerance;
+
+	UPROPERTY(EditDefaultsOnly, meta = (ClampMin = 0.0f, ClampMax = 90.0f), Category = Interpolation)
+	float PitchDiffTolerance;
 
 	UPROPERTY(EditDefaultsOnly, meta = (ClampMin = 0.0f), Category = Interpolation)
 	float AccTimeCoefficient;
