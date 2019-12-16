@@ -67,6 +67,26 @@ void USVehicleSmoothSyncComponent::TickComponent(float DeltaTime, ELevelTick Tic
 	if (GetOwner()->bReplicateMovement)
 		return;
 
+	//APlayerController* OwnerController = nullptr;
+	//if (GetOwner() && GetOwner()->GetOwner())
+	//{
+	//	OwnerController = Cast<APlayerController>(GetOwner()->GetOwner());
+	//}
+	//if (GetNetMode() == ENetMode::NM_DedicatedServer)
+	//{
+	//	GetOwner()->SetReplicateMovement(OwnerController == nullptr);
+	//}
+	//if (GetNetMode() == ENetMode::NM_Client)
+	//{
+	//	if (OwnerController)
+	//	{
+	//		if (UGameplayStatics::GetRealTimeSeconds(GetWorld()) - 1.f / SendStateRate >= LastSendStateTime)
+	//			SendState();
+	//	}
+	//	else
+	//		SmoothVehicleMovement(DeltaTime);
+	//}
+
 	if (GetOwnerRole() == ROLE_AutonomousProxy)
 	{
 		if (UGameplayStatics::GetRealTimeSeconds(GetWorld()) - 1.f / SendStateRate >= LastSendStateTime)
@@ -193,7 +213,7 @@ void USVehicleSmoothSyncComponent::SmoothVehicleMovement(float DeltaTime)
 
 	if (TargetState->GetValue().OwnerTime < CurSimulationTime)
 	{
-		Extrapolate(CurSimulationTime, &TargetState->GetValue());
+		//Extrapolate(CurSimulationTime, &TargetState->GetValue());
 		//PrintDebug(TEXT("Extrapolate"));
 	}
 	else
@@ -205,7 +225,7 @@ void USVehicleSmoothSyncComponent::SmoothVehicleMovement(float DeltaTime)
 			TargetState = TargetState->GetNextNode();
 			Index++;
 		}
-		bShouldAccelerate = Index >= 2;
+		bShouldAccelerate = Index >= 4;
 			
 		if (TargetState && TargetState->GetPrevNode())
 		{
@@ -238,14 +258,15 @@ void USVehicleSmoothSyncComponent::SmoothVehicleMovement(float DeltaTime)
 				}
 
 				FBodyInstance* BodyInstance = UpdatedComponent->GetBodyInstance();
+				PrintDebug(FString::SanitizeFloat(AngDiff));
 				if (FMath::Abs(AngDiff) > MinAngleTolerance && FMath::Abs(AngDiff) < MaxAngleTolerance)
 					UpdatedComponent->SetPhysicsAngularVelocityInDegrees(AngDiffAxis * AngDiff * GetWorld()->GetDeltaSeconds() * InterAngCoefficient);
-				//else if (FMath::Abs(AngDiff) >= MaxAngleTolerance)
-				//{
-				//	UpdatedComponent->SetWorldRotation(EndState.Rotation, false, nullptr, ETeleportType::TeleportPhysics);
-				//	//BodyInstance->SetBodyTransform(FTransform(EndState.Rotation, BodyState.Position), ETeleportType::TeleportPhysics);
-				//	PrintDebug(TEXT("Rotate"));
-				//}
+				else if (FMath::Abs(AngDiff) >= MaxAngleTolerance)
+				{
+					UpdatedComponent->SetWorldRotation(EndState.Rotation, false, nullptr, ETeleportType::TeleportPhysics);
+					//BodyInstance->SetBodyTransform(FTransform(EndState.Rotation, BodyState.Position), ETeleportType::TeleportPhysics);
+					PrintDebug(TEXT("Rotate"));
+				}
 					//UpdatedComponent->SetWorldRotation(DeltaQuat * FQuat(AngDiffAxis, FMath::DegreesToRadians(AngDiff / FMath::Abs(AngDiff) * 60.f)), false, nullptr, ETeleportType::TeleportPhysics);
 
 				FVector NewPosition = FMath::Lerp(FVector(BodyState.Position), TargetVehicleState.Position, PositionLerp);
@@ -258,7 +279,7 @@ void USVehicleSmoothSyncComponent::SmoothVehicleMovement(float DeltaTime)
 
 void USVehicleSmoothSyncComponent::Interpolate(float DestTime, FVehicleState* StartState, FVehicleState* EndState)
 {
-	if (StartState && (EndState->Position - StartState->Position).Size() > 1.f)
+	if (StartState)
 	{
 		FRigidBodyState BodyState;
 		UpdatedComponent->GetRigidBodyState(BodyState);
@@ -269,10 +290,8 @@ void USVehicleSmoothSyncComponent::Interpolate(float DestTime, FVehicleState* St
 		TargetVehicleState.Rotation = FQuat::Slerp(BodyState.Quaternion, EndState->Rotation, LerpAlpha);
 		FVector DiffVec = TargetVehicleState.Position - BodyState.Position;
 		
-		TargetVehicleState.LinearVelocity = FMath::Lerp(StartState->LinearVelocity, EndState->LinearVelocity, LerpAlpha) + DiffVec * GetWorld()->GetDeltaSeconds() * InterVelCoefficient;
+		TargetVehicleState.LinearVelocity = FMath::Lerp(StartState->LinearVelocity, EndState->LinearVelocity, LerpAlpha) + DiffVec * InterVelCoefficient;
 		TargetVehicleState.AngularVelocity = FMath::Lerp(StartState->AngularVelocity, EndState->AngularVelocity, LerpAlpha);
-		
-		
 
 		FVector NewPosition = FMath::Lerp(FVector(BodyState.Position), TargetVehicleState.Position, PositionLerp);
 		FQuat NewRotation = FQuat::Slerp(BodyState.Quaternion, TargetVehicleState.Rotation, AngleLerp);
@@ -283,8 +302,11 @@ void USVehicleSmoothSyncComponent::Interpolate(float DestTime, FVehicleState* St
 
 		if (UpdatedComponent)
 		{
-			if ((TargetVehicleState.Position  - BodyState.Position).Size() > 5.f)
-				BodyInstance->SetLinearVelocity(TargetVehicleState.LinearVelocity, false, false);
+			//PrintDebug(GetWorld()->OriginLocation.ToString());
+			BodyInstance->SetLinearVelocity(TargetVehicleState.LinearVelocity.GetSafeNormal2D() * TargetVehicleState.LinearVelocity.Size(), false, false);
+			/*if ((TargetVehicleState.Position  - BodyState.Position).Size() > 5.f)
+				BodyInstance->SetLinearVelocity(TargetVehicleState.LinearVelocity, false, false);*/
+
 			FQuat DeltaQuat = BodyState.Quaternion.Inverse() * TargetVehicleState.Rotation;
 			FVector AngDiffAxis;
 			float AngDiff;
@@ -292,30 +314,32 @@ void USVehicleSmoothSyncComponent::Interpolate(float DestTime, FVehicleState* St
 			AngDiff = FMath::RadiansToDegrees(FMath::UnwindRadians(AngDiff));
 			DrawDebugDirectionalArrow(GetWorld(), BodyState.Position, BodyState.Position + AngDiffAxis * AngDiff*10.f, 100.f, FColor::Green, false, -1, 0, 3.f);
 			FQuat OutDiff;
-			if (AngDiff < 3.f)return;
+			//bool bTeleportRotation = AdjustVehicleOrientation(TargetVehicleState, OutDiff);
+			/*if (AngDiff < 3.f)return;
 			bool bTeleportRotation = AdjustVehicleOrientation(TargetVehicleState, OutDiff);
 			if (bTeleportRotation)
 			{
-				PrintDebug(TEXT("In correction"));
+				PrintDebug(TEXT("In Correction!"));
 				UpdatedComponent->SetWorldRotation(OutDiff * BodyState.Quaternion, false, nullptr, ETeleportType::TeleportPhysics);
 			}
 			else
 			{
 				FVector NewAngVel = TargetVehicleState.AngularVelocity + AngDiffAxis * AngDiff * GetWorld()->GetDeltaSeconds() * InterAngCoefficient;
 				BodyInstance->SetAngularVelocityInRadians(FMath::DegreesToRadians(NewAngVel), false, false);
+			}*/
+			if (FMath::Abs(AngDiff) > MinAngleTolerance && FMath::Abs(AngDiff) < MaxAngleTolerance)
+			{
+
+				FVector NewAngVel = TargetVehicleState.AngularVelocity + AngDiffAxis * AngDiff * GetWorld()->GetDeltaSeconds() * InterAngCoefficient;
+				BodyInstance->SetAngularVelocityInRadians(FMath::DegreesToRadians(AngDiffAxis * AngDiff * InterAngCoefficient), false, false);
+				PrintDebug(FString::SanitizeFloat(AngDiff));
 			}
-			//if (FMath::Abs(AngDiff) > MinAngleTolerance && FMath::Abs(AngDiff) < MaxAngleTolerance)
-			//{
-			//	FVector NewAngVel = TargetVehicleState.AngularVelocity + AngDiffAxis * AngDiff * GetWorld()->GetDeltaSeconds() * InterAngCoefficient;
-			//	BodyInstance->SetAngularVelocityInRadians(FMath::DegreesToRadians(NewAngVel), false, false);
-			//	PrintDebug(FString::SanitizeFloat(AngDiff));
-			//}
-			//else if (FMath::Abs(AngDiff) >= MaxAngleTolerance)
-			//{
-			//	//UpdatedComponent->SetWorldRotation(FQuat::Slerp(BodyState.Quaternion, TargetVehicleState.Rotation, 0.05f), false, nullptr, ETeleportType::TeleportPhysics);
-			//	//PrintDebug(TEXT("Rotate"));
-			//	//PrintDebug( TEXT("Interpolate Angle Diff:") + FString::SanitizeFloat(AngDiff));	
-			//}
+			else if (FMath::Abs(AngDiff) >= MaxAngleTolerance)
+			{
+				UpdatedComponent->SetWorldRotation(FQuat::Slerp(BodyState.Quaternion, TargetVehicleState.Rotation, 0.5f), false, nullptr, ETeleportType::TeleportPhysics);
+				//PrintDebug(TEXT("Rotate"));
+				PrintDebug( TEXT("Interpolate Angle Diff:") + FString::SanitizeFloat(AngDiff));	
+			}
 				//BodyInstance->SetBodyTransform(FTransform(FQuat::Slerp(BodyState.Quaternion, TargetVehicleState.Rotation, 0.2f), FMath::Lerp(FVector(BodyState.Position), TargetVehicleState.Position, 0.3f)), ETeleportType::TeleportPhysics);
 			
 			DrawDebugPoint(GetWorld(), TargetVehicleState.Position, 20.f, FColor::Blue);
@@ -336,7 +360,7 @@ void USVehicleSmoothSyncComponent::Extrapolate(float DestTime, FVehicleState* La
 		FVector NewAngularVel = LastState.AngularVelocity + AngularAcceleration * GetWorld()->GetDeltaSeconds();
 
 		BodyInstance->SetLinearVelocity(NewLinearVel, false);
-		BodyInstance->SetAngularVelocityInRadians(FMath::DegreesToRadians(NewAngularVel), false);
+		//BodyInstance->SetAngularVelocityInRadians(FMath::DegreesToRadians(NewAngularVel), false);
 		//if (LastState)
 		//{
 
@@ -452,28 +476,40 @@ bool USVehicleSmoothSyncComponent::AdjustVehicleOrientation(const FVehicleState&
 	FPlane PlaneYZ(InState.Position, InState.Position + DestForwardDir, InState.Position + CurForwardDir);
 	FPlane PlaneVert, PlaneHoriz;
 	bool bYawInDiff = false, bPitchInDiff = false;
-	
+	FVector OppositePointVert, OppositePointHori;
 	if (FVector::DotProduct(CurForwardDir, DestUpDir) > 0.f)
 	{
 		PlaneVert = FPlane(InState.Position, FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(RightUp), FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(LeftUp));
+		DrawDebugMesh(GetWorld(), { InState.Position, FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(RightUp * 500.f), FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(LeftUp * 500.f)}, {0, 2, 1}, FColor::Blue);
+		OppositePointVert = FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(RightDown);
 	}
 	else
 	{
 		PlaneVert = FPlane(InState.Position, FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(RightDown), FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(LeftDown));
+		DrawDebugMesh(GetWorld(), { InState.Position, FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(RightDown * 500.f), FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(LeftDown * 500.f)}, {0, 2, 1}, FColor::Blue);
+		OppositePointVert = FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(RightUp);
 	}
 
 	if (FVector::DotProduct(CurForwardDir, DestRightDir) > 0.f)
 	{
 		PlaneHoriz = FPlane(InState.Position, FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(RightUp), FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(RightDown));
+		DrawDebugMesh(GetWorld(), { InState.Position, FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(RightUp * 500.f), FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(RightDown * 500.f)}, {0, 2, 1}, FColor::Blue);
+		OppositePointHori = FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(LeftUp);
 	}
 	else
 	{
 		PlaneHoriz = FPlane(InState.Position, FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(LeftUp), FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(LeftDown));
+		DrawDebugMesh(GetWorld(), { InState.Position, FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(LeftUp * 500.f), FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(LeftDown * 500.f)}, {0, 2, 1}, FColor::Blue);
+		OppositePointHori = FTransform(InState.Rotation, InState.Position).TransformPositionNoScale(RightUp);
 	}
+	DrawDebugLine(GetWorld(), InState.Position, InState.Position + FTransform(InState.Rotation, InState.Position).TransformVectorNoScale(RightUp).GetSafeNormal() * 1000, FColor::Blue, false);
+	DrawDebugLine(GetWorld(), InState.Position, InState.Position + FTransform(InState.Rotation, InState.Position).TransformVectorNoScale(RightDown).GetSafeNormal() * 1000, FColor::Blue, false);
+	DrawDebugLine(GetWorld(), InState.Position, InState.Position + FTransform(InState.Rotation, InState.Position).TransformVectorNoScale(LeftUp).GetSafeNormal() * 1000, FColor::Blue, false);
+	DrawDebugLine(GetWorld(), InState.Position, InState.Position + FTransform(InState.Rotation, InState.Position).TransformVectorNoScale(LeftDown).GetSafeNormal() * 1000, FColor::Blue, false);
+	DrawDebugLine(GetWorld(), InState.Position,  InState.Position + CurForwardDir * 1000, FColor::Red);
+	
 	bPitchInDiff = IsPointInCone(PlaneVert, InState.Position + CurForwardDir, InState.Position + DestForwardDir);
 	bYawInDiff = IsPointInCone(PlaneHoriz, InState.Position + CurForwardDir, InState.Position + DestForwardDir);
-
-	FVector CrossVec = FVector::CrossProduct(CurForwardDir, DestForwardDir);
 
 	if (bPitchInDiff && bYawInDiff)
 	{
@@ -484,40 +520,43 @@ bool USVehicleSmoothSyncComponent::AdjustVehicleOrientation(const FVehicleState&
 		FVector VertInteractDir = PlaneVert ^ PlaneYZ;
 		FVector HorizInteractDir = PlaneHoriz ^ PlaneYZ;
 		float RotateAngleRadian = 0.f;
-		if (!VertInteractDir.IsNearlyZero())
+		FVector CrossVec;
+	
+		if(IsPointInCone(PlaneHoriz, InState.Position + VertInteractDir, OppositePointHori))
 		{
-			if(IsPointInCone(PlaneYZ, InState.Position + VertInteractDir, InState.Position + DestForwardDir))
-			{
-				RotateAngleRadian = FMath::Acos(FVector::DotProduct(CurForwardDir, VertInteractDir.GetSafeNormal()));
-			}
-			else
-			{
-				RotateAngleRadian = FMath::Acos(FVector::DotProduct(CurForwardDir, HorizInteractDir.GetSafeNormal()));
-			}
+			RotateAngleRadian = FMath::Acos(FVector::DotProduct(CurForwardDir, VertInteractDir.GetSafeNormal()));
+			CrossVec = FVector::CrossProduct(CurForwardDir, VertInteractDir);
 		}
+		else
+		{
+			RotateAngleRadian = FMath::Acos(FVector::DotProduct(CurForwardDir, HorizInteractDir.GetSafeNormal()));
+			CrossVec = FVector::CrossProduct(CurForwardDir, HorizInteractDir);
+		}
+		PrintDebug(FString::SanitizeFloat(FMath::RadiansToDegrees(RotateAngleRadian)));
 		OutDiffQuat = FQuat(CrossVec.GetSafeNormal(), RotateAngleRadian);
 	}
 
 	///For roll
-	bool bRollInDiff = false;
-	FQuat CurQuat;
-	if (bPitchInDiff && bYawInDiff)
-		CurQuat = CurState.Rotation;
-	else
-		CurQuat = OutDiffQuat * CurState.Rotation;
-	//FQuat CurQuat = OutDiffQuat * CurState.Rotation;
-	FPlane CurPlaneXY(CurState.Position, CurState.Position + CurQuat.GetRightVector(), CurState.Position + CurQuat.GetUpVector());
-	FVector ProjectedUpDir = FPlane::VectorPlaneProject(DestUpDir, FVector(CurPlaneXY.X, CurPlaneXY.Y, CurPlaneXY.Z)).GetSafeNormal();
-	float YawDiffAngleRadian = FMath::Acos(FVector::DotProduct(ProjectedUpDir, CurQuat.GetUpVector()));
-	bRollInDiff = FMath::RadiansToDegrees(YawDiffAngleRadian) <= YawDiffTolerance;
-	if (!bRollInDiff)
-	{
-		FQuat YawQuat(FVector::CrossProduct(CurQuat.GetUpVector(), ProjectedUpDir).GetSafeNormal(), YawDiffAngleRadian - FMath::DegreesToRadians(YawDiffAngleRadian - 0.1f));
-		if (bPitchInDiff && bYawInDiff)
-			OutDiffQuat = YawQuat;
-		else
-			OutDiffQuat = YawQuat * OutDiffQuat;
-	}
+	bool bRollInDiff = true;
+	//FQuat CurQuat;
+	//if (bPitchInDiff && bYawInDiff)
+	//	CurQuat = CurState.Rotation;
+	//else
+	//	CurQuat = OutDiffQuat * CurState.Rotation;
+	////FQuat CurQuat = OutDiffQuat * CurState.Rotation;
+	//FPlane CurPlaneXY(CurState.Position, CurState.Position + CurQuat.GetRightVector(), CurState.Position + CurQuat.GetUpVector());
+	//FVector ProjectedUpDir = FPlane::VectorPlaneProject(DestUpDir, FVector(CurPlaneXY.X, CurPlaneXY.Y, CurPlaneXY.Z)).GetSafeNormal();
+	//float YawDiffAngleRadian = FMath::Acos(FVector::DotProduct(ProjectedUpDir, CurQuat.GetUpVector()));
+	//bRollInDiff = FMath::RadiansToDegrees(YawDiffAngleRadian) <= YawDiffTolerance;
+	//if (!bRollInDiff)
+	//{
+	//	PrintDebug(TEXT("In correction"));
+	//	FQuat YawQuat(FVector::CrossProduct(CurQuat.GetUpVector(), ProjectedUpDir).GetSafeNormal(), YawDiffAngleRadian - FMath::DegreesToRadians(YawDiffAngleRadian - 0.1f));
+	//	if (bPitchInDiff && bYawInDiff)
+	//		OutDiffQuat = YawQuat;
+	//	else
+	//		OutDiffQuat = YawQuat * OutDiffQuat;
+	//}
 
 	return !(bPitchInDiff && bYawInDiff && bRollInDiff);
 	//DrawDebugDirectionalArrow(GetWorld(), InState.Position, InState.Position + DestForwardDir * 1500.f, 50.f, FColor::Blue, false, 5.f);
