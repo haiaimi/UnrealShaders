@@ -132,11 +132,11 @@ void AFFTWaveSimulator::CreateWaveGrid()
 
 void AFFTWaveSimulator::CreateResources()
 {
-	FRHIResourceCreateInfo RHIResourceCreateInfo;
+	FRHIResourceCreateInfo RHIResourceCreateInfo, RHIResourceCreateInfo1;
 	
 	Spectrum = RHICreateTexture2D((WaveSize + 1)*(WaveSize + 1), 1, PF_G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo);
 	SpectrumConj = RHICreateTexture2D((WaveSize + 1)*(WaveSize + 1), 1, PF_G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo);
-	HeightBuffer = RHICreateTexture2D(WaveSize * WaveSize, 2, PF_G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo); //float2
+	HeightBuffer = RHICreateTexture2D(WaveSize * WaveSize, 2, PF_G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo1); //float2
 	SlopeBuffer = RHICreateTexture2D(WaveSize * WaveSize, 2, PF_A32B32G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo); //float4
 	DisplacementBuffer = RHICreateTexture2D(WaveSize * WaveSize, 2, PF_A32B32G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo); //float4
 	//FUnorderedAccessViewRHIRef TempTextureUAV = RHICreateUnorderedAccessView(TempTexture);

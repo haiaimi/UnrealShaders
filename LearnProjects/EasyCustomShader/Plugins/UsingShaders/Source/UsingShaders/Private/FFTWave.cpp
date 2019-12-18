@@ -151,6 +151,7 @@ public:
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+
 		//OutEnvironment.SetDefine(TEXT("BLUR_MICRO"), 1);
 	}
 
@@ -178,11 +179,11 @@ public:
 		SetTextureParameter(RHICmdList, GetComputeShader(), DisplacementBuffer, InputSampler, TStaticSamplerState<SF_AnisotropicLinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InDisplacementBuffer);
 
 		if (RWHeightBuffer.IsBound())
-			RHICmdList.SetUAVParameter(GetComputeShader(), RWHeightBuffer.GetBaseIndex(), HeightBufferUAV);
+			SetUAVParameter(RHICmdList, GetComputeShader(), RWHeightBuffer, HeightBufferUAV);
 		if (RWSlopeBuffer.IsBound())
-			RHICmdList.SetUAVParameter(GetComputeShader(), RWSlopeBuffer.GetBaseIndex(), SlopeBufferUAV);
-		if (DisplacementBuffer.IsBound())
-			RHICmdList.SetUAVParameter(GetComputeShader(), DisplacementBuffer.GetBaseIndex(), DisplacementBufferUAV);
+			SetUAVParameter(RHICmdList, GetComputeShader(), RWSlopeBuffer, SlopeBufferUAV);
+		if (RWDisplacementBuffer.IsBound())
+			SetUAVParameter(RHICmdList, GetComputeShader(), RWDisplacementBuffer, DisplacementBufferUAV);
 
 		SetSRVParameter(RHICmdList, GetComputeShader(), ButterflyLookupTable, InButterflyLookupTable);
 		//RHICmdList.Set
@@ -205,10 +206,10 @@ public:
 		Ar << TimeSeconds;
 		Ar << WaveSize; 
 		Ar << StartIndex;
-		Ar << ButterflyLookupTable;
 		Ar << HeightBuffer;
 		Ar << SlopeBuffer;
 		Ar << DisplacementBuffer;
+		Ar << ButterflyLookupTable;
 		return bShaderHasOutdatedParameters;
 	}
 
@@ -279,7 +280,7 @@ extern void ComputeButterflyLookuptable(int32 Size, int32 Passes, TArray<float>&
 				}
 
 				float WR = FMath::Cos(2.f * PI * float(k * Blocks) / Size);
-				float WI = FMath::Cos(2.f * PI * float(k * Blocks) / Size);
+				float WI = FMath::Sin(2.f * PI * float(k * Blocks) / Size);
 
 				int32 Offset1 = 4 * (i1 + i * Size);
 
@@ -322,9 +323,9 @@ static void EvaluateWavesFFT_RenderThread(
 	float TimeSeconds,
 	int32 WaveSize,
 	int32 StartIndex,
-	FTextureRHIParamRef HeightBuffer,
-	FTextureRHIParamRef SlopeBuffer,
-	FTextureRHIParamRef DisplacementBuffer,
+	FTexture2DRHIParamRef HeightBuffer,
+	FTexture2DRHIParamRef SlopeBuffer,
+	FTexture2DRHIParamRef DisplacementBuffer,
 	FUnorderedAccessViewRHIRef HeightBufferUAV,
 	FUnorderedAccessViewRHIRef SlopeBufferUAV,
 	FUnorderedAccessViewRHIRef DisplacementBufferUAV,
@@ -342,8 +343,36 @@ static void EvaluateWavesFFT_RenderThread(
 	{
 		RHICmdList.SetComputeShader(WaveFFTCS1->GetComputeShader());
 		WaveFFTCS1->SetParameters(RHICmdList, TimeSeconds, WaveSize, i, WaveSimulator->ButterflyLookupTableSRV, HeightBuffer, SlopeBuffer, DisplacementBuffer, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV);
-		DispatchComputeShader(RHICmdList, *WaveFFTCS1, FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), 1);
+		DispatchComputeShader(RHICmdList, *WaveFFTCS1, 1, 1, 1);
 		WaveFFTCS1->UnbindUAV(RHICmdList);
+
+		uint32 Stride;
+		FVector2D* HeightBufferData = static_cast<FVector2D*>(RHILockTexture2D(HeightBuffer, 0, EResourceLockMode::RLM_WriteOnly, Stride, false));
+		TArray<FVector2D> Result;
+		/*for (int32 i = 0; i < 2; ++i)
+		{
+			for (int32 j = 0; j < WaveSize; ++j)
+			{
+				for (int32 k = 0; k < WaveSize; ++k)
+					Result.Add(HeightBufferData[j * WaveSize + k]);
+			}
+			HeightBufferData += Stride / sizeof(FVector2D);
+		}*/
+
+		for (int32 i = 0; i < WaveSize * WaveSize; ++i)
+		{
+			Result.Add(HeightBufferData[0]);
+			Result.Add(HeightBufferData[1]);
+			Result.Add(HeightBufferData[2]);
+			Result.Add(HeightBufferData[3]);
+			Result.Add(HeightBufferData[4]);
+			Result.Add(HeightBufferData[5]);
+			Result.Add(HeightBufferData[6]);
+			Result.Add(HeightBufferData[7]);
+			HeightBufferData += Stride / sizeof(FVector2D);
+		}
+
+		RHIUnlockTexture2D(HeightBuffer, 0, false);
 	}
 
 	for (int32 i = 0; i < Passes; ++i)
@@ -410,6 +439,13 @@ void AFFTWaveSimulator::PrepareForFFT(float TimeSeconds)
 	SlopeBufferData += Stride / sizeof(FVector4);
 	FVector4* DisplacementBufferData = static_cast<FVector4*>(RHILockTexture2D(DisplacementBuffer, 0, EResourceLockMode::RLM_WriteOnly, Stride, false));
 	DisplacementBufferData += Stride / sizeof(FVector4);
+
+	//Test buffer data
+	TArray<FVector2D> HeightData;
+	for (int32 i = 0; i < WaveSize * WaveSize; ++i)
+	{
+		HeightData.Add(HeightBufferData[i]);
+	}
 
 	for (int32 m = 0; m < WaveSize; ++m)
 	{
