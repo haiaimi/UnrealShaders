@@ -119,8 +119,7 @@ void PerformFFTCS1(
 	int X = (int) ButterflyLookupTable[bftIdx + 0];
 	int Y = (int) ButterflyLookupTable[bftIdx + 1];
 	float2 w = float2(ButterflyLookupTable[bftIdx + 2], ButterflyLookupTable[bftIdx + 3]);
-	RWHeightBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * 4, 0)] = float2(2, 2) /*FFT(w, HeightBuffer[uint2(X + DispatchThreadID.y * WaveSize, idx1)], HeightBuffer[uint2(Y + DispatchThreadID.y * WaveSize, idx1)])*/;
-	RWHeightBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * 4, 1)] = float2(2, 2) /*FFT(w, HeightBuffer[uint2(X + DispatchThreadID.y * WaveSize, idx1)], HeightBuffer[uint2(Y + DispatchThreadID.y * WaveSize, idx1)])*/;
+	RWHeightBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * WaveSize, idx)] = FFT(w, HeightBuffer[uint2(X + DispatchThreadID.y * WaveSize, idx1)], HeightBuffer[uint2(Y + DispatchThreadID.y * WaveSize, idx1)]);
 	RWSlopeBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * WaveSize, idx)] = FFT(w, SlopeBuffer[uint2(X + DispatchThreadID.y * WaveSize, idx1)], SlopeBuffer[uint2(Y + DispatchThreadID.y * WaveSize, idx1)]);
 	RWDisplacementBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * WaveSize, idx)] = FFT(w, DisplacementBuffer[uint2(X + DispatchThreadID.y * WaveSize, idx1)], DisplacementBuffer[uint2(Y + DispatchThreadID.y * WaveSize, idx1)]);
 }
