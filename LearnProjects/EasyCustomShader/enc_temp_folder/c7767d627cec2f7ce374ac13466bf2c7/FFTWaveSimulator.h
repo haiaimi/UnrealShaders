@@ -8,7 +8,7 @@
 #include "FFTWaveSimulator.generated.h"
 
 UCLASS()
-class HAIAIMISHADERS_API AFFTWaveSimulator : public AActor
+class AFFTWaveSimulator : public AActor
 {
 	GENERATED_BODY()
 	
@@ -23,6 +23,10 @@ protected:
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
+
+	void InitWaveResource();
+
+	void PrepareForFFT(float TimeSeconds);
 
 	void EvaluateWavesFFT(float TimeSeconds);
 
@@ -59,10 +63,13 @@ public:
 
 	TArray<float> ButterflyLookupTable;
 
+	FVertexBufferRHIRef ButterflyLookupTableVB;
+	FShaderResourceViewRHIRef ButterflyLookupTableSRV;
 private:
 	TArray<FVector> WavePosition;
 	TArray<FVector> WaveVertices;
 	TArray<FVector> WaveNormals;
+	TArray<FVector2D> UVs;
 
 	TArray<float> DispersionTable;
 

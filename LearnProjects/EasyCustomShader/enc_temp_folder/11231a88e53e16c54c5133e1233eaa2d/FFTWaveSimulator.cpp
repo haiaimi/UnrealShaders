@@ -22,9 +22,6 @@ AFFTWaveSimulator::AFFTWaveSimulator():
 	WindSpeed = FVector(10.f, 10.f, 0.f);
 	WaveAmplitude = 0.05f;
 	WaveMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("WaveMesh"));
-
-	if (GridMaterial)
-		WaveMesh->SetMaterial(0, GridMaterial);
 }
 
 // Called when the game starts or when spawned

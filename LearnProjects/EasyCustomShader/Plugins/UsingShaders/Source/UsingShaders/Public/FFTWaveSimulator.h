@@ -61,6 +61,9 @@ public:
 	UPROPERTY(EditAnywhere)
 	float WaveAmplitude;
 
+	UPROPERTY(EditAnywhere)
+	class UMaterialInterface* GridMaterial;
+
 	TArray<float> ButterflyLookupTable;
 
 	FVertexBufferRHIRef ButterflyLookupTableVB;
