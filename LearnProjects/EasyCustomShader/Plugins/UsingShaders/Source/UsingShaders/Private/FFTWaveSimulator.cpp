@@ -54,8 +54,8 @@ void AFFTWaveSimulator::Tick(float DeltaTime)
 
 void AFFTWaveSimulator::InitWaveResource()
 {
-	ComputeSpectrum();
 	CreateWaveGrid();
+	ComputeSpectrum();
 }
 
 FVector2D AFFTWaveSimulator::InitSpectrum(float TimeSeconds, int32 n, int32 m)
@@ -148,13 +148,22 @@ void AFFTWaveSimulator::CreateResources()
 
 	ButterflyLookupTableVB.SafeRelease();
 	ButterflyLookupTableSRV.SafeRelease();
+	DispersionTableVB.SafeRelease();
+	DispersionTableSRV.SafeRelease();
 	FRHIResourceCreateInfo CreateInfo;
 	ButterflyLookupTableVB = RHICreateVertexBuffer(ButterflyLookupTable.Num() * sizeof(float), BUF_Volatile | BUF_ShaderResource, CreateInfo);
 	ButterflyLookupTableSRV = RHICreateShaderResourceView(ButterflyLookupTableVB, sizeof(float), PF_R32_FLOAT);
 
+	DispersionTableVB = RHICreateVertexBuffer(DispersionTable.Num() * sizeof(float), BUF_Volatile | BUF_ShaderResource, CreateInfo);
+	DispersionTableSRV = RHICreateShaderResourceView(DispersionTableVB, sizeof(float), PF_R32_FLOAT);
+
 	void* ButterflyLockedData = RHILockVertexBuffer(ButterflyLookupTableVB, 0, ButterflyLookupTable.Num() * sizeof(float), RLM_WriteOnly);
 	FPlatformMemory::Memcpy(ButterflyLockedData, ButterflyLookupTable.GetData(), ButterflyLookupTable.Num() * sizeof(float));
 	RHIUnlockVertexBuffer(ButterflyLookupTableVB);
+	
+	void* DispersionTableData = RHILockVertexBuffer(DispersionTableVB, 0, DispersionTable.Num() * sizeof(float), RLM_WriteOnly);
+	FPlatformMemory::Memcpy(DispersionTableData, DispersionTable.GetData(), DispersionTable.Num() * sizeof(float));
+	RHIUnlockVertexBuffer(DispersionTableVB);
 }
 
 void AFFTWaveSimulator::ComputePositionAndNormal()

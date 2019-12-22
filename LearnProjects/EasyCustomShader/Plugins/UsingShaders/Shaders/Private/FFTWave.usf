@@ -93,7 +93,7 @@ Buffer<float>  ButterflyLookupTable;
 
 float2 InitSpectrum(float TimeSeconds, int n, int m)
 {
-	int Index = m * (WaveSize + 1) + n;
+	uint Index = m * (WaveSize + 1) + n;
 	float Omegat = DispersionTable[Index] * TimeSeconds;
 
 	float Cos = cos(Omegat);
@@ -104,12 +104,12 @@ float2 InitSpectrum(float TimeSeconds, int n, int m)
 	if (Width > Index && Width > Index)
 	{
 		//SpectrumData += m * Stride / sizeof(FVector2D);
-		float C0a = Spectrum[Index].x * Cos - Spectrum[Index].y * Sin;
-		float C0b = Spectrum[Index].x * Sin - Spectrum[Index].y * Cos;
+		float C0a = Spectrum[uint2(Index, 0)].x * Cos - Spectrum[uint2(Index, 0)].y * Sin;
+		float C0b = Spectrum[uint2(Index, 0)].x * Sin - Spectrum[uint2(Index, 0)].y * Cos;
 
 		//SpectrumConjData += m * Stride / sizeof(FVector2D);
-		float C1a = SpectrumConj[Index].x * Cos - SpectrumConj[Index].y * -Sin;
-		float C1b = SpectrumConj[Index].x * -Sin - SpectrumConj[Index].y * Cos;
+		float C1a = SpectrumConj[uint2(Index, 0)].x * Cos - SpectrumConj[uint2(Index, 0)].y * -Sin;
+		float C1b = SpectrumConj[uint2(Index, 0)].x * -Sin - SpectrumConj[uint2(Index, 0)].y * Cos;
 
 		return float2(C0a + C1a, C0b + C1b);
 	}
@@ -117,47 +117,39 @@ float2 InitSpectrum(float TimeSeconds, int n, int m)
 	return 0.0f;
 }
 
-void PrepareForFFT(float TimeSeconds)
+void PrepareForFFT(float TimeSeconds, int n, int m)
 {
 	float KX, KY, Len, Lambda = -1.f;
-	int Index;
-	uint Stride;
+	KY = PI * (2.f * m - WaveSize) / GridLength;
+	KX = PI * (2.f * n - WaveSize) / GridLength;
+	
+	Len = sqrt(KX * KX + KY * KY);
+	int Index = m * WaveSize + n;
 
-	for (int m = 0; m < WaveSize; ++m)
+	float2 C = InitSpectrum(TimeSeconds, n, m);
+
+	RWHeightBuffer[uint2(Index, 1)] = C;
+
+	RWSlopeBuffer[uint2(Index, 1)] = float4(-C.y * KX, C.x * KX, -C.y * KY, C.x * KY);
+
+	if (Len < 0.000001f)
 	{
-		KY = PI * (2.f * m - WaveSize) / GridLength;
-		for (int n = 0; n < WaveSize; ++n)
-		{
-			KX = PI * (2.f * n - WaveSize) / GridLength;
-			Len = sqrt(KX * KX + KY * KY);
-			Index = m * WaveSize + n;
-
-			float2 C = InitSpectrum(TimeSeconds, n, m);
-
-			RWHeightBuffer[Index].x = C.x;
-			RWHeightBuffer[Index].y = C.y;
-
-			RWSlopeBuffer[Index].x = -C.y * KX;
-			RWSlopeBuffer[Index].z = C.x * KX;
-			RWSlopeBuffer[Index].y = -C.y * KY;
-			RWSlopeBuffer[Index].z = C.x * KY;
-
-			if (Len < 0.000001f)
-			{
-				RWDisplacementBuffer[Index].x = 0.f;
-				RWDisplacementBuffer[Index].y = 0.f;
-				RWDisplacementBuffer[Index].z = 0.f;
-				RWDisplacementBuffer[Index].w = 0.f;
-			}
-			else
-			{
-				RWDisplacementBuffer[Index].x = -C.y * -(KX / Len);
-				RWDisplacementBuffer[Index].y = C.x * -(KX / Len);
-				RWDisplacementBuffer[Index].z = -C.y * -(KY / Len);
-				RWDisplacementBuffer[Index].w = C.x * -(KY / Len);
-			}
-		}
+		RWDisplacementBuffer[uint2(Index, 1)] = 0.f;
 	}
+	else
+	{
+		RWDisplacementBuffer[uint2(Index, 1)] = float4(-C.y * -(KX / Len), C.x * -(KX / Len), -C.y * -(KY / Len), C.x * -(KY / Len));
+	}
+}
+
+[numthreads(4, 4, 1)]
+void PrepareFFTCS(
+	uint3 GroupId : SV_GroupID,
+	uint3 GroupThreadID : SV_GroupThreadID,
+	uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+	//TODO
+	PrepareForFFT(TimeSeconds, DispatchThreadID.x, DispatchThreadID.y);
 }
 
 float4 FFT(float2 w,float4 input1,float4 input2)

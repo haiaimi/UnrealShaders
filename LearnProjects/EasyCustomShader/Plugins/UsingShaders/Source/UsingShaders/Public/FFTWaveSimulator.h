@@ -68,6 +68,9 @@ public:
 
 	FVertexBufferRHIRef ButterflyLookupTableVB;
 	FShaderResourceViewRHIRef ButterflyLookupTableSRV;
+
+	FVertexBufferRHIRef DispersionTableVB;
+	FShaderResourceViewRHIRef DispersionTableSRV;
 private:
 	TArray<FVector> WavePosition;
 	TArray<FVector> WaveVertices;
