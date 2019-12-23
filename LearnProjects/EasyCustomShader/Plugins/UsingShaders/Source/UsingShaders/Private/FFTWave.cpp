@@ -33,8 +33,8 @@ public:
 		WaveSize.Bind(Initializer.ParameterMap, TEXT("WaveSize"));
 		WaveAmplitude.Bind(Initializer.ParameterMap, TEXT("WaveAmplitude"));
 		WindSpeed.Bind(Initializer.ParameterMap, TEXT("WindSpeed"));
-		Spectrum.Bind(Initializer.ParameterMap, TEXT("Spectrum"));
-		SpectrumConj.Bind(Initializer.ParameterMap, TEXT("SpectrumConj"));
+		RWSpectrum.Bind(Initializer.ParameterMap, TEXT("RWSpectrum"));
+		RWSpectrumConj.Bind(Initializer.ParameterMap, TEXT("RWSpectrumConj"));
 	}
 
 	static bool ShouldCache(EShaderPlatform Platform)
@@ -64,16 +64,16 @@ public:
 		SetShaderValue(RHICmdList, GetComputeShader(), WaveSize, InWaveSize);
 		SetShaderValue(RHICmdList, GetComputeShader(), WaveAmplitude, InWaveAmplitude);
 		SetShaderValue(RHICmdList, GetComputeShader(), WindSpeed, InWindSpeed);
-		if (Spectrum.IsBound())
-			RHICmdList.SetUAVParameter(GetComputeShader(), Spectrum.GetBaseIndex(), SpectrumUAV);
-		if (SpectrumConj.IsBound())
-			RHICmdList.SetUAVParameter(GetComputeShader(), SpectrumConj.GetBaseIndex(), SpectrumConjUAV);
+		if (RWSpectrum.IsBound())
+			RHICmdList.SetUAVParameter(GetComputeShader(), RWSpectrum.GetBaseIndex(), SpectrumUAV);
+		if (RWSpectrumConj.IsBound())
+			RHICmdList.SetUAVParameter(GetComputeShader(), RWSpectrumConj.GetBaseIndex(), SpectrumConjUAV);
 	}
 
 	void UnbindUAV(FRHICommandList& RHICmdList)
 	{
-		RHICmdList.SetUAVParameter(GetComputeShader(), Spectrum.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
-		RHICmdList.SetUAVParameter(GetComputeShader(), SpectrumConj.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
+		RHICmdList.SetUAVParameter(GetComputeShader(), RWSpectrum.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
+		RHICmdList.SetUAVParameter(GetComputeShader(), RWSpectrumConj.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
 	}
 
 	virtual bool Serialize(FArchive& Ar) override
@@ -82,8 +82,8 @@ public:
 		Ar << WaveSize;
 		Ar << WaveAmplitude;
 		Ar << WindSpeed;
-		Ar << Spectrum;
-		Ar << SpectrumConj;
+		Ar << RWSpectrum;
+		Ar << RWSpectrumConj;
 
 		return bShaderHasOutdatedParameters;
 	}
@@ -93,8 +93,8 @@ private:
 	FShaderParameter WaveAmplitude;
 	FShaderParameter WindSpeed;
 
-	FShaderResourceParameter Spectrum;
-	FShaderResourceParameter SpectrumConj;
+	FShaderResourceParameter RWSpectrum;
+	FShaderResourceParameter RWSpectrumConj;
 };
 
 IMPLEMENT_SHADER_TYPE(, FPhillipsSpectrumCS,  TEXT("/Plugins/Shaders/Private/FFTWave.usf"), TEXT("PhillipsSpectrumCS"), SF_Compute)
@@ -334,6 +334,104 @@ private:
 IMPLEMENT_SHADER_TYPE(template<>, FWaveFFTCS<1>,  TEXT("/Plugins/Shaders/Private/FFTWave.usf"), TEXT("PerformFFTCS1"), SF_Compute)
 IMPLEMENT_SHADER_TYPE(template<>, FWaveFFTCS<2>,  TEXT("/Plugins/Shaders/Private/FFTWave.usf"), TEXT("PerformFFTCS2"), SF_Compute)
 
+class FComputePosAndNormalCS : public FGlobalShader
+{
+	DECLARE_SHADER_TYPE(FComputePosAndNormalCS, Global)
+
+public:
+	FComputePosAndNormalCS() {};
+
+	FComputePosAndNormalCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
+		FGlobalShader(Initializer)
+	{
+		TimeSeconds.Bind(Initializer.ParameterMap, TEXT("TimeSeconds"));
+		WaveSize.Bind(Initializer.ParameterMap, TEXT("WaveSize"));
+		DispersionTable.Bind(Initializer.ParameterMap, TEXT("DispersionTable"));
+		Spectrum.Bind(Initializer.ParameterMap, TEXT("Spectrum"));
+		SpectrumConj.Bind(Initializer.ParameterMap, TEXT("SpectrumConj"));
+		HeightBuffer.Bind(Initializer.ParameterMap, TEXT("HeightBuffer"));
+		SlopeBuffer.Bind(Initializer.ParameterMap, TEXT("SlopeBuffer"));
+		DisplacementBuffer.Bind(Initializer.ParameterMap, TEXT("DisplacementBuffer"));
+	}
+
+	static bool ShouldCache(EShaderPlatform Platform)
+	{
+		return true;
+	}
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Paramers)
+	{
+		return true;
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+	}
+
+	void SetParameters(
+		FRHICommandListImmediate& RHICmdList,
+		float InTimeSeconds,
+		int32 InWaveSize,
+		FShaderResourceViewRHIParamRef DispersionTableSRV,
+		FTextureRHIParamRef InSpectrum,
+		FTextureRHIParamRef InSpectrumConj,
+		FUnorderedAccessViewRHIRef HeightBufferUAV,
+		FUnorderedAccessViewRHIRef SlopeBufferUAV,
+		FUnorderedAccessViewRHIRef DisplacementBufferUAV
+	)
+	{
+		SetShaderValue(RHICmdList, GetComputeShader(), WaveSize, InWaveSize);
+		SetShaderValue(RHICmdList, GetComputeShader(), TimeSeconds, InTimeSeconds);
+
+		SetSRVParameter(RHICmdList, GetComputeShader(), DispersionTable, DispersionTableSRV);
+		SetTextureParameter(RHICmdList, GetComputeShader(), Spectrum, InSpectrum);
+		SetTextureParameter(RHICmdList, GetComputeShader(), SpectrumConj, InSpectrumConj);
+
+		if (HeightBuffer.IsBound())
+			RHICmdList.SetUAVParameter(GetComputeShader(), HeightBuffer.GetBaseIndex(), HeightBufferUAV);
+		if (SlopeBuffer.IsBound())
+			RHICmdList.SetUAVParameter(GetComputeShader(), SlopeBuffer.GetBaseIndex(), SlopeBufferUAV);
+		if (DisplacementBuffer.IsBound())
+			RHICmdList.SetUAVParameter(GetComputeShader(), DisplacementBuffer.GetBaseIndex(), DisplacementBufferUAV);
+	}
+
+	void UnbindUAV(FRHICommandList& RHICmdList)
+	{
+		RHICmdList.SetUAVParameter(GetComputeShader(), HeightBuffer.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
+		RHICmdList.SetUAVParameter(GetComputeShader(), SlopeBuffer.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
+		RHICmdList.SetUAVParameter(GetComputeShader(), DisplacementBuffer.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
+	}
+
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << TimeSeconds;
+		Ar << WaveSize;
+		Ar << DispersionTable;
+		Ar << Spectrum;
+		Ar << SpectrumConj;
+		Ar << HeightBuffer;
+		Ar << SlopeBuffer;
+		Ar << DisplacementBuffer;
+
+		return bShaderHasOutdatedParameters;
+	}
+
+private:
+	FShaderParameter TimeSeconds;
+	FShaderParameter WaveSize;
+
+	FShaderResourceParameter DispersionTable;
+	FShaderResourceParameter Spectrum;
+	FShaderResourceParameter SpectrumConj;
+	FShaderResourceParameter HeightBuffer;
+	FShaderResourceParameter SlopeBuffer;
+	FShaderResourceParameter DisplacementBuffer;
+};
+
+IMPLEMENT_SHADER_TYPE(, FComputePosAndNormalCS, TEXT("/Plugins/Shaders/Private/FFTWave.usf"), TEXT("ComputePosAndNormalCS"), SF_Compute)
+
 int32 BitReverse(int32 i, int32 Size)
 {
 	int32 j = i;
@@ -466,30 +564,30 @@ static void EvaluateWavesFFT_RenderThread(
 	WaveFFTCS1->SetParameters(RHICmdList, TimeSeconds, WaveSize, 0, WaveSimulator->ButterflyLookupTableSRV, HeightBuffer, SlopeBuffer, DisplacementBuffer, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV);
 	DispatchComputeShader(RHICmdList, *WaveFFTCS1, 1, 1, 1);
 	WaveFFTCS1->UnbindUAV(RHICmdList);*/
-	//uint32 Stride;
-	//FVector2D* HeightBufferData = static_cast<FVector2D*>(RHILockTexture2D(HeightBuffer, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
-	//TArray<FVector2D> Result;
-	///*for (int32 i = 0; i < 2; ++i)
-	//{
-	//	for (int32 j = 0; j < WaveSize; ++j)
-	//	{
-	//		for (int32 k = 0; k < WaveSize; ++k)
-	//			Result.Add(HeightBufferData[j * WaveSize + k]);
-	//	}
-	//	HeightBufferData += Stride / sizeof(FVector2D);
-	//}*/
+	uint32 Stride;
+	FVector2D* HeightBufferData = static_cast<FVector2D*>(RHILockTexture2D(HeightBuffer, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
+	TArray<FVector2D> Result;
+	/*for (int32 i = 0; i < 2; ++i)
+	{
+		for (int32 j = 0; j < WaveSize; ++j)
+		{
+			for (int32 k = 0; k < WaveSize; ++k)
+				Result.Add(HeightBufferData[j * WaveSize + k]);
+		}
+		HeightBufferData += Stride / sizeof(FVector2D);
+	}*/
 
-	//for (int32 i = 0; i < 4 * 4; ++i)
-	//{
-	//	Result.Add(HeightBufferData[i]);
-	//}
-	//HeightBufferData += Stride / sizeof(FVector2D);
-	//for (int32 i = 0; i < 4 * 4; ++i)
-	//{
-	//	Result.Add(HeightBufferData[i]);
-	//}
-	//
-	//RHIUnlockTexture2D(HeightBuffer, 0, false);
+	for (int32 i = 0; i < 4 * 4; ++i)
+	{
+		Result.Add(HeightBufferData[i]);
+	}
+	HeightBufferData += Stride / sizeof(FVector2D);
+	for (int32 i = 0; i < 4 * 4; ++i)
+	{
+		Result.Add(HeightBufferData[i]);
+	}
+	
+	RHIUnlockTexture2D(HeightBuffer, 0, false);
 	for (int32 i = 0; i < Passes; ++i)
 	{
 		RHICmdList.SetComputeShader(WaveFFTCS1->GetComputeShader());
@@ -573,23 +671,23 @@ void AFFTWaveSimulator::ComputeSpectrum()
 		}
 		ComputePhillipsSpecturm_RenderThread(RHICmdList, FeatureLevel, WaveSize, WaveAmplitude, WindSpeed, SpectrumUAV, SpectrumConjUAV);
 
-		uint32 Stride;
-		FVector2D* SpectrumData = static_cast<FVector2D*>(RHILockTexture2D(Spectrum, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
-		TArray<FVector2D> Result;
-		/*for (int32 i = 0; i < 2; ++i)
-		{
-			for (int32 j = 0; j < WaveSize; ++j)
-			{
-				for (int32 k = 0; k < WaveSize; ++k)
-					Result.Add(HeightBufferData[j * WaveSize + k]);
-			}
-			HeightBufferData += Stride / sizeof(FVector2D);
-		}*/
+		//uint32 Stride;
+		//FVector2D* SpectrumData = static_cast<FVector2D*>(RHILockTexture2D(Spectrum, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
+		//TArray<FVector2D> Result;
+		///*for (int32 i = 0; i < 2; ++i)
+		//{
+		//	for (int32 j = 0; j < WaveSize; ++j)
+		//	{
+		//		for (int32 k = 0; k < WaveSize; ++k)
+		//			Result.Add(HeightBufferData[j * WaveSize + k]);
+		//	}
+		//	HeightBufferData += Stride / sizeof(FVector2D);
+		//}*/
 
-		for (int32 i = 0; i < 5 * 5; ++i)
-		{
-			Result.Add(SpectrumData[i]);
-		}
+		//for (int32 i = 0; i < 5 * 5; ++i)
+		//{
+		//	Result.Add(SpectrumData[i]);
+		//}
 	});
 }
 
@@ -665,8 +763,6 @@ void AFFTWaveSimulator::EvaluateWavesFFT(float TimeSeconds)
 	{
 		if (WaveSimulatorPtr.Get())
 		{
-			WaveSimulatorPtr->PrepareForFFT(TimeSeconds);
-
 			FUnorderedAccessViewRHIRef HeightBufferUAV;
 			FUnorderedAccessViewRHIRef SlopeBufferUAV;
 			FUnorderedAccessViewRHIRef DisplacementBufferUAV;

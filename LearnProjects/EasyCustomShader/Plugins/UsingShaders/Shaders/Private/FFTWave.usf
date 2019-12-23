@@ -8,9 +8,8 @@ static float GridLength = 100.f;
 float WaveAmplitude;
 float3 WindSpeed;
 
-RWTexture2D<float2> Spectrum;
-RWTexture2D<float2> SpectrumConj;
-
+RWTexture2D<float2> RWSpectrum;
+RWTexture2D<float2> RWSpectrumConj;
 
 float RandFast(uint2 PixelPos, float Magic = 3571.0)
 {
@@ -70,19 +69,17 @@ void PhillipsSpectrumCS(
 	int3 DispatchThreadID : SV_DispatchThreadID)
 {
 	int index = DispatchThreadID.x * (WaveSize + 1) + DispatchThreadID.y;
-	Spectrum[uint2(index, 0)] = GetSpectrum(DispatchThreadID.y, DispatchThreadID.x);
+	RWSpectrum[uint2(index, 0)] = GetSpectrum(DispatchThreadID.y, DispatchThreadID.x);
 	float2 Conj = GetSpectrum(-DispatchThreadID.y, -DispatchThreadID.x);
 	Conj.y *= -1.0f;
-	SpectrumConj[uint2(index, 0)] = Conj;
+	RWSpectrumConj[uint2(index, 0)] = Conj;
 }
 
 float  TimeSeconds;
 int StartIndex;
 Buffer<float> DispersionTable;
-
-Texture2D<float2> HeightBuffer;
-Texture2D<float4> SlopeBuffer;
-Texture2D<float4> DisplacementBuffer;
+Texture2D<float2> Spectrum;
+Texture2D<float2> SpectrumConj;
 
 RWTexture2D<float2> RWHeightBuffer;
 RWTexture2D<float4> RWSlopeBuffer;
@@ -99,15 +96,14 @@ float2 InitSpectrum(float TimeSeconds, int n, int m)
 	float Cos = cos(Omegat);
 	float Sin = sin(Omegat);
 
-	uint Stride, Width, Height;
-	Spectrum.GetDimensions(Width, Height);
-	if (Width > Index && Width > Index)
+	uint Width1, Width2, Height;
+	Spectrum.GetDimensions(Width1, Height);
+	SpectrumConj.GetDimensions(Width2, Height);
+	if (Width1 > Index && Width2 > Index)
 	{
-		//SpectrumData += m * Stride / sizeof(FVector2D);
 		float C0a = Spectrum[uint2(Index, 0)].x * Cos - Spectrum[uint2(Index, 0)].y * Sin;
 		float C0b = Spectrum[uint2(Index, 0)].x * Sin - Spectrum[uint2(Index, 0)].y * Cos;
 
-		//SpectrumConjData += m * Stride / sizeof(FVector2D);
 		float C1a = SpectrumConj[uint2(Index, 0)].x * Cos - SpectrumConj[uint2(Index, 0)].y * -Sin;
 		float C1b = SpectrumConj[uint2(Index, 0)].x * -Sin - SpectrumConj[uint2(Index, 0)].y * Cos;
 
@@ -183,7 +179,7 @@ void PerformFFTCS1(
 	int X = (int) ButterflyLookupTable[bftIdx + 0];
 	int Y = (int) ButterflyLookupTable[bftIdx + 1];
 	float2 w = float2(ButterflyLookupTable[bftIdx + 2], ButterflyLookupTable[bftIdx + 3]);
-	RWHeightBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * WaveSize, 0)] = FFT(w, RWHeightBuffer[uint2(X + DispatchThreadID.y * WaveSize, idx1)], RWHeightBuffer[uint2(Y + DispatchThreadID.y * WaveSize, idx1)]);
+	RWHeightBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * WaveSize, idx)] = FFT(w, RWHeightBuffer[uint2(X + DispatchThreadID.y * WaveSize, idx1)], RWHeightBuffer[uint2(Y + DispatchThreadID.y * WaveSize, idx1)]);
 	RWSlopeBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * WaveSize, idx)] = FFT(w, RWSlopeBuffer[uint2(X + DispatchThreadID.y * WaveSize, idx1)], RWSlopeBuffer[uint2(Y + DispatchThreadID.y * WaveSize, idx1)]);
 	RWDisplacementBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * WaveSize, idx)] = FFT(w, RWDisplacementBuffer[uint2(X + DispatchThreadID.y * WaveSize, idx1)], RWDisplacementBuffer[uint2(Y + DispatchThreadID.y * WaveSize, idx1)]);
 }
@@ -205,4 +201,30 @@ void PerformFFTCS2(
 	RWHeightBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * WaveSize, idx)] = FFT(w, RWHeightBuffer[uint2(DispatchThreadID.x + X * WaveSize, idx1)], RWHeightBuffer[uint2(DispatchThreadID.x + Y * WaveSize, idx1)]);
 	RWSlopeBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * WaveSize, idx)] = FFT(w, RWSlopeBuffer[uint2(DispatchThreadID.x + X * WaveSize, idx1)], RWSlopeBuffer[uint2(DispatchThreadID.x + Y * WaveSize, idx1)]);
 	RWDisplacementBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * WaveSize, idx)] = FFT(w, RWDisplacementBuffer[uint2(DispatchThreadID.x + X * WaveSize, idx1)], RWDisplacementBuffer[uint2(DispatchThreadID.x + Y * WaveSize, idx1)]);
+}
+
+Texture2D<float2> HeightBuffer;
+Texture2D<float4> SlopeBuffer;
+Texture2D<float4> DisplacementBuffer;
+RWTexture2D<float4> RWPosNormal;
+
+[numthreads(4, 4, 1)]
+void ComputePosAndNormalCS(
+	uint3 GroupId : SV_GroupID,
+	uint3 GroupThreadID : SV_GroupThreadID,
+	uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+	int Sign;
+	static float Signs[2] = { 1.f, -1.f };
+	float Lambda = -1.f;
+	
+	int Index = DispatchThreadID.x * WaveSize + DispatchThreadID.y;
+	int Index1 = DispatchThreadID.x * (WaveSize + 1) + DispatchThreadID.y;
+
+	Sign = Signs[(DispatchThreadID.x + DispatchThreadID.y) & 1];
+
+	RWPosNormal[Index1].Z = HeightBuffer[Index].X * Sign / 500.f;
+	
+	RWPosNormal[Index1].X = WavePosition[Index1].x + DisplacementBuffer[Index].x * Lambda * Sign / 500.f;
+	RWPosNormal[Index1].Y = WavePosition[Index1].y + DisplacementBuffer[Index].y * Lambda * Sign / 500.f;
 }

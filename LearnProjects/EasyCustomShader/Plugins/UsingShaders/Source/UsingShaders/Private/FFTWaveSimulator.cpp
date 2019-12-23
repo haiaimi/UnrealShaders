@@ -197,7 +197,7 @@ void AFFTWaveSimulator::ComputePositionAndNormal()
 
 				// Get displacement
 				WaveVertices[Index1].X = WavePosition[Index1].X + DisplacementBufferData[Index].X * Lambda * Sign/ 500.f;
-				WaveVertices[Index1].Y = WavePosition[Index1].Y + DisplacementBufferData[Index].Y * Lambda * Sign/500.f;
+				WaveVertices[Index1].Y = WavePosition[Index1].Y + DisplacementBufferData[Index].Y * Lambda * Sign / 500.f;
 				
 				// Get normal
 				FVector Normal(-SlopeBufferData[Index].X *Sign, -SlopeBufferData[Index].Y *Sign, 1.f);
