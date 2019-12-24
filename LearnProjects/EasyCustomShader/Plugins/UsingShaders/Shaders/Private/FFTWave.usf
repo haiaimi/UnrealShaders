@@ -206,7 +206,7 @@ void PerformFFTCS2(
 Texture2D<float2> HeightBuffer;
 Texture2D<float4> SlopeBuffer;
 Texture2D<float4> DisplacementBuffer;
-RWTexture2D<float4> RWPosNormal;
+RWTexture2D<float4> RWOffsetPos;
 
 [numthreads(4, 4, 1)]
 void ComputePosAndNormalCS(
@@ -222,9 +222,11 @@ void ComputePosAndNormalCS(
 	int Index1 = DispatchThreadID.x * (WaveSize + 1) + DispatchThreadID.y;
 
 	Sign = Signs[(DispatchThreadID.x + DispatchThreadID.y) & 1];
-
-	RWPosNormal[Index1].Z = HeightBuffer[Index].X * Sign / 500.f;
 	
-	RWPosNormal[Index1].X = WavePosition[Index1].x + DisplacementBuffer[Index].x * Lambda * Sign / 500.f;
-	RWPosNormal[Index1].Y = WavePosition[Index1].y + DisplacementBuffer[Index].y * Lambda * Sign / 500.f;
+	float Width, Height;
+	//RWOffsetPos.GetDimensions(Width, Height);
+	//RWOffsetPos[Index1].z = HeightBuffer[Index].x * Sign / 500.f;
+	
+	//RWOffsetPos[Index1].x = DisplacementBuffer[Index].x * Lambda * Sign / 500.f;
+	//RWOffsetPos[Index1].y = DisplacementBuffer[Index].y * Lambda * Sign / 500.f;
 }
