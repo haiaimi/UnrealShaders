@@ -230,3 +230,18 @@ void ComputePosAndNormalCS(
 	//RWOffsetPos[Index1].x = DisplacementBuffer[Index].x * Lambda * Sign / 500.f;
 	//RWOffsetPos[Index1].y = DisplacementBuffer[Index].y * Lambda * Sign / 500.f;
 }
+
+void ComputePosAndNormalVS(
+	in float4 InPosition : ATTRIBUTE0,
+	out float4 OutPosition : SV_POSITION
+	)
+{
+	OutPosition = InPosition;
+}
+
+void ComputePosAndNormalPS(
+	out float4 OutColor : SV_Target0
+)
+{
+	//OutColor = SimpleColor;
+}
