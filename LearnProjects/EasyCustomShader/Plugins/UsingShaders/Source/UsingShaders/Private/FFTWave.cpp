@@ -11,6 +11,9 @@
 #include "Engine/Public/SceneView.h"
 #include "ShaderParameterStruct.h"
 #include "FFTWaveSimulator.h"
+#include "RHI.h"
+#include "PipelineStateCache.h"
+#include "Common.h"
 
 #define WAVE_GROUP_THREAD_COUNTS 4
 
@@ -444,6 +447,7 @@ public:
 	FComputePosAndNormalShader(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
 		FGlobalShader(Initializer)
 	{
+		TextureSampler.Bind(Initializer.ParameterMap, TEXT("TextureSampler"));
 		HeightBuffer.Bind(Initializer.ParameterMap, TEXT("HeightBuffer"));
 		SlopeBuffer.Bind(Initializer.ParameterMap, TEXT("SlopeBuffer"));
 		DisplacementBuffer.Bind(Initializer.ParameterMap, TEXT("DisplacementBuffer"));
@@ -472,6 +476,7 @@ public:
 		FTexture2DRHIParamRef InDisplacementBuffer
 	)
 	{
+		SetSamplerParameter(RHICmdList, GetComputeShader(), TextureSampler, TStaticSamplerState<SF_AnisotropicLinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 		SetTextureParameter(RHICmdList, GetComputeShader(), HeightBuffer, InHeightBuffer);
 		SetTextureParameter(RHICmdList, GetComputeShader(), SlopeBuffer, InSlopeBuffer);
 		SetTextureParameter(RHICmdList, GetComputeShader(), DisplacementBuffer, InDisplacementBuffer);
@@ -496,6 +501,8 @@ private:
 	FShaderResourceParameter HeightBuffer;
 	FShaderResourceParameter SlopeBuffer;
 	FShaderResourceParameter DisplacementBuffer;
+
+	FShaderResourceParameter TextureSampler;
 };
 
 class FComputePosAndNormalVS :public FComputePosAndNormalShader
@@ -735,7 +742,7 @@ static void ComputePosAndNormal_RenderThread(
 {
 	check(IsInRenderingThread());
 
-	TShaderMapRef<FComputePosAndNormalCS> ComputePosAndNormalShader(GetGlobalShaderMap(FeatureLevel));
+	TShaderMapRef<FComputePosAndNormalCS> ComputePosAndNormalCS(GetGlobalShaderMap(FeatureLevel));
 	TShaderMapRef<FComputePosAndNormalVS> ComputePosAndNormalVS(GetGlobalShaderMap(FeatureLevel));
 	TShaderMapRef<FComputePosAndNormalPS> ComputePosAndNormalPS(GetGlobalShaderMap(FeatureLevel));
 
@@ -745,18 +752,43 @@ static void ComputePosAndNormal_RenderThread(
 		FRHIResourceCreateInfo RHIResourceCreateInfo;
 		RHICmdList.SetViewport(0.f, 0.f, 0.f, RTSize.X, RTSize.Y, 1.f);
 		FRHIRenderPassInfo PassInfo(OutputRenderTargetResource->GetRenderTargetTexture(), ERenderTargetActions::Load_Store, OutputRenderTargetResource->TextureRHI);
-		RHICmdList.BeginRenderPass(PassInfo, TEXT("ComputeWavePos"));
+		RHICmdList.BeginRenderPass(PassInfo, TEXT("ComputeWavePosPass"));
 
 		FComputePosAndNormalDeclaration VertexDeclaration;
+		VertexDeclaration.InitRHI();
 
-		
-		//FTexture2DRHIRef TempTexture = RHICreateTexture2D(InTexture->GetSizeXYZ().X, InTexture->GetSizeXYZ().Y, PF_A32B32G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo);
+		FGraphicsPipelineStateInitializer GraphicPSPoint;
+		RHICmdList.ApplyCachedRenderTargets(GraphicPSPoint);
+		GraphicPSPoint.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+		GraphicPSPoint.BlendState = TStaticBlendState<>::GetRHI();
+		GraphicPSPoint.RasterizerState = TStaticRasterizerState<>::GetRHI();
+		GraphicPSPoint.PrimitiveType = PT_TriangleList;        //绘制的图元类型
+		GraphicPSPoint.BoundShaderState.VertexDeclarationRHI = VertexDeclaration.VertexDeclarationRHI;
+		GraphicPSPoint.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*ComputePosAndNormalVS);
+		GraphicPSPoint.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ComputePosAndNormalPS);
+		SetGraphicsPipelineState(RHICmdList, GraphicPSPoint);
+
+		ComputePosAndNormalPS->SetParameters(RHICmdList, HeightBuffer, SlopeBuffer, DisplacementBuffer);
+
+		FUVertexInput Vertices[4];
+		Vertices[0].Position.Set(-1.0f, 1.0f, 0, 1.0f);
+		Vertices[1].Position.Set(1.0f, 1.0f, 0, 1.0f);
+		Vertices[2].Position.Set(-1.0f, -1.0f, 0, 1.0f);
+		Vertices[3].Position.Set(1.0f, -1.0f, 0, 1.0f);
+		Vertices[0].UV = FVector2D(0.0f, 1.0f);
+		Vertices[1].UV = FVector2D(1.0f, 1.0f);
+		Vertices[2].UV = FVector2D(0.0f, 0.0f);
+		Vertices[3].UV = FVector2D(1.0f, 0.0f);
+		static const uint16 Indices[6] =  
+		{  
+			0, 1, 2,  
+			2, 1, 3  
+		};  
+
+		DrawIndexedPrimitiveUP_Custom(RHICmdList, PT_TriangleList, 0, ARRAY_COUNT(Vertices), 2, Indices, sizeof(Indices[0]), Vertices, sizeof(Vertices[0]));
+
+		RHICmdList.EndRenderPass();
 	}
-
-	//RHICmdList.SetComputeShader(PhillipsSpecturmShader->GetComputeShader());
-	//PhillipsSpecturmShader->SetParameters(RHICmdList, WaveSize, WaveAmplitude, WindSpeed, Spectrum, SpectrumConj);
-	//DispatchComputeShader(RHICmdList, *PhillipsSpecturmShader, FMath::DivideAndRoundUp(WaveSize + 1, WAVE_GROUP_THREAD_COUNTS), FMath::DivideAndRoundUp(WaveSize + 1, WAVE_GROUP_THREAD_COUNTS), 1); 
-	//PhillipsSpecturmShader->UnbindUAV(RHICmdList);
 }
 
 void AFFTWaveSimulator::ComputeSpectrum()

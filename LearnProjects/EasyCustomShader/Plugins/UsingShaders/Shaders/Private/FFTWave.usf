@@ -203,6 +203,7 @@ void PerformFFTCS2(
 	RWDisplacementBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * WaveSize, idx)] = FFT(w, RWDisplacementBuffer[uint2(DispatchThreadID.x + X * WaveSize, idx1)], RWDisplacementBuffer[uint2(DispatchThreadID.x + Y * WaveSize, idx1)]);
 }
 
+SamplerState TextureSampler;
 Texture2D<float2> HeightBuffer;
 Texture2D<float4> SlopeBuffer;
 Texture2D<float4> DisplacementBuffer;
@@ -233,15 +234,33 @@ void ComputePosAndNormalCS(
 
 void ComputePosAndNormalVS(
 	in float4 InPosition : ATTRIBUTE0,
+	in float2 UV : ATTRIBUTE1,
+	out float2 OutUV : TEXCOORD0,
 	out float4 OutPosition : SV_POSITION
 	)
 {
 	OutPosition = InPosition;
+	OutUV = UV;
 }
 
 void ComputePosAndNormalPS(
+	in float2 UV : TEXCOORD0,
 	out float4 OutColor : SV_Target0
 )
 {
-	//OutColor = SimpleColor;
+	int Width, Height;
+	HeightBuffer.GetDimensions(Width, Height);
+	float CoordX = Width * UV.x;
+	float PointX = floor(CoordX);
+	float LerpAlphaX = frac(CoordX);
+	float CoordY = Width * UV.y;
+	float PointY = floor(CoordY);
+	float LerpAlphaY = frac(CoordY);
+	
+	float2 TopLeft, TopRight, DownLeft, DownRight;
+	TopLeft = HeightBuffer.Sample(TextureSampler, float2(PointX, PointY));
+	if(LerpAlphaX == 0.f)
+	{
+		
+	}
 }
