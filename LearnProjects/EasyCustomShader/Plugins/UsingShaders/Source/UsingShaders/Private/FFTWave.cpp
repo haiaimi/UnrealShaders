@@ -733,10 +733,24 @@ static void ComputePosAndNormal_RenderThread(
 	FTexture2DRHIParamRef DisplacementBuffer
 )
 {
+	check(IsInRenderingThread());
+
 	TShaderMapRef<FComputePosAndNormalCS> ComputePosAndNormalShader(GetGlobalShaderMap(FeatureLevel));
+	TShaderMapRef<FComputePosAndNormalVS> ComputePosAndNormalVS(GetGlobalShaderMap(FeatureLevel));
+	TShaderMapRef<FComputePosAndNormalPS> ComputePosAndNormalPS(GetGlobalShaderMap(FeatureLevel));
+
 	if (OutputRenderTargetResource)
 	{
 		FIntPoint RTSize = OutputRenderTargetResource->GetSizeXY();
+		FRHIResourceCreateInfo RHIResourceCreateInfo;
+		RHICmdList.SetViewport(0.f, 0.f, 0.f, RTSize.X, RTSize.Y, 1.f);
+		FRHIRenderPassInfo PassInfo(OutputRenderTargetResource->GetRenderTargetTexture(), ERenderTargetActions::Load_Store, OutputRenderTargetResource->TextureRHI);
+		RHICmdList.BeginRenderPass(PassInfo, TEXT("ComputeWavePos"));
+
+		FComputePosAndNormalDeclaration VertexDeclaration;
+
+		
+		//FTexture2DRHIRef TempTexture = RHICreateTexture2D(InTexture->GetSizeXYZ().X, InTexture->GetSizeXYZ().Y, PF_A32B32G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo);
 	}
 
 	//RHICmdList.SetComputeShader(PhillipsSpecturmShader->GetComputeShader());
