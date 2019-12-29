@@ -26,10 +26,12 @@ public:
 
 	void InitWaveResource();
 
+	// Run on cpu, don't use it
 	void PrepareForFFT(float TimeSeconds);
 
 	void EvaluateWavesFFT(float TimeSeconds);
 
+	// Run on cpu, don't use it
 	FVector2D InitSpectrum(float TimeSeconds, int32 n, int32 m);
 
 	float Dispersion(int32 n, int32 m);
@@ -40,6 +42,7 @@ public:
 
 	void CreateResources();
 
+	// Run on cpu, don't use it
 	void ComputePositionAndNormal();
 
 #if WITH_EDITOR
@@ -65,7 +68,10 @@ public:
 	class UMaterialInterface* GridMaterial;
 
 	UPROPERTY(EditAnywhere)
-	class UTextureRenderTarget* OutputRenderTarget;
+	class UTextureRenderTarget* WaveHeightMapRenderTarget;
+
+	UPROPERTY(EditAnywhere)
+	class UTextureRenderTarget* WaveNormalRenderTarget;
 
 	TArray<float> ButterflyLookupTable;
 

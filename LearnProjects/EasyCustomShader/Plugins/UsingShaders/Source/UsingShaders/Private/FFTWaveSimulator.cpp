@@ -15,7 +15,7 @@ AFFTWaveSimulator::AFFTWaveSimulator():
 	WaveMesh(nullptr),
 	WaveSize(64),
 	GridLength(100.f),
-	OutputRenderTarget(nullptr)
+	WaveHeightMapRenderTarget(nullptr)
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
@@ -225,13 +225,13 @@ void AFFTWaveSimulator::ComputePositionAndNormal()
 				else
 					continue;
 
-				//WaveVertices[TileIndex].Z = HeightBufferData[Index].X * Sign;
-				////WaveVertices[TileIndex].X = WavePosition[TileIndex].X + DisplacementBufferData[Index].X * Lambda * Sign;
-				////WaveVertices[TileIndex].Y = WavePosition[TileIndex].Y + DisplacementBufferData[Index].Z * Lambda * Sign;
-				//
-				//WaveNormals[TileIndex].X = Normal.X;
-				//WaveNormals[TileIndex].Y = Normal.Y;
-				//WaveNormals[TileIndex].Z = Normal.Z;
+				WaveVertices[TileIndex].Z = HeightBufferData[Index].X * Sign;
+				WaveVertices[TileIndex].X = WavePosition[TileIndex].X + DisplacementBufferData[Index].X * Lambda * Sign;
+				WaveVertices[TileIndex].Y = WavePosition[TileIndex].Y + DisplacementBufferData[Index].Z * Lambda * Sign;
+				
+				WaveNormals[TileIndex].X = Normal.X;
+				WaveNormals[TileIndex].Y = Normal.Y;
+				WaveNormals[TileIndex].Z = Normal.Z;
 			}
 		}
 		// Unlock the buffers
