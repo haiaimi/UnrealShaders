@@ -14,6 +14,7 @@
 #include "RHI.h"
 #include "PipelineStateCache.h"
 #include "Common.h"
+#include "Engine/TextureRenderTarget.h"
 
 #define WAVE_GROUP_THREAD_COUNTS 4
 
@@ -410,33 +411,6 @@ private:
 
 IMPLEMENT_SHADER_TYPE(, FComputePosAndNormalCS, TEXT("/Plugins/Shaders/Private/FFTWave.usf"), TEXT("ComputePosAndNormalCS"), SF_Compute)
 
-struct FUVertexInput
-{
-	FVector4 Position;
-	FVector2D UV;
-};
-
-class FComputePosAndNormalDeclaration : public FRenderResource
-{
-public:
-	FVertexDeclarationRHIRef VertexDeclarationRHI;
-
-	virtual void InitRHI()override
-	{
-		//设置顶点输入布局
-		FVertexDeclarationElementList Elements;
-		uint32 Stride = sizeof(FUVertexInput);   //步长
-		Elements.Add(FVertexElement(0, STRUCT_OFFSET(FUVertexInput, Position), EVertexElementType::VET_Float4, 0, Stride));  //第一个参数Stream应该是配合Instance来使用
-		Elements.Add(FVertexElement(0, STRUCT_OFFSET(FUVertexInput, UV), EVertexElementType::VET_Float2, 1, Stride));
-		VertexDeclarationRHI = RHICreateVertexDeclaration(Elements);
-	}
-
-	virtual void ReleaseRHI()override
-	{
-		VertexDeclarationRHI.SafeRelease();
-	}
-};
-
 class FComputePosAndNormalShader : public FGlobalShader
 {
 	DECLARE_SHADER_TYPE(FComputePosAndNormalShader, Global)
@@ -447,6 +421,7 @@ public:
 	FComputePosAndNormalShader(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
 		FGlobalShader(Initializer)
 	{
+		WaveSize.Bind(Initializer.ParameterMap, TEXT("WaveSize"));
 		TextureSampler.Bind(Initializer.ParameterMap, TEXT("TextureSampler"));
 		HeightBuffer.Bind(Initializer.ParameterMap, TEXT("HeightBuffer"));
 		SlopeBuffer.Bind(Initializer.ParameterMap, TEXT("SlopeBuffer"));
@@ -470,16 +445,17 @@ public:
 
 	void SetParameters(
 		FRHICommandListImmediate& RHICmdList,
-
+		int32 InWaveSize,
 		FTexture2DRHIParamRef InHeightBuffer,
 		FTexture2DRHIParamRef InSlopeBuffer,
 		FTexture2DRHIParamRef InDisplacementBuffer
 	)
 	{
-		SetSamplerParameter(RHICmdList, GetComputeShader(), TextureSampler, TStaticSamplerState<SF_AnisotropicLinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
-		SetTextureParameter(RHICmdList, GetComputeShader(), HeightBuffer, InHeightBuffer);
-		SetTextureParameter(RHICmdList, GetComputeShader(), SlopeBuffer, InSlopeBuffer);
-		SetTextureParameter(RHICmdList, GetComputeShader(), DisplacementBuffer, InDisplacementBuffer);
+		SetShaderValue(RHICmdList, GetPixelShader(), WaveSize, WaveSize);
+		SetSamplerParameter(RHICmdList, GetPixelShader(), TextureSampler, TStaticSamplerState<SF_AnisotropicLinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
+		SetTextureParameter(RHICmdList, GetPixelShader(), HeightBuffer, InHeightBuffer);
+		SetTextureParameter(RHICmdList, GetPixelShader(), SlopeBuffer, InSlopeBuffer);
+		SetTextureParameter(RHICmdList, GetPixelShader(), DisplacementBuffer, InDisplacementBuffer);
 	}
 
 	void UnbindUAV(FRHICommandList& RHICmdList)
@@ -490,6 +466,7 @@ public:
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 
+		Ar << WaveSize;
 		Ar << HeightBuffer;
 		Ar << SlopeBuffer;
 		Ar << DisplacementBuffer;
@@ -498,6 +475,8 @@ public:
 	}
 
 private:
+	FShaderParameter WaveSize;
+
 	FShaderResourceParameter HeightBuffer;
 	FShaderResourceParameter SlopeBuffer;
 	FShaderResourceParameter DisplacementBuffer;
@@ -518,6 +497,7 @@ public:
 	}
 };
 
+template<int32 Index>
 class FComputePosAndNormalPS :public FComputePosAndNormalShader
 {
 	DECLARE_SHADER_TYPE(FComputePosAndNormalPS, Global);
@@ -532,7 +512,8 @@ public:
 };
 
 IMPLEMENT_SHADER_TYPE(, FComputePosAndNormalVS, TEXT("/Plugins/Shaders/Private/FFTWave.usf"), TEXT("ComputePosAndNormalVS"), SF_Vertex)
-IMPLEMENT_SHADER_TYPE(, FComputePosAndNormalPS, TEXT("/Plugins/Shaders/Private/FFTWave.usf"), TEXT("ComputePosAndNormalPS"), SF_Pixel)
+IMPLEMENT_SHADER_TYPE(, FComputePosAndNormalPS<1>, TEXT("/Plugins/Shaders/Private/FFTWave.usf"), TEXT("ComputePosOffsetPS"), SF_Pixel)
+IMPLEMENT_SHADER_TYPE(, FComputePosAndNormalPS<2>, TEXT("/Plugins/Shaders/Private/FFTWave.usf"), TEXT("ComputeNormalPS"), SF_Pixel)
 
 int32 BitReverse(int32 i, int32 Size)
 {
@@ -666,30 +647,30 @@ static void EvaluateWavesFFT_RenderThread(
 	WaveFFTCS1->SetParameters(RHICmdList, TimeSeconds, WaveSize, 0, WaveSimulator->ButterflyLookupTableSRV, HeightBuffer, SlopeBuffer, DisplacementBuffer, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV);
 	DispatchComputeShader(RHICmdList, *WaveFFTCS1, 1, 1, 1);
 	WaveFFTCS1->UnbindUAV(RHICmdList);*/
-	//uint32 Stride;
-	//FVector2D* HeightBufferData = static_cast<FVector2D*>(RHILockTexture2D(HeightBuffer, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
-	//TArray<FVector2D> Result;
-	///*for (int32 i = 0; i < 2; ++i)
-	//{
-	//	for (int32 j = 0; j < WaveSize; ++j)
-	//	{
-	//		for (int32 k = 0; k < WaveSize; ++k)
-	//			Result.Add(HeightBufferData[j * WaveSize + k]);
-	//	}
-	//	HeightBufferData += Stride / sizeof(FVector2D);
-	//}*/
+	uint32 Stride;
+	FVector2D* HeightBufferData = static_cast<FVector2D*>(RHILockTexture2D(HeightBuffer, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
+	TArray<FVector2D> Result;
+	/*for (int32 i = 0; i < 2; ++i)
+	{
+		for (int32 j = 0; j < WaveSize; ++j)
+		{
+			for (int32 k = 0; k < WaveSize; ++k)
+				Result.Add(HeightBufferData[j * WaveSize + k]);
+		}
+		HeightBufferData += Stride / sizeof(FVector2D);
+	}*/
 
-	//for (int32 i = 0; i < 4 * 4; ++i)
-	//{
-	//	Result.Add(HeightBufferData[i]);
-	//}
-	//HeightBufferData += Stride / sizeof(FVector2D);
-	//for (int32 i = 0; i < 4 * 4; ++i)
-	//{
-	//	Result.Add(HeightBufferData[i]);
-	//}
-	//
-	//RHIUnlockTexture2D(HeightBuffer, 0, false);
+	for (int32 i = 0; i < 4 * 4; ++i)
+	{
+		Result.Add(HeightBufferData[i]);
+	}
+	HeightBufferData += Stride / sizeof(FVector2D);
+	for (int32 i = 0; i < 4 * 4; ++i)
+	{
+		Result.Add(HeightBufferData[i]);
+	}
+	
+	RHIUnlockTexture2D(HeightBuffer, 0, false);
 	for (int32 i = 0; i < Passes; ++i)
 	{
 		RHICmdList.SetComputeShader(WaveFFTCS1->GetComputeShader());
@@ -697,29 +678,29 @@ static void EvaluateWavesFFT_RenderThread(
 		DispatchComputeShader(RHICmdList, *WaveFFTCS1, FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), 1);
 		WaveFFTCS1->UnbindUAV(RHICmdList);
 
-		//HeightBufferData = static_cast<FVector2D*>(RHILockTexture2D(HeightBuffer, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
-		//Result.Reset();
-		///*for (int32 i = 0; i < 2; ++i)
-		//{
-		//	for (int32 j = 0; j < WaveSize; ++j)
-		//	{
-		//		for (int32 k = 0; k < WaveSize; ++k)
-		//			Result.Add(HeightBufferData[j * WaveSize + k]);
-		//	}
-		//	HeightBufferData += Stride / sizeof(FVector2D);
-		//}*/
+		HeightBufferData = static_cast<FVector2D*>(RHILockTexture2D(HeightBuffer, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
+		Result.Reset();
+		/*for (int32 i = 0; i < 2; ++i)
+		{
+			for (int32 j = 0; j < WaveSize; ++j)
+			{
+				for (int32 k = 0; k < WaveSize; ++k)
+					Result.Add(HeightBufferData[j * WaveSize + k]);
+			}
+			HeightBufferData += Stride / sizeof(FVector2D);
+		}*/
 
-		//for (int32 i = 0; i < 4 * 4; ++i)
-		//{
-		//	Result.Add(HeightBufferData[i]);
-		//}
-		//HeightBufferData += Stride / sizeof(FVector2D);
-		//for (int32 i = 0; i < 4 * 4; ++i)
-		//{
-		//	Result.Add(HeightBufferData[i]);
-		//}
+		for (int32 i = 0; i < 4 * 4; ++i)
+		{
+			Result.Add(HeightBufferData[i]);
+		}
+		HeightBufferData += Stride / sizeof(FVector2D);
+		for (int32 i = 0; i < 4 * 4; ++i)
+		{
+			Result.Add(HeightBufferData[i]);
+		}
 
-		//RHIUnlockTexture2D(HeightBuffer, 0, false);
+		RHIUnlockTexture2D(HeightBuffer, 0, false);
 	}
 
 	for (int32 i = 0; i < Passes; ++i)
@@ -735,6 +716,7 @@ static void ComputePosAndNormal_RenderThread(
 	FRHICommandListImmediate& RHICmdList,
 	ERHIFeatureLevel::Type FeatureLevel,
 	FTextureRenderTargetResource* OutputRenderTargetResource,
+	int32 InWaveSize,
 	FTexture2DRHIParamRef HeightBuffer,
 	FTexture2DRHIParamRef SlopeBuffer,
 	FTexture2DRHIParamRef DisplacementBuffer
@@ -742,7 +724,7 @@ static void ComputePosAndNormal_RenderThread(
 {
 	check(IsInRenderingThread());
 
-	TShaderMapRef<FComputePosAndNormalCS> ComputePosAndNormalCS(GetGlobalShaderMap(FeatureLevel));
+	//TShaderMapRef<FComputePosAndNormalCS> ComputePosAndNormalCS(GetGlobalShaderMap(FeatureLevel));
 	TShaderMapRef<FComputePosAndNormalVS> ComputePosAndNormalVS(GetGlobalShaderMap(FeatureLevel));
 	TShaderMapRef<FComputePosAndNormalPS> ComputePosAndNormalPS(GetGlobalShaderMap(FeatureLevel));
 
@@ -754,7 +736,7 @@ static void ComputePosAndNormal_RenderThread(
 		FRHIRenderPassInfo PassInfo(OutputRenderTargetResource->GetRenderTargetTexture(), ERenderTargetActions::Load_Store, OutputRenderTargetResource->TextureRHI);
 		RHICmdList.BeginRenderPass(PassInfo, TEXT("ComputeWavePosPass"));
 
-		FComputePosAndNormalDeclaration VertexDeclaration;
+		FCommonVertexDeclaration VertexDeclaration;
 		VertexDeclaration.InitRHI();
 
 		FGraphicsPipelineStateInitializer GraphicPSPoint;
@@ -768,7 +750,7 @@ static void ComputePosAndNormal_RenderThread(
 		GraphicPSPoint.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ComputePosAndNormalPS);
 		SetGraphicsPipelineState(RHICmdList, GraphicPSPoint);
 
-		ComputePosAndNormalPS->SetParameters(RHICmdList, HeightBuffer, SlopeBuffer, DisplacementBuffer);
+		ComputePosAndNormalPS->SetParameters(RHICmdList, InWaveSize, HeightBuffer, SlopeBuffer, DisplacementBuffer);
 
 		FUVertexInput Vertices[4];
 		Vertices[0].Position.Set(-1.0f, 1.0f, 0, 1.0f);
@@ -944,8 +926,9 @@ void AFFTWaveSimulator::EvaluateWavesFFT(float TimeSeconds)
 			}
 			PrepareFFT_RenderThread(RHICmdList, FeatureLevel, TimeSeconds, WaveSimulatorPtr->WaveSize, WaveSimulatorPtr->DispersionTableSRV, WaveSimulatorPtr->Spectrum, WaveSimulatorPtr->SpectrumConj, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV);
 			EvaluateWavesFFT_RenderThread(RHICmdList, FeatureLevel, TimeSeconds, WaveSimulatorPtr->WaveSize, 0, WaveSimulatorPtr->HeightBuffer, WaveSimulatorPtr->SlopeBuffer,WaveSimulatorPtr->DisplacementBuffer, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV, WaveSimulatorPtr);
-
-			WaveSimulatorPtr->ComputePositionAndNormal();
+		
+			if (WaveSimulatorPtr->OutputRenderTarget)
+				ComputePosAndNormal_RenderThread(RHICmdList, FeatureLevel, WaveSimulatorPtr->OutputRenderTarget->GetRenderTargetResource(), WaveSimulatorPtr->WaveSize, WaveSimulatorPtr->HeightBuffer, WaveSimulatorPtr->SlopeBuffer, WaveSimulatorPtr->DisplacementBuffer);
 		}
 	});
 }

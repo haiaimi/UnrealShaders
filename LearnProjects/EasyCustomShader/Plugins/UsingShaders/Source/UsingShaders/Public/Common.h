@@ -1,6 +1,33 @@
 #pragma once
 #include "RHI.h"
 
+struct FUVertexInput
+{
+	FVector4 Position;
+	FVector2D UV;
+};
+
+class FCommonVertexDeclaration : public FRenderResource
+{
+public:
+	FVertexDeclarationRHIRef VertexDeclarationRHI;
+
+	virtual void InitRHI()override
+	{
+		//设置顶点输入布局
+		FVertexDeclarationElementList Elements;
+		uint32 Stride = sizeof(FUVertexInput);   //步长
+		Elements.Add(FVertexElement(0, STRUCT_OFFSET(FUVertexInput, Position), EVertexElementType::VET_Float4, 0, Stride));  //第一个参数Stream应该是配合Instance来使用
+		Elements.Add(FVertexElement(0, STRUCT_OFFSET(FUVertexInput, UV), EVertexElementType::VET_Float2, 1, Stride));
+		VertexDeclarationRHI = RHICreateVertexDeclaration(Elements);
+	}
+
+	virtual void ReleaseRHI()override
+	{
+		VertexDeclarationRHI.SafeRelease();
+	}
+};
+
 static void DrawIndexedPrimitiveUP_Custom(
 	FRHICommandList& RHICmdList,
 	uint32 PrimitiveType,

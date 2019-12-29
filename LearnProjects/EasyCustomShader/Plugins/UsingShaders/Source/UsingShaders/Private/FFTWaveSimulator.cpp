@@ -14,7 +14,8 @@ extern void ComputeButterflyLookuptable(int32 Size, int32 Passes, TArray<float>&
 AFFTWaveSimulator::AFFTWaveSimulator():
 	WaveMesh(nullptr),
 	WaveSize(64),
-	GridLength(100.f)
+	GridLength(100.f),
+	OutputRenderTarget(nullptr)
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
@@ -22,9 +23,6 @@ AFFTWaveSimulator::AFFTWaveSimulator():
 	WindSpeed = FVector(10.f, 10.f, 0.f);
 	WaveAmplitude = 0.05f;
 	WaveMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("WaveMesh"));
-
-	if (GridMaterial)
-		WaveMesh->SetMaterial(0, GridMaterial);
 }
 
 // Called when the game starts or when spawned
@@ -32,6 +30,9 @@ void AFFTWaveSimulator::BeginPlay()
 {
 	Super::BeginPlay();
 	
+	if (GridMaterial && WaveMesh)
+		WaveMesh->SetMaterial(0, GridMaterial);
+
 	InitWaveResource();
 }
 
@@ -196,7 +197,7 @@ void AFFTWaveSimulator::ComputePositionAndNormal()
 				WaveVertices[Index1].Z = HeightBufferData[Index].X * Sign / 500.f;
 
 				// Get displacement
-				WaveVertices[Index1].X = WavePosition[Index1].X + DisplacementBufferData[Index].X * Lambda * Sign/ 500.f;
+				WaveVertices[Index1].X = WavePosition[Index1].X + DisplacementBufferData[Index].X * Lambda * Sign / 500.f;
 				WaveVertices[Index1].Y = WavePosition[Index1].Y + DisplacementBufferData[Index].Y * Lambda * Sign / 500.f;
 				
 				// Get normal

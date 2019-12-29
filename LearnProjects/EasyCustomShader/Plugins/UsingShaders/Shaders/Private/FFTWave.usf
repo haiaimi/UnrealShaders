@@ -207,7 +207,7 @@ SamplerState TextureSampler;
 Texture2D<float2> HeightBuffer;
 Texture2D<float4> SlopeBuffer;
 Texture2D<float4> DisplacementBuffer;
-RWTexture2D<float4> RWOffsetPos;
+//RWTexture2D<float4> RWOffsetPos;
 
 [numthreads(4, 4, 1)]
 void ComputePosAndNormalCS(
@@ -247,12 +247,12 @@ static float Signs[2] = { 1.f, -1.f };
 
 float3 GetPosOffset(int2 Coord, int Size)
 {
-	int Index = Coord.x * (Size + 1) + Coord.y;
+	int Index = Coord.x * Size + Coord.y;
 	int Sign = Signs[(Coord.x + Coord.y) & 1];
-	return float3(0.f, 0.f, HeightBuffer[Index].x * Sign / 500.f);
+	return float3(0.f, 0.f, HeightBuffer[int2(Index, 1)].x * Sign / 500.f);
 }
 
-void ComputePosAndNormalPS(
+void ComputePosOffsetPS(
 	in float2 UV : TEXCOORD0,
 	out float4 OutColor : SV_Target0
 )
@@ -261,20 +261,21 @@ void ComputePosAndNormalPS(
 	float Lambda = -1.f;
 	int Width, Height;
 	HeightBuffer.GetDimensions(Width, Height);
-	float CoordX = Width * UV.x;
+	int Size = sqrt(Width);
+	float CoordX = Size * UV.x;
 	int PointX = floor(CoordX);
 	float LerpAlphaX = frac(CoordX);
 	[branch]
-	if(PointX == Width)
+	if (PointX == Size)
 	{
 		PointX -= 1;
 		LerpAlphaX = 1.f;
 	}
-	float CoordY = Height * UV.y;
+	float CoordY = Size * UV.y;
 	int PointY = floor(CoordY);
 	float LerpAlphaY = frac(CoordY);
 	[branch]
-	if (PointY == Height)
+	if (PointY == Size)
 	{
 		PointY -= 1;
 		LerpAlphaY = 1.f;
@@ -282,12 +283,20 @@ void ComputePosAndNormalPS(
 	
 	int RightPoint = PointX + sign(LerpAlphaX);
 	int DownPoint = PointY + sign(LerpAlphaY);
-	bool bInBorderRight = (RightPoint == Width);
-	bool bInBorderDown = (DownPoint == Height);
-	float3 TopLeft = GetPosOffset(int2(PointX, PointY), Width);
-	float3 TopRight = bInBorderRight ? float4(0.f, 0.f, 0.f, 1.f) : GetPosOffset(int2(RightPoint, PointY), Width);
-	float3 DownLeft = bInBorderDown ? float4(0.f, 0.f, 0.f, 1.f) : GetPosOffset(int2(PointX, DownPoint), Width);
-	float3 DownRight = bInBorderRight || bInBorderDown ? float4(0.f, 0.f, 0.f, 1.f) : GetPosOffset(int2(RightPoint, DownPoint), Width);
+	bool bInBorderRight = (RightPoint == Size);
+	bool bInBorderDown = (DownPoint == Size);
+	float3 TopLeft = GetPosOffset(int2(PointX, PointY), Size);
+	float3 TopRight = bInBorderRight ? float4(0.f, 0.f, 0.f, 1.f) : GetPosOffset(int2(RightPoint, PointY), Size);
+	float3 DownLeft = bInBorderDown ? float4(0.f, 0.f, 0.f, 1.f) : GetPosOffset(int2(PointX, DownPoint), Size);
+	float3 DownRight = (bInBorderRight || bInBorderDown) ? float4(0.f, 0.f, 0.f, 1.f) : GetPosOffset(int2(RightPoint, DownPoint), Size);
 	//Bilinear lerp
 	OutColor = float4(lerp(lerp(TopLeft, TopRight, LerpAlphaX), lerp(DownLeft, DownRight, LerpAlphaX), LerpAlphaY), 1.f);
+}
+
+void ComputeNormalPS(
+	in float2 UV : TEXCOORD0,
+	out float4 OutColor : SV_Target0
+)
+{
+	
 }

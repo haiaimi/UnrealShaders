@@ -64,6 +64,9 @@ public:
 	UPROPERTY(EditAnywhere)
 	class UMaterialInterface* GridMaterial;
 
+	UPROPERTY(EditAnywhere)
+	class UTextureRenderTarget* OutputRenderTarget;
+
 	TArray<float> ButterflyLookupTable;
 
 	FVertexBufferRHIRef ButterflyLookupTableVB;
