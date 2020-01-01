@@ -152,3 +152,9 @@ $\int_{m\in\Theta}D(m)(v\cdot m)dm=v\cdot n$
 $\int_{m\in\Theta}G_1(m,v)D(m)(v\cdot m)^+ dm=v\cdot n$
 
 注意这里的$(v\cdot m)$是clamp大于0的，$G_1(m,v)D(m)$又被称为 *distribution of visible normals*，就是可见法线分布。
+
+### IBL（基于图片的光照）
+    
+就是根据环境贴图来计算环境光，环境光一般是一张CubeMap。
+
+IBL同样也是分为Diffuse和Specular，它们需要分开计算，前面知道要计算光照需要对半球体进行积分，在实时渲染中不可能这样计算，所以这就需要蒙特卡洛积分。
