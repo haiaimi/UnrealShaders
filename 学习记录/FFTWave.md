@@ -75,7 +75,7 @@
      \end{array}\right|=\left|\begin{array}{ccc}
      \frac{\delta{x'}}{\delta{x}}&\frac{\delta{x'}}{\delta{y}}\\
      \frac{\delta{y'}}{\delta{x}}&\frac{\delta{y'}}{\delta{y}}
-    \end{array}\right|$   
+    \end{array}\right|=J_{xx}J_{yy}-J_{xy}J_{yx}$   
     根据$\vec{x'}=\vec{x}+\lambda\vec{D}(\vec{x},t)$可知：  
     $J_{xx}=\frac{\delta{x'}}{\delta{x}}=1+\lambda\frac{\delta{D_x(\vec{x},t)}}{\delta{x}}$  
     $J_{yy}=\frac{\delta{y'}}{\delta{y}}=1+\lambda\frac{\delta{D_y(\vec{x},t)}}{\delta{y}}$  
@@ -92,3 +92,10 @@
      $\frac{\delta{D_x}}{\delta_y}=\sum_{\vec{k}}-i\frac{k_x}{k}\tilde{h}(\vec{k},t)e^{i\vec{k}\cdot{\vec{x}}}ik_y$
 
      可以看出$\frac{\delta{D_y}}{\delta_x}=\frac{\delta{D_x}}{\delta_y}$。
+
+#### 快速傅里叶（FFT:Fast Fourier Transform）
+
+1. FFT算法以及复杂度   
+   标准DFT：  
+   $X(k)=\sum_{n=0}^{N-1}x(n)e^{-i\frac{2\pi{k}}{N}},k\in\{0,1,...,N-1\}$  
+   如果直接暴力运算，那么复杂度就是O(N*N)，快速傅里叶使用的是分治思想，如用两个N/2 point DFT去构造一个N point DFT。
