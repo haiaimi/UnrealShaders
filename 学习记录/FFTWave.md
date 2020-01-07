@@ -98,11 +98,42 @@
 1. FFT算法以及复杂度   
    标准DFT：  
    $X(k)=\sum_{n=0}^{N-1}x(n)e^{-i\frac{2\pi{k}}{N}n},k\in\{0,1,...,N-1\}$  
-   如果直接暴力运算，那么复杂度就是O(N*N)，快速傅里叶使用的是分治思想，如用两个N/2 point DFT去构造一个N point DFT。可以按项数按序号奇偶分开，如下：  
+   如果直接暴力运算，那么复杂度就是O(N*N)，快速傅里叶使用的是分治思想，如用两个N/2 point DFT去构造一个N point DFT。可以按项数按序号奇偶分开，则有如下定义：  
     $G(k)=\sum_{n=0}^{\frac{N}{2}-1}g(n)e^{-i\frac{2\pi{k}}{\frac{N}{2}}n}=\sum_{n=0}^{\frac{N}{2}-1}x(2n)e^{-i\frac{2\pi{k}}{\frac{N}{2}}n},k\in\{0,1,...,\frac{N}{2}-1\}$  
      $H(k)=\sum_{n=0}^{\frac{N}{2}-1}h(n)e^{-i\frac{2\pi{k}}{\frac{N}{2}}n}=\sum_{n=0}^{\frac{N}{2}-1}x(2n+1)e^{-i\frac{2\pi{k}}{\frac{N}{2}}n},k\in\{0,1,...,\frac{N}{2}-1\}$  
 
-     $X(k)$可以由$G(k)$和$H(k)$表示出来，如下推导：  
+     $X(k)$可以由$G(k)$和$H(k)$表示出来，如下推导：   
+     当$k\in\{0,1,...,\frac{N}{2}-1\}$  
      $X(k)=\sum_{n=0}^{N-1}x(n)e^{-i\frac{2\pi{k}}{N}n}$    
      $=\sum_{n=0}^{\frac{N}{2}-1}x(2n)e^{-i\frac{2\pi{k}(2n)}{N}}+\sum_{n=0}^{\frac{N}{2}-1}x(2n+1)e^{-i\frac{2\pi{k}(2n+1)}{N}}$   
-     $=\sum_{n=0}^{\frac{N}{2}-1}x(2n)e^{-i\frac{2\pi{k}}{\frac{N}{2}}n}+e^{-i\frac{2\pi{kn}}{N}}\sum_{n=0}^{\frac{N}{2}-1}x(2n+1)e^{-i\frac{2\pi{kn}}{\frac{N}{2}}}$ 
+     $=\sum_{n=0}^{\frac{N}{2}-1}x(2n)e^{-i\frac{2\pi{k}}{\frac{N}{2}}n}+e^{-i\frac{2\pi{kn}}{N}}\sum_{n=0}^{\frac{N}{2}-1}x(2n+1)e^{-i\frac{2\pi{kn}}{\frac{N}{2}}}$  
+     $=G(k)+W_N^kH(k)$  
+     当$k\in\{\frac{N}{2},\frac{N}{2}+1,...,N-1\}$，令$K=k-N/2$，则$K\in\{0,1,...,\frac{N}{2}-1\}$,如下推导：  
+     $X(k)=\sum_{n=0}^{N-1}x(n)e^{-i\frac{2\pi{k}}{N}n}$   
+     $=\sum_{n=0}^{\frac{N}{2}-1}x(2n)e^{-i\frac{2\pi{k}(2n)}{N}}+\sum_{n=0}^{\frac{N}{2}-1}x(2n+1)e^{-i\frac{2\pi{k}(2n+1)}{N}}$   
+     $=\sum_{n=0}^{\frac{N}{2}-1}x(2n)e^{-i\frac{2\pi{(K+\frac{N}{2})}(2n)}{N}}+\sum_{n=0}^{\frac{N}{2}-1}x(2n+1)e^{-i\frac{2\pi{(K+\frac{N}{2})}(2n+1)}{N}}$   
+     $=\sum_{n=0}^{\frac{N}{2}-1}x(2n)e^{-i\frac{2\pi{Kn}}{\frac{N}{2}}}+e^{-i\frac{2\pi{K}}{N}}\sum_{n=0}^{\frac{N}{2}-1}x(2n+1)e^{-i\frac{2\pi{Kn}}{\frac{N}{2}}}$  
+     $=\sum_{n=0}^{\frac{N}{2}-1}x(2n)e^{-i\frac{2\pi{Kn}}{\frac{N}{2}}}-e^{-i\frac{2\pi{K}}{N}}\sum_{n=0}^{\frac{N}{2}-1}x(2n+1)e^{-i\frac{2\pi{Kn}}{\frac{N}{2}}}$  
+     $=\sum_{n=0}^{\frac{N}{2}-1}x(2n)e^{-i\frac{2\pi{Kn}}{\frac{N}{2}}}+e^{-i\frac{2\pi{k}}{N}}\sum_{n=0}^{\frac{N}{2}-1}x(2n+1)e^{-i\frac{2\pi{Kn}}{\frac{N}{2}}}$  
+     $=G(K))+W_N^kH(K)$   
+     $=G(k-\frac{N}{2}))+W_N^kH(k-\frac{N}{2})$  
+
+     上式可见$\frac{N}{2}$被约去，根据复平面单位圆以及欧拉恒等式可知：  
+     $e^{-i\frac{2\pi{(K+\frac{N}{2})}(2n+1)}{N}}=cos(\frac{2\pi{(K+\frac{N}{2})}(2n+1)}{N})+i\cdot{sin(\frac{2\pi{(K+\frac{N}{2})}(2n+1)}{N})}$  
+     $=cos(\frac{2\pi{(2n+1)K}}{N}+(2n+1)N\pi)+i\cdot{sin(\frac{2\pi{(2n+1)K}}{N}+(2n+1)N\pi)}$  
+     $=-cos(\frac{2\pi{(2n+1)K}}{N})-i\cdot{sin(\frac{2\pi{(2n+1)K}}{N})}$ //如果这里$2n+1$为$2n$那么符号就不会变   
+     $=-e^{i\frac{2\pi{(2n+1)K}}{N}}$  
+
+     所以最终如下：  
+     $$X(k)=\begin{cases}
+     G(k)+W_N^kH(k),k\in\{0,1,...,\frac{N}{2}-1\}\\
+     G(k-\frac{N}{2}))+W_N^kH(k-\frac{N}{2}), k\in\{\frac{N}{2}, \frac{N}{2}+1,...,N-1\}
+     \end{cases}
+     $$  
+     最终复杂度为$O(N*\log_2N)$
+2. 蝶形网络   
+   由上面的推导可知，求FFT可以进行递归，但是效率不行，所以就需要蝶形网络展平。
+
+
+3. bitreverse算法
+   对于N point蝶形网络，求$x(k)$在几号位，只需要将k化为$log_2N$位二进制数，然后将bit反序，再转成十进制，结果即为$x(k)$所在位。
