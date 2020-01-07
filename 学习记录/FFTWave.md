@@ -97,5 +97,12 @@
 
 1. FFT算法以及复杂度   
    标准DFT：  
-   $X(k)=\sum_{n=0}^{N-1}x(n)e^{-i\frac{2\pi{k}}{N}},k\in\{0,1,...,N-1\}$  
-   如果直接暴力运算，那么复杂度就是O(N*N)，快速傅里叶使用的是分治思想，如用两个N/2 point DFT去构造一个N point DFT。
+   $X(k)=\sum_{n=0}^{N-1}x(n)e^{-i\frac{2\pi{k}}{N}n},k\in\{0,1,...,N-1\}$  
+   如果直接暴力运算，那么复杂度就是O(N*N)，快速傅里叶使用的是分治思想，如用两个N/2 point DFT去构造一个N point DFT。可以按项数按序号奇偶分开，如下：  
+    $G(k)=\sum_{n=0}^{\frac{N}{2}-1}g(n)e^{-i\frac{2\pi{k}}{\frac{N}{2}}n}=\sum_{n=0}^{\frac{N}{2}-1}x(2n)e^{-i\frac{2\pi{k}}{\frac{N}{2}}n},k\in\{0,1,...,\frac{N}{2}-1\}$  
+     $H(k)=\sum_{n=0}^{\frac{N}{2}-1}h(n)e^{-i\frac{2\pi{k}}{\frac{N}{2}}n}=\sum_{n=0}^{\frac{N}{2}-1}x(2n+1)e^{-i\frac{2\pi{k}}{\frac{N}{2}}n},k\in\{0,1,...,\frac{N}{2}-1\}$  
+
+     $X(k)$可以由$G(k)$和$H(k)$表示出来，如下推导：  
+     $X(k)=\sum_{n=0}^{N-1}x(n)e^{-i\frac{2\pi{k}}{N}n}$    
+     $=\sum_{n=0}^{\frac{N}{2}-1}x(2n)e^{-i\frac{2\pi{k}(2n)}{N}}+\sum_{n=0}^{\frac{N}{2}-1}x(2n+1)e^{-i\frac{2\pi{k}(2n+1)}{N}}$   
+     $=\sum_{n=0}^{\frac{N}{2}-1}x(2n)e^{-i\frac{2\pi{k}}{\frac{N}{2}}n}+e^{-i\frac{2\pi{kn}}{N}}\sum_{n=0}^{\frac{N}{2}-1}x(2n+1)e^{-i\frac{2\pi{kn}}{\frac{N}{2}}}$ 
