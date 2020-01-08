@@ -106,8 +106,9 @@
      当$k\in\{0,1,...,\frac{N}{2}-1\}$  
      $X(k)=\sum_{n=0}^{N-1}x(n)e^{-i\frac{2\pi{k}}{N}n}$    
      $=\sum_{n=0}^{\frac{N}{2}-1}x(2n)e^{-i\frac{2\pi{k}(2n)}{N}}+\sum_{n=0}^{\frac{N}{2}-1}x(2n+1)e^{-i\frac{2\pi{k}(2n+1)}{N}}$   
-     $=\sum_{n=0}^{\frac{N}{2}-1}x(2n)e^{-i\frac{2\pi{k}}{\frac{N}{2}}n}+e^{-i\frac{2\pi{kn}}{N}}\sum_{n=0}^{\frac{N}{2}-1}x(2n+1)e^{-i\frac{2\pi{kn}}{\frac{N}{2}}}$  
+     $=\sum_{n=0}^{\frac{N}{2}-1}x(2n)e^{-i\frac{2\pi{k}}{\frac{N}{2}}n}+e^{-i\frac{2\pi{k}}{N}}\sum_{n=0}^{\frac{N}{2}-1}x(2n+1)e^{-i\frac{2\pi{kn}}{\frac{N}{2}}}$  
      $=G(k)+W_N^kH(k)$  
+
      当$k\in\{\frac{N}{2},\frac{N}{2}+1,...,N-1\}$，令$K=k-N/2$，则$K\in\{0,1,...,\frac{N}{2}-1\}$,如下推导：  
      $X(k)=\sum_{n=0}^{N-1}x(n)e^{-i\frac{2\pi{k}}{N}n}$   
      $=\sum_{n=0}^{\frac{N}{2}-1}x(2n)e^{-i\frac{2\pi{k}(2n)}{N}}+\sum_{n=0}^{\frac{N}{2}-1}x(2n+1)e^{-i\frac{2\pi{k}(2n+1)}{N}}$   
@@ -136,4 +137,40 @@
 
 
 3. bitreverse算法
-   对于N point蝶形网络，求$x(k)$在几号位，只需要将k化为$log_2N$位二进制数，然后将bit反序，再转成十进制，结果即为$x(k)$所在位。
+   对于N point蝶形网络，求$x(k)$在几号位，只需要将k化为$log_2N$位二进制数，然后将bit反序，再转成十进制，结果即为$x(k)$所在位。如8 Point的蝶形网络，求$x(4)$所在的位数，那么4的$log_28$（3）位二进制表示为100，再反序得001，十进制为1，所以$x(4)$所在得位是1。
+
+4. IFFT  
+   然而海面算法不是DFT而是IDFT（离散傅里叶变换的逆变换），所以需要转换一下，如下表达式：   
+   DFT：    
+    $X(k)=\sum_{n=0}^{N-1}x(n)e^{-i\frac{2\pi{k}}{N}n},k\in\{0,1,...,N-1\}$    
+   IDFT：  
+    $x(n)=\frac{1}{N}\sum_{k=0}^{N-1}X(k)e^{i\frac{2\pi{k}}{N}n},n\in\{0,1,...,N-1\}$  
+   两个式子很像，可以按照上面的思路推导，则有：  
+
+   $G(n)=\frac{1}{N}\sum_{k=0}^{\frac{N}{2}-1}g(k)e^{i\frac{2\pi{k}}{\frac{N}{2}}n}=\frac{1}{N}\sum_{k=0}^{\frac{N}{2}-1}x(2k)e^{i\frac{2\pi{k}}{\frac{N}{2}}n},n\in\{0,1,...,\frac{N}{2}-1\}$  
+    $H(n)=\frac{1}{N}\sum_{k=0}^{\frac{N}{2}-1}h(k)e^{i\frac{2\pi{k}}{\frac{N}{2}}n}=\frac{1}{N}\sum_{k=0}^{\frac{N}{2}-1}x(2k+1)e^{i\frac{2\pi{k}}{\frac{N}{2}}n},n\in\{0,1,...,\frac{N}{2}-1\}$   
+
+    如下推导：
+    当$n\in\{0,1,...,\frac{N}{2}-1\}$  
+     $x(n)=\frac{1}{N}\sum_{k=0}^{N-1}X(k)e^{i\frac{2\pi{k}}{N}n}$    
+     $=\frac{1}{N}\sum_{k=0}^{\frac{N}{2}-1}X(2k)e^{i\frac{2\pi{(2k)}n}{N}}+\frac{1}{N}\sum_{k=0}^{\frac{N}{2}-1}X(2k+1)e^{i\frac{2\pi{(2k+1)}n}{N}}$   
+     $=\frac{1}{N}\sum_{k=0}^{\frac{N}{2}-1}X(2k)e^{i\frac{2\pi{k}}{\frac{N}{2}}n}+e^{i\frac{2\pi{n}}{N}}\frac{1}{N}\sum_{k=0}^{\frac{N}{2}-1}X(2k+1)e^{i\frac{2\pi{kn}}{\frac{N}{2}}}$  
+     $=G(n)+W_N^{-n}H(n)$  
+     
+     当$n\in\{\frac{N}{2},\frac{N}{2}+1,...,N-1\}$，令$M=n-N/2$，则$M\in\{0,1,...,\frac{N}{2}-1\}$,如下推导：  
+     $x(n)=\sum_{k=0}^{N-1}X(k)e^{i\frac{2\pi{k}}{N}n}$   
+     $=\frac{1}{N}\sum_{k=0}^{\frac{N}{2}-1}X(2k)e^{i\frac{2\pi{(2k)}n}{N}}+\frac{1}{N}\sum_{k=0}^{\frac{N}{2}-1}X(2k+1)e^{i\frac{2\pi{n}(2k+1)}{N}}$   
+     $=\frac{1}{N}\sum_{k=0}^{\frac{N}{2}-1}X(2k)e^{i\frac{2\pi{(M+\frac{N}{2})}(2k)}{N}}+\frac{1}{N}\sum_{k=0}^{\frac{N}{2}-1}X(2k+1)e^{i\frac{2\pi{(M+\frac{N}{2})}(2k+1)}{N}}$   
+     $=\frac{1}{N}\sum_{k=0}^{\frac{N}{2}-1}X(2k)e^{i\frac{2\pi{Mk}}{\frac{N}{2}}}-\frac{1}{N}e^{i\frac{2\pi{M}}{N}}\sum_{k=0}^{\frac{N}{2}-1}X(2k+1)e^{i\frac{2\pi{Mk}}{\frac{N}{2}}}$  
+     $=\frac{1}{N}\sum_{k=0}^{\frac{N}{2}-1}X(2k)e^{i\frac{2\pi{Mk}}{\frac{N}{2}}}+\frac{1}{N}e^{i\frac{2\pi{n}}{N}}\sum_{k=0}^{\frac{N}{2}-1}X(2k+1)e^{i\frac{2\pi{Mk}}{\frac{N}{2}}}$   
+     $=G(M))+W_N^{-n}H(M)$   
+     $=G(n-\frac{N}{2}))+W_N^{-n}H(n-\frac{N}{2})$    
+     因为 $e^{i\frac{2\pi{n}}{N}}=W_N^{-n}$  
+    所以最终如下：  
+     $$x(n)=\begin{cases}
+     G(n)+W_N^{-n}H(n),n\in\{0,1,...,\frac{N}{2}-1\}\\
+     G(n-\frac{N}{2}))+W_N^{-n}H(n-\frac{N}{2}), n\in\{\frac{N}{2}, \frac{N}{2}+1,...,N-1\}
+     \end{cases}
+     $$  
+
+     IFFT的bitreverse与FFT相同，同时由于DFT/IDFT是线性的所以常数因子不影响算法。
