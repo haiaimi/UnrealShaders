@@ -23,13 +23,13 @@
 
     $k_x=\frac{2\pi{n}}{L}$，$n\in\{-\frac{N}{2},-\frac{N}{2}+1,...,-\frac{N}{2}-1\}$
 
-    $k_z=\frac{2\pi{m}}{L}$，$m\in\{-\frac{N}{2},-\frac{N}{2}+1,...,-\frac{N}{2}-1\}$
+    $k_y=\frac{2\pi{m}}{L}$，$m\in\{-\frac{N}{2},-\frac{N}{2}+1,...,-\frac{N}{2}-1\}$
 
-    $\vec{x}$在xz平面上以原点为中心每隔$\frac{L}{N}$取一个点，有NxN个点：
+    $\vec{x}$在xy平面上以原点为中心每隔$\frac{L}{N}$取一个点，有NxN个点：
 
     $x=\frac{uL}{N}$，$u\in\{-\frac{N}{2},-\frac{N}{2}+1,...,-\frac{N}{2}-1\}$
 
-    $z=\frac{vL}{N}$，$v\in\{-\frac{N}{2},-\frac{N}{2}+1,...,-\frac{N}{2}-1\}$
+    $y=\frac{vL}{N}$，$v\in\{-\frac{N}{2},-\frac{N}{2}+1,...,-\frac{N}{2}-1\}$
 
     从 $k=\frac{2\pi{n}}{L}$公式可以看出，频率是以$L$为周期（只要保证n为整数），那么每个连续的Patch可以无缝衔接。
 
@@ -173,4 +173,42 @@
      \end{cases}
      $$  
 
-     IFFT的bitreverse与FFT相同，同时由于DFT/IDFT是线性的所以常数因子不影响算法。
+     IFFT的bitreverse与FFT相同，同时由于DFT/IDFT是线性的所以常数因子不影响算法，$\frac{1}{N}$可以省略。
+
+### FFT与海面模型结合
+海面IDFT模型：$h(\vec{x},t)=\sum_{\vec{k}}\tilde{h}(\vec{k},t)e^{i\vec{k}\cdot\vec{x}}$  
+标量形式：$h(x,y,t)=\sum_{m=-\frac{N}{2}}^{\frac{N}{2}-1}\sum_{n=-\frac{N}{2}}^{\frac{N}{2}-1}\tilde{h}(k_x,k_y,t)e^{i(k_xx+k_yy)}$   
+由于前文提到$k_x,k_y$：  
+ $k_x=\frac{2\pi{n}}{L}$，$n\in\{-\frac{N}{2},-\frac{N}{2}+1,...,-\frac{N}{2}-1\}$    
+$k_y=\frac{2\pi{m}}{L}$，$m\in\{-\frac{N}{2},-\frac{N}{2}+1,...,-\frac{N}{2}-1\}$   
+展开后如下：   
+$h(x,y,t)=\sum_{m=-\frac{N}{2}}^{\frac{N}{2}-1}\sum_{n=-\frac{N}{2}}^{\frac{N}{2}-1}\tilde{h}(\frac{2\pi{n}}{L},\frac{2\pi{m}}{L},t)e^{i(\frac{2\pi{n}}{L}x+\frac{2\pi{m}}{L}y)}$     
+令$m'=m+\frac{N}{2},n'=n+\frac{N}{2}$，则$m',n'\in\{0,1,...,N-1\}$并代入：   
+$h(x,y,t)=\sum_{m'=0}^{N-1}\sum_{n'=0}^{N-1}\tilde{h}(\frac{2\pi{(n'-\frac{N}{2})}}{L},\frac{2\pi{(m'-\frac{N}{2})}}{L},t)e^{i(\frac{2\pi{(n'-\frac{N}{2})}}{L}x+\frac{2\pi{(m'-\frac{N}{2})}}{L}y)}$    
+令$\tilde{h'(n',m',t)}=\tilde{h}(\frac{2\pi{(n'-\frac{N}{2})}}{L},\frac{2\pi{(m'-\frac{N}{2})}}{L},t)$，并将$e^{i\frac{2\pi{(m'-\frac{N}{2})}}{L}y}$从内存求和中提出，如下：   
+$h(x,y,t)=\sum_{m'=0}^{N-1}e^{i\frac{2\pi{(m'-\frac{N}{2})y}}{L}}\sum_{n'=0}^{N-1}\tilde{h'}{(n',m',t)}e^{i(\frac{2\pi{(n'-\frac{N}{2})}}{L}x)}$   
+令$\tilde{h''}(x,m',t)=\sum_{n'=0}^{N-1}\tilde{h'}{(n',m',t)}e^{i(\frac{2\pi{(n'-\frac{N}{2})x}}{L})}$，如下：  
+$h(x,y,t)=\sum_{m'=0}^{N-1}\tilde{h''}(x,m',t)e^{i\frac{2\pi{(m'-\frac{N}{2})y}}{L}}$   
+为了向IDFT靠拢，这里就取L=N，得如下：  
+$\tilde{h''}(x,m',t)=(-1)^x\sum_{n'=0}^{N-1}\tilde{h'}{(n',m',t)}e^{i\frac{2\pi{n‘x}}{N}}$    
+$h(x,y,t)=(-1)^y\sum_{m'=0}^{N-1}\tilde{h''}(x,m',t)e^{i\frac{2\pi{m'y}}{N}}$   
+前文提到的$x,y$取值：   
+ $x=\frac{uL}{N}$，$u\in\{-\frac{N}{2},-\frac{N}{2}+1,...,-\frac{N}{2}-1\}$   
+$y=\frac{vL}{N}$，$v\in\{-\frac{N}{2},-\frac{N}{2}+1,...,-\frac{N}{2}-1\}$  
+因为L=N，并令$u'=u+\frac{N}{2},v'=v+\frac{N}{2}$得：  
+ $x=u'-\frac{N}{2}$，$u'\in\{0,1,...,N-1\}$   
+ $y=v'-\frac{N}{2}$，$v'\in\{0,1,...,N-1\}$
+
+ 把$x,y$代入上式得：    
+ $\tilde{h'}{(n',m',t)}(u'-\frac{N}{2},m',t)=(-1)^{u'-\frac{N}{2}}\sum_{n'=0}^{N-1}\tilde{h'}{(n',m',t)}e^{i\frac{2\pi{n'u'}}{N}(-1)^{n'}}$    
+$h(u'-\frac{N}{2},v'-\frac{N}{2},t)=(-1)^{v'-\frac{N}{2}}\sum_{m'=0}^{N-1}\tilde{h''}(u'-\frac{N}{2},m',t)e^{i\frac{2\pi{m'v'}}{N}(-1)^{m'}}$   
+
+上式中$\frac{N}{2}$能被约掉还是依据$W_N^{k+\frac{N}{2}}=-W_N^k$  
+令：
+$A(u',v',t)=h(u'-\frac{N}{2},v'-\frac{N}{2},t)/(-1)^{v'-\frac{N}{2}}$   
+$B(u',m',t)=\tilde{h''}(u'-\frac{N}{2},m',t)(-1)^{m'}$   
+$C(u',m',t)=\tilde{h''}(u'-\frac{N}{2},m',t)/(-1)^{u'-\frac{N}{2}}$   
+$D(n',m',t)=\tilde{h'}{(n',m',t)}(-1)^{n'}$  
+根据$h$和$\tilde{h''}$可以推导出：  
+$A(u',v',t)=\sum_{m'=0}^{N-1}B(u',m',t)e^{i\frac{2\pi{m'v'}}{N}}$   
+$C(u',m',t)=\sum_{n'=0}^{N-1}D(n',m',t)e^{i\frac{2\pi{n'u'}}{N}}$
