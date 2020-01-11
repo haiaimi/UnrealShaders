@@ -100,8 +100,9 @@ FVector2D AFFTWaveSimulator::InitSpectrum(float TimeSeconds, int32 n, int32 m)
 float AFFTWaveSimulator::Dispersion(int32 n, int32 m)
 {
 	float W_0 = 2.0f * PI / 200.f;
-	float KX = PI * (2 * n - WaveSize) / GridLength;
+	float KX = PI * (2 * n - WaveSize) / GridLength; //k=2*PI*n/L
 	float KY = PI * (2 * m - WaveSize) / GridLength;
+	// w=sqrt(g*|k|)
 	return FMath::FloorToFloat(FMath::Sqrt(GRAVITY * FMath::Sqrt(KX * KX + KY * KY) / W_0)) * W_0;
 }
 

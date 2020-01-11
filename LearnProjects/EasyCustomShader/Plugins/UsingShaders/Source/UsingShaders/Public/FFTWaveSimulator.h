@@ -34,6 +34,7 @@ public:
 	// Run on cpu, don't use it
 	FVector2D InitSpectrum(float TimeSeconds, int32 n, int32 m);
 
+	// Compute w(k),uesd in h(k,t), (Phillips spectrum) 
 	float Dispersion(int32 n, int32 m);
 
 	void ComputeSpectrum();

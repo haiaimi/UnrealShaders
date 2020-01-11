@@ -456,6 +456,7 @@ int32 BitReverse(int32 i, int32 Size)
 	return Sum;
 }
 
+// Compute the butterfly lookup table for FFT
 extern void ComputeButterflyLookuptable(int32 Size, int32 Passes, TArray<float>& OutTable)
 {
 	OutTable.Reset();
