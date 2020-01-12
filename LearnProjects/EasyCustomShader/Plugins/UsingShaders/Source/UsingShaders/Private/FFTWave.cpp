@@ -467,9 +467,9 @@ extern void ComputeButterflyLookuptable(int32 Size, int32 Passes, TArray<float>&
 		int32 Blocks = FMath::Pow(2, Passes - 1 - i);
 		int32 HInputs = FMath::Pow(2, i);
 
-		for (int32 j = 0; j < Blocks; ++j)
+		for (int32 j = 0; j < Blocks; ++j) //按奇偶分出的块数的一半
 		{
-			for (int32 k = 0; k < HInputs; ++k)
+			for (int32 k = 0; k < HInputs; ++k)  //每一块里面的数目
 			{
 				int32 i1, i2, j1, j2;
 				if (i == 0)
