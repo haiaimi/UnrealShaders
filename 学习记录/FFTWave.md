@@ -176,7 +176,7 @@
      IFFT的bitreverse与FFT相同，同时由于DFT/IDFT是线性的所以常数因子不影响算法，$\frac{1}{N}$可以省略。
 
 ### FFT与海面模型结合
-海面IDFT模型：$h(\vec{x},t)=\sum_{\vec{k}}\tilde{h}(\vec{k},t)e^{i\vec{k}\cdot\vec{x}}$  
+1. 海面IDFT模型：$h(\vec{x},t)=\sum_{\vec{k}}\tilde{h}(\vec{k},t)e^{i\vec{k}\cdot\vec{x}}$  
 标量形式：$h(x,y,t)=\sum_{m=-\frac{N}{2}}^{\frac{N}{2}-1}\sum_{n=-\frac{N}{2}}^{\frac{N}{2}-1}\tilde{h}(k_x,k_y,t)e^{i(k_xx+k_yy)}$   
 由于前文提到$k_x,k_y$：  
  $k_x=\frac{2\pi{n}}{L}$，$n\in\{-\frac{N}{2},-\frac{N}{2}+1,...,-\frac{N}{2}-1\}$    
@@ -199,11 +199,11 @@ $y=\frac{vL}{N}$，$v\in\{-\frac{N}{2},-\frac{N}{2}+1,...,-\frac{N}{2}-1\}$
  $x=u'-\frac{N}{2}$，$u'\in\{0,1,...,N-1\}$   
  $y=v'-\frac{N}{2}$，$v'\in\{0,1,...,N-1\}$
 
- 把$x,y$代入上式得：    
+ 2. 把$x,y$代入上式得：    
  $\tilde{h'}{(n',m',t)}(u'-\frac{N}{2},m',t)=(-1)^{u'-\frac{N}{2}}\sum_{n'=0}^{N-1}\tilde{h'}{(n',m',t)}e^{i\frac{2\pi{n'u'}}{N}(-1)^{n'}}$    
 $h(u'-\frac{N}{2},v'-\frac{N}{2},t)=(-1)^{v'-\frac{N}{2}}\sum_{m'=0}^{N-1}\tilde{h''}(u'-\frac{N}{2},m',t)e^{i\frac{2\pi{m'v'}}{N}(-1)^{m'}}$   
 
-上式中$\frac{N}{2}$能被约掉还是依据$W_N^{k+\frac{N}{2}}=-W_N^k$  
+3. 上式中$\frac{N}{2}$能被约掉还是依据$W_N^{k+\frac{N}{2}}=-W_N^k$  
 令：
 $A(u',v',t)=h(u'-\frac{N}{2},v'-\frac{N}{2},t)/(-1)^{v'-\frac{N}{2}}$   
 $B(u',m',t)=\tilde{h''}(u'-\frac{N}{2},m',t)(-1)^{m'}$   

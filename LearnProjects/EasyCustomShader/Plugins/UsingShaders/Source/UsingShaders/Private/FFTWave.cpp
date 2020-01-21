@@ -35,6 +35,7 @@ public:
 		FGlobalShader(Initializer)
 	{
 		WaveSize.Bind(Initializer.ParameterMap, TEXT("WaveSize"));
+		GridLength.Bind(Initializer.ParameterMap, TEXT("GridLength"));
 		WaveAmplitude.Bind(Initializer.ParameterMap, TEXT("WaveAmplitude"));
 		WindSpeed.Bind(Initializer.ParameterMap, TEXT("WindSpeed"));
 		RWSpectrum.Bind(Initializer.ParameterMap, TEXT("RWSpectrum"));
@@ -59,6 +60,7 @@ public:
 	void SetParameters(
 		FRHICommandListImmediate& RHICmdList,
 		int32 InWaveSize,
+		float InGridLength,
 		float InWaveAmplitude,
 		FVector InWindSpeed,
 		FUnorderedAccessViewRHIRef SpectrumUAV,
@@ -66,6 +68,7 @@ public:
 	)
 	{
 		SetShaderValue(RHICmdList, GetComputeShader(), WaveSize, InWaveSize);
+		SetShaderValue(RHICmdList, GetComputeShader(), GridLength, InGridLength);
 		SetShaderValue(RHICmdList, GetComputeShader(), WaveAmplitude, InWaveAmplitude);
 		SetShaderValue(RHICmdList, GetComputeShader(), WindSpeed, InWindSpeed);
 		if (RWSpectrum.IsBound())
@@ -84,6 +87,7 @@ public:
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 		Ar << WaveSize;
+		Ar << GridLength;
 		Ar << WaveAmplitude;
 		Ar << WindSpeed;
 		Ar << RWSpectrum;
@@ -94,6 +98,7 @@ public:
 
 private:
 	FShaderParameter WaveSize;
+	FShaderParameter GridLength;
 	FShaderParameter WaveAmplitude;
 	FShaderParameter WindSpeed;
 
@@ -115,6 +120,7 @@ public:
 	{
 		TimeSeconds.Bind(Initializer.ParameterMap, TEXT("TimeSeconds"));
 		WaveSize.Bind(Initializer.ParameterMap, TEXT("WaveSize"));
+		GridLength.Bind(Initializer.ParameterMap, TEXT("GridLength"));
 		DispersionTable.Bind(Initializer.ParameterMap, TEXT("DispersionTable"));
 		Spectrum.Bind(Initializer.ParameterMap, TEXT("Spectrum"));
 		SpectrumConj.Bind(Initializer.ParameterMap, TEXT("SpectrumConj"));
@@ -142,6 +148,7 @@ public:
 		FRHICommandListImmediate& RHICmdList,
 		float InTimeSeconds,
 		int32 InWaveSize,
+		int32 InGridLength,
 		FShaderResourceViewRHIParamRef DispersionTableSRV,
 		FTextureRHIParamRef InSpectrum,
 		FTextureRHIParamRef InSpectrumConj,
@@ -151,6 +158,7 @@ public:
 	)
 	{
 		SetShaderValue(RHICmdList, GetComputeShader(), WaveSize, InWaveSize);
+		SetShaderValue(RHICmdList, GetComputeShader(), GridLength, InGridLength);
 		SetShaderValue(RHICmdList, GetComputeShader(), TimeSeconds, InTimeSeconds);
 
 		SetSRVParameter(RHICmdList, GetComputeShader(), DispersionTable, DispersionTableSRV);
@@ -177,6 +185,7 @@ public:
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 		Ar << TimeSeconds;
 		Ar << WaveSize;
+		Ar << GridLength;
 		Ar << DispersionTable;
 		Ar << Spectrum;
 		Ar << SpectrumConj;
@@ -190,6 +199,7 @@ public:
 private:
 	FShaderParameter TimeSeconds;
 	FShaderParameter WaveSize;
+	FShaderParameter GridLength;
 
 	FShaderResourceParameter DispersionTable;
 	FShaderResourceParameter Spectrum;
@@ -489,7 +499,7 @@ extern void ComputeButterflyLookuptable(int32 Size, int32 Passes, TArray<float>&
 
 				float WR = FMath::Cos(2.f * PI * float(k * Blocks) / Size);
 				float WI = FMath::Sin(2.f * PI * float(k * Blocks) / Size);
-
+				
 				int32 Offset1 = 4 * (i1 + i * Size);
 
 				OutTable[Offset1 + 0] = j1;
@@ -512,6 +522,7 @@ static void ComputePhillipsSpecturm_RenderThread(
 	FRHICommandListImmediate& RHICmdList,
 	ERHIFeatureLevel::Type FeatureLevel,
 	int32 WaveSize,
+	int32 GridLength,
     float WaveAmplitude,
 	FVector WindSpeed,
 	FUnorderedAccessViewRHIRef Spectrum,
@@ -520,7 +531,7 @@ static void ComputePhillipsSpecturm_RenderThread(
 	TShaderMapRef<FPhillipsSpectrumCS> PhillipsSpecturmShader(GetGlobalShaderMap(FeatureLevel));
 
 	RHICmdList.SetComputeShader(PhillipsSpecturmShader->GetComputeShader());
-	PhillipsSpecturmShader->SetParameters(RHICmdList, WaveSize, WaveAmplitude, WindSpeed, Spectrum, SpectrumConj);
+	PhillipsSpecturmShader->SetParameters(RHICmdList, WaveSize, GridLength, WaveAmplitude, WindSpeed, Spectrum, SpectrumConj);
 	DispatchComputeShader(RHICmdList, *PhillipsSpecturmShader, FMath::DivideAndRoundUp(WaveSize + 1, WAVE_GROUP_THREAD_COUNTS), FMath::DivideAndRoundUp(WaveSize + 1, WAVE_GROUP_THREAD_COUNTS), 1); 
 	PhillipsSpecturmShader->UnbindUAV(RHICmdList);
 }
@@ -530,6 +541,7 @@ static void PrepareFFT_RenderThread(
 	ERHIFeatureLevel::Type FeatureLevel,
 	float TimeSeconds,
 	int32 WaveSize,
+	int32 GridLength,
 	FShaderResourceViewRHIParamRef DispersionTableSRV,
 	FTexture2DRHIParamRef Spectrum,
 	FTexture2DRHIParamRef SpectrumConj,
@@ -543,7 +555,7 @@ static void PrepareFFT_RenderThread(
 	TShaderMapRef<FPrepareFFTCS> PrepareFFTShader(GetGlobalShaderMap(FeatureLevel));
 
 	RHICmdList.SetComputeShader(PrepareFFTShader->GetComputeShader());
-	PrepareFFTShader->SetParameters(RHICmdList, TimeSeconds, WaveSize, DispersionTableSRV, Spectrum, SpectrumConj, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV);
+	PrepareFFTShader->SetParameters(RHICmdList, TimeSeconds, WaveSize, GridLength, DispersionTableSRV, Spectrum, SpectrumConj, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV);
 	DispatchComputeShader(RHICmdList, *PrepareFFTShader, FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), 1); 
 	PrepareFFTShader->UnbindUAV(RHICmdList);
 }
@@ -691,7 +703,7 @@ void AFFTWaveSimulator::ComputeSpectrum()
 		{
 			SpectrumConjUAV = RHICreateUnorderedAccessView(SpectrumConj);
 		}
-		ComputePhillipsSpecturm_RenderThread(RHICmdList, FeatureLevel, WaveSize, WaveAmplitude, WindSpeed, SpectrumUAV, SpectrumConjUAV);
+		ComputePhillipsSpecturm_RenderThread(RHICmdList, FeatureLevel, WaveSize, GridLength, WaveAmplitude, WindSpeed, SpectrumUAV, SpectrumConjUAV);
 	});
 }
 
@@ -784,7 +796,7 @@ void AFFTWaveSimulator::EvaluateWavesFFT(float TimeSeconds)
 			{
 				DisplacementBufferUAV = RHICreateUnorderedAccessView(WaveSimulatorPtr->DisplacementBuffer);
 			}
-			PrepareFFT_RenderThread(RHICmdList, FeatureLevel, TimeSeconds, WaveSimulatorPtr->WaveSize, WaveSimulatorPtr->DispersionTableSRV, WaveSimulatorPtr->Spectrum, WaveSimulatorPtr->SpectrumConj, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV);
+			PrepareFFT_RenderThread(RHICmdList, FeatureLevel, TimeSeconds, WaveSimulatorPtr->WaveSize, WaveSimulatorPtr->GridLength, WaveSimulatorPtr->DispersionTableSRV, WaveSimulatorPtr->Spectrum, WaveSimulatorPtr->SpectrumConj, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV);
 			EvaluateWavesFFT_RenderThread(RHICmdList, FeatureLevel, TimeSeconds, WaveSimulatorPtr->WaveSize, 0, WaveSimulatorPtr->HeightBuffer, WaveSimulatorPtr->SlopeBuffer,WaveSimulatorPtr->DisplacementBuffer, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV, WaveSimulatorPtr);
 		
 			if (WaveSimulatorPtr->WaveHeightMapRenderTarget && WaveSimulatorPtr->WaveNormalRenderTarget)

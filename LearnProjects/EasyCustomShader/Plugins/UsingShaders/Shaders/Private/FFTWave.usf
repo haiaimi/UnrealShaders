@@ -4,7 +4,7 @@
 #define GRAVITY 9.8
 
 int WaveSize;
-static float GridLength = 100.f;
+float GridLength;
 float WaveAmplitude;
 float3 WindSpeed;
 
@@ -129,9 +129,9 @@ void PrepareForFFT(float TimeSeconds, int n, int m)
 	// Get the height
 	RWHeightBuffer[uint2(Index, 1)] = C;
 
-	// Compute the slope for normal, i*(KX, KY)*C.     ---------ddx-------     ---------ddy------- 
-	//                                         real    imaginary       real    imaginary
-	RWSlopeBuffer[uint2(Index, 1)] = float4(-C.y * KX, C.x * KX,    -C.y * KY, C.x * KY);
+	// Compute the slope for normal, i*(KX, KY)*C.  ---------ddx-------      ---------ddy------- 
+	//                                               real    imaginary        real    imaginary
+	RWSlopeBuffer[uint2(Index, 1)] =         float4(-C.y * KX, C.x * KX,    -C.y * KY, C.x * KY);
 
 	if (Len < 0.000001f)
 	{
@@ -187,6 +187,7 @@ void PerformFFTCS1(
 	RWHeightBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * WaveSize, idx)] = FFT(w, RWHeightBuffer[uint2(X + DispatchThreadID.y * WaveSize, idx1)], RWHeightBuffer[uint2(Y + DispatchThreadID.y * WaveSize, idx1)]);
 	RWSlopeBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * WaveSize, idx)] = FFT(w, RWSlopeBuffer[uint2(X + DispatchThreadID.y * WaveSize, idx1)], RWSlopeBuffer[uint2(Y + DispatchThreadID.y * WaveSize, idx1)]);
 	RWDisplacementBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * WaveSize, idx)] = FFT(w, RWDisplacementBuffer[uint2(X + DispatchThreadID.y * WaveSize, idx1)], RWDisplacementBuffer[uint2(Y + DispatchThreadID.y * WaveSize, idx1)]);
+
 }
 
 [numthreads(4, 4, 1)]
