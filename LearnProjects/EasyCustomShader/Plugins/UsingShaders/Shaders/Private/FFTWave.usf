@@ -1,4 +1,4 @@
-#include "/Engine/Public/Platform.ush"
+ï»¿#include "/Engine/Public/Platform.ush"
 
 #define PI 3.1415
 #define GRAVITY 9.8
@@ -58,7 +58,7 @@ float PhillipsSpectrum(int n, int m)
 
 float2 GetSpectrum(int n, int m)
 {
-	float2 r = GaussianRandomVariable(uint2(abs(n), abs(m))); //get a pair of independent random num(Normal distribution£©
+	float2 r = GaussianRandomVariable(uint2(abs(n), abs(m))); //get a pair of independent random num(Normal distributionÂ£Â©
 	return r * sqrt(PhillipsSpectrum(n, m) / 2.f);
 }
 
@@ -229,21 +229,14 @@ static float Signs[2] = { 1.f, -1.f };
 
 void GetPosOffsetAndNormal(int2 Coord, int Size, out float3 PosOffset, out float3 Normal)
 {
-	bool bInBorderRight = (Coord.x == Size);
-	bool bInBorderDown = (Coord.y == Size);
+    Coord.x -= (Coord.x / Size) * Coord.x; 
+    Coord.y -= (Coord.y / Size) * Coord.y; 
 	int Index = Coord.x * Size + Coord.y;
 	int Sign = Signs[(Coord.x + Coord.y) & 1];
-	[branch]
-	if (bInBorderRight || bInBorderDown)
-	{
-		PosOffset = float3(0.f, 0.f, 0.f);
-		Normal = float3(0.f, 0.f, 1.f);
-	}
-	else
-	{
-		PosOffset = float3(0.f, 0.f, HeightBuffer[int2(Index, 1)].x * Sign / 500.f);
-		Normal = normalize(float3(-SlopeBuffer[int2(Index, 1)].y * Sign, -SlopeBuffer[int2(Index, 1)].x * Sign, 1.f));
-	}
+    float Lambda = -1.f;
+
+	PosOffset = float3(DisplacementBuffer[int2(Index, 1)].z * Lambda * Sign / 500.f, DisplacementBuffer[int2(Index, 1)].x * Lambda * Sign / 500.f, HeightBuffer[int2(Index, 1)].x * Sign / 500.f);
+	Normal = normalize(float3(-SlopeBuffer[int2(Index, 1)].z * Sign, -SlopeBuffer[int2(Index, 1)].x * Sign, 1.f));
 }
 
 void ComputePosAndNormalPS(
@@ -253,7 +246,6 @@ void ComputePosAndNormalPS(
 )
 {
 	int Sign;
-	float Lambda = -1.f;
 	int Width, Height;
 	HeightBuffer.GetDimensions(Width, Height);
 	int Size = sqrt(Width);
