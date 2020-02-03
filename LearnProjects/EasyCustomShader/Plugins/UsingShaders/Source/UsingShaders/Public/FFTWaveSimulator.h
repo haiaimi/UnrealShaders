@@ -54,6 +54,12 @@ public:
 	class UProceduralMeshComponent* WaveMesh;
 
 	UPROPERTY(EditAnywhere)
+	float MeshGridLength;
+
+	UPROPERTY(EditAnywhere)
+	int32 TimeRate;
+
+	UPROPERTY(EditAnywhere)
 	int32 WaveSize;
 
 	UPROPERTY(EditAnywhere)
@@ -74,7 +80,12 @@ public:
 	UPROPERTY(EditAnywhere)
 	class UTextureRenderTarget* WaveNormalRenderTarget;
 
+	TArray<FVector2D> RandomTable;
+
 	TArray<float> ButterflyLookupTable;
+
+	FVertexBufferRHIRef RandomTableVB;
+	FShaderResourceViewRHIRef RandomTableSRV;
 
 	FVertexBufferRHIRef ButterflyLookupTableVB;
 	FShaderResourceViewRHIRef ButterflyLookupTableSRV;

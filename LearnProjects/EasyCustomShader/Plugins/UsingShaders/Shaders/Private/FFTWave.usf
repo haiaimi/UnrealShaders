@@ -8,6 +8,7 @@ float GridLength;
 float WaveAmplitude;
 float3 WindSpeed;
 
+Buffer<float2> RandomTable;
 RWTexture2D<float2> RWSpectrum;
 RWTexture2D<float2> RWSpectrumConj;
 
@@ -53,12 +54,15 @@ float PhillipsSpectrum(int n, int m)
 
 	float damping = 0.001f;
 	float l2 = L2 * damping * damping;
-	return 0.1f * WaveAmplitude * exp(-1.0f / (klength2 * L2)) / klength4 * kdotw2 * exp(-klength2 * l2);  //compute P_h(k)
+	return WaveAmplitude * exp(-rcp(klength2 * L2)) / klength4 * kdotw2 * exp(-klength2 * l2);  //compute P_h(k)
 }
 
 float2 GetSpectrum(int n, int m)
 {
-	float2 r = GaussianRandomVariable(uint2(abs(n), abs(m))); //get a pair of independent random num(Normal distribution£©
+	//get a pair of independent random num(Normal distribution
+	uint Index = m * (WaveSize + 1) + n;
+	//float2 r = GaussianRandomVariable(uint2(n, m));  //compute in gpu
+	float2 r = RandomTable[Index]; //use random table that computed by cpu
 	return r * sqrt(PhillipsSpectrum(n, m) / 2.f);
 }
 
@@ -91,7 +95,7 @@ Buffer<float>  ButterflyLookupTable;
 float2 InitSpectrum(float TimeSeconds, int n, int m)
 {
 	uint Index = m * (WaveSize + 1) + n;
-	float Omegat = DispersionTable[Index] * TimeSeconds * 10.f;
+	float Omegat = DispersionTable[Index] * TimeSeconds;
 
 	float Cos = cos(Omegat);
 	float Sin = sin(Omegat);
@@ -235,7 +239,7 @@ void GetPosOffsetAndNormal(int2 Coord, int Size, out float3 PosOffset, out float
 	int Sign = Signs[(Coord.x + Coord.y) & 1];
     float Lambda = -1.f;
 
-	PosOffset = float3(DisplacementBuffer[int2(Index, 1)].z * Lambda * Sign / 500.f, DisplacementBuffer[int2(Index, 1)].x * Lambda * Sign / 500.f, HeightBuffer[int2(Index, 1)].x * Sign / 500.f);
+	PosOffset = float3(DisplacementBuffer[int2(Index, 1)].z * Lambda * Sign, DisplacementBuffer[int2(Index, 1)].x * Lambda * Sign, HeightBuffer[int2(Index, 1)].x * Sign);
 	Normal = normalize(float3(-SlopeBuffer[int2(Index, 1)].z * Sign, -SlopeBuffer[int2(Index, 1)].x * Sign, 1.f));
 }
 

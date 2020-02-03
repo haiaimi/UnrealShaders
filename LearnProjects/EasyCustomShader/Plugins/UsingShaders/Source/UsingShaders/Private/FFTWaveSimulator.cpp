@@ -8,13 +8,16 @@
 
 #define GRAVITY 9.8f
 
+extern void ComputeRandomTable(int32 Size, TArray<FVector2D>& OutTable);
 extern void ComputeButterflyLookuptable(int32 Size, int32 Passes, TArray<float>& OutTable);
 
 // Sets default values
 AFFTWaveSimulator::AFFTWaveSimulator():
 	WaveMesh(nullptr),
+	MeshGridLength(100.f),
+	TimeRate(2.f),
 	WaveSize(64),
-	GridLength(100.f),
+	GridLength(1.f),
 	WaveHeightMapRenderTarget(nullptr)
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
@@ -112,7 +115,7 @@ void AFFTWaveSimulator::CreateWaveGrid()
 	TArray<FVector2D> UV1;
 	TArray<FColor> Colors;
 	TArray<FProcMeshTangent> Tangents;
-	UKismetProceduralMeshLibrary::CreateGridMeshWelded(WaveSize + 1, WaveSize + 1, Triangles, WaveVertices, UVs, GridLength);
+	UKismetProceduralMeshLibrary::CreateGridMeshWelded(WaveSize + 1, WaveSize + 1, Triangles, WaveVertices, UVs, MeshGridLength);
 
 	WaveNormals.SetNum((WaveSize + 1) * (WaveSize + 1));
 	WavePosition.SetNum((WaveSize + 1) * (WaveSize + 1));
@@ -130,7 +133,7 @@ void AFFTWaveSimulator::CreateWaveGrid()
 		}
 
 	if (WaveMesh)
-	{
+	{ 
 		WaveMesh->CreateMeshSection(0, WaveVertices, Triangles, WaveNormals, UVs, Colors, Tangents, true);
 	}
 }
@@ -146,18 +149,28 @@ void AFFTWaveSimulator::CreateResources()
 	DisplacementBuffer = RHICreateTexture2D(WaveSize * WaveSize, 2, PF_A32B32G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo); //float4
 	//FUnorderedAccessViewRHIRef TempTextureUAV = RHICreateUnorderedAccessView(TempTexture);
 
+	ComputeRandomTable(WaveSize + 1, RandomTable);
 	ComputeButterflyLookuptable(WaveSize, (int32)FMath::Log2(WaveSize), ButterflyLookupTable);
 
+	RandomTableVB.SafeRelease();
+	RandomTableSRV.SafeRelease();
 	ButterflyLookupTableVB.SafeRelease();
 	ButterflyLookupTableSRV.SafeRelease();
 	DispersionTableVB.SafeRelease();
 	DispersionTableSRV.SafeRelease();
 	FRHIResourceCreateInfo CreateInfo;
+	RandomTableVB = RHICreateVertexBuffer(RandomTable.Num() * sizeof(FVector2D), BUF_Volatile | BUF_ShaderResource, CreateInfo);
+	RandomTableSRV = RHICreateShaderResourceView(RandomTableVB, sizeof(FVector2D), PF_G32R32F);
+
 	ButterflyLookupTableVB = RHICreateVertexBuffer(ButterflyLookupTable.Num() * sizeof(float), BUF_Volatile | BUF_ShaderResource, CreateInfo);
 	ButterflyLookupTableSRV = RHICreateShaderResourceView(ButterflyLookupTableVB, sizeof(float), PF_R32_FLOAT);
 
 	DispersionTableVB = RHICreateVertexBuffer(DispersionTable.Num() * sizeof(float), BUF_Volatile | BUF_ShaderResource, CreateInfo);
 	DispersionTableSRV = RHICreateShaderResourceView(DispersionTableVB, sizeof(float), PF_R32_FLOAT);
+
+	void* RandomTableData = RHILockVertexBuffer(RandomTableVB, 0, RandomTable.Num() * sizeof(FVector2D), RLM_WriteOnly);
+	FPlatformMemory::Memcpy(RandomTableData, RandomTable.GetData(), RandomTable.Num() * sizeof(FVector2D));
+	RHIUnlockVertexBuffer(RandomTableVB);
 
 	void* ButterflyLockedData = RHILockVertexBuffer(ButterflyLookupTableVB, 0, ButterflyLookupTable.Num() * sizeof(float), RLM_WriteOnly);
 	FPlatformMemory::Memcpy(ButterflyLockedData, ButterflyLookupTable.GetData(), ButterflyLookupTable.Num() * sizeof(float));
