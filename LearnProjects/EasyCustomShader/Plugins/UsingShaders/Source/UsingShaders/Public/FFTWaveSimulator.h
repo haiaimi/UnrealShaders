@@ -48,8 +48,14 @@ public:
 
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)override;
+
+	virtual bool ShouldTickIfViewportsOnly()const override
+	{
+		return true;
+	}
 #endif
 
+public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	class UProceduralMeshComponent* WaveMesh;
 
@@ -70,7 +76,7 @@ public:
 
 	UPROPERTY(EditAnywhere)
 	float WaveAmplitude;
-
+	
 	UPROPERTY(EditAnywhere)
 	class UMaterialInterface* GridMaterial;
 
@@ -107,4 +113,6 @@ private:
 	FTexture2DRHIRef HeightBuffer;
 	FTexture2DRHIRef SlopeBuffer;
 	FTexture2DRHIRef DisplacementBuffer;
+
+	bool bHasInit;
 };

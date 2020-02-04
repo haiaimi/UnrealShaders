@@ -18,10 +18,17 @@ AFFTWaveSimulator::AFFTWaveSimulator():
 	TimeRate(2.f),
 	WaveSize(64),
 	GridLength(1.f),
-	WaveHeightMapRenderTarget(nullptr)
+	WaveHeightMapRenderTarget(nullptr),
+	bHasInit(false)
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
+
+	if (WITH_EDITOR)
+	{
+		PrimaryActorTick.bCanEverTick = true;
+		PrimaryActorTick.bStartWithTickEnabled = true;
+	}
 
 	WindSpeed = FVector(10.f, 10.f, 0.f);
 	WaveAmplitude = 0.05f;
@@ -33,9 +40,6 @@ void AFFTWaveSimulator::BeginPlay()
 {
 	Super::BeginPlay();
 	
-	if (GridMaterial && WaveMesh)
-		WaveMesh->SetMaterial(0, GridMaterial);
-
 	InitWaveResource();
 }
 
@@ -44,13 +48,7 @@ void AFFTWaveSimulator::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	FProcMeshSection* MeshSection = WaveMesh->GetProcMeshSection(0);
-	if (MeshSection)
-	{
-		TArray<FColor> Colors;
-		TArray<FProcMeshTangent> Tangents;
-		WaveMesh->UpdateMeshSection(0, WaveVertices, WaveNormals, UVs, Colors, Tangents);
-	}
+	InitWaveResource();
 
 	if (GetWorld())
 		EvaluateWavesFFT(GetWorld()->TimeSeconds);
@@ -58,8 +56,14 @@ void AFFTWaveSimulator::Tick(float DeltaTime)
 
 void AFFTWaveSimulator::InitWaveResource()
 {
+	if (bHasInit)return;
+	if (GridMaterial && WaveMesh)
+		WaveMesh->SetMaterial(0, GridMaterial);
+
 	CreateWaveGrid();
 	ComputeSpectrum();
+
+	bHasInit = true;
 }
 
 FVector2D AFFTWaveSimulator::InitSpectrum(float TimeSeconds, int32 n, int32 m)
@@ -112,7 +116,6 @@ float AFFTWaveSimulator::Dispersion(int32 n, int32 m)
 void AFFTWaveSimulator::CreateWaveGrid()
 {
 	TArray<int32> Triangles;
-	TArray<FVector2D> UV1;
 	TArray<FColor> Colors;
 	TArray<FProcMeshTangent> Tangents;
 	UKismetProceduralMeshLibrary::CreateGridMeshWelded(WaveSize + 1, WaveSize + 1, Triangles, WaveVertices, UVs, MeshGridLength);
@@ -254,10 +257,27 @@ void AFFTWaveSimulator::ComputePositionAndNormal()
 		RHIUnlockTexture2D(DisplacementBuffer, 0, false);
 	}
 }
+static FName Name_MeshGridLength = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, MeshGridLength);
+static FName Name_WaveSize = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, WaveSize);
+static FName Name_GridLength = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, GridLength);
+static FName Name_WaveAmplitude = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, WaveAmplitude);
+static FName Name_WindSpeed = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, WindSpeed);
 
 #if WITH_EDITOR
 void AFFTWaveSimulator::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
+	UProperty* MemberPropertyThatChanged = PropertyChangedEvent.MemberProperty;
+	const FName MemberPropertyName = MemberPropertyThatChanged != NULL ? MemberPropertyThatChanged->GetFName() : NAME_None;
+
+	bool bWaveProperyChanged = MemberPropertyName == Name_MeshGridLength ||
+							   MemberPropertyName == Name_WaveSize || 
+							   MemberPropertyName == Name_GridLength || 
+							   MemberPropertyName == Name_WaveAmplitude ||
+							   MemberPropertyName == Name_WindSpeed;
+	if (bWaveProperyChanged)
+	{
+		bHasInit = false;
+	}
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 }
 #endif
