@@ -59,31 +59,38 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	class UProceduralMeshComponent* WaveMesh;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = WaveProperty)
+	int32 HorizontalTileCount;
+
+	UPROPERTY(EditAnywhere, Category = WaveProperty)
+	int32 VerticalTileCount;
+
+	UPROPERTY(EditAnywhere, Category = WaveProperty)
 	float MeshGridLength;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = WaveProperty)
 	int32 TimeRate;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = WaveProperty)
 	int32 WaveSize;
 
-	UPROPERTY(EditAnywhere)
+	/**not mean the wave mesh grid length, only use in shader*/
+	UPROPERTY(EditAnywhere, Category = SpectrumProperty)
 	float GridLength;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = SpectrumProperty)
 	FVector WindSpeed;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = SpectrumProperty)
 	float WaveAmplitude;
 	
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category =WaveRenderResource)
 	class UMaterialInterface* GridMaterial;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = WaveRenderResource)
 	class UTextureRenderTarget* WaveHeightMapRenderTarget;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = WaveRenderResource)
 	class UTextureRenderTarget* WaveNormalRenderTarget;
 
 	TArray<FVector2D> RandomTable;

@@ -183,30 +183,34 @@ static void DrawUniformBufferShaderRenderTarget_RenderThread(
 	SCOPED_DRAW_EVENTF(RHICmdList, DrawUVDisplacementRenderTarget_RenderThread);
 #endif
 
-	FIntPoint DrawTargetResolution(OutputRenderTargetResource->GetSizeX(), OutputRenderTargetResource->GetSizeY());  
-    RHICmdList.SetViewport(0, 0, 0.0f, DrawTargetResolution.X, DrawTargetResolution.Y, 1.0f);    //设置视口大小
-
-	FRHIRenderPassInfo RPInfo(OutputRenderTargetResource->GetRenderTargetTexture(), ERenderTargetActions::Load_Store, OutputRenderTargetResource->TextureRHI);
-	RHICmdList.BeginRenderPass(RPInfo, TEXT("RayMarchingShader"));
-
 	TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 	//TShaderMapRef<FRayMarchingShaderVS<1>> VertexShader(GlobalShaderMap);
 	//TShaderMapRef<FRayMarchingShaderPS<1>> PixelShader(GlobalShaderMap);        //获取自定义的Shader
 
 	FRayMarchingShader* VertexShader = nullptr;
 	FRayMarchingShader* PixelShader = nullptr;
-	
+
 	switch (ShaderType)
 	{
+	case ERayMarchingShader::None:
+		//Do nothing, sometime we don't need run it
+		return;
+		break;
 	case ERayMarchingShader::Seascape:
 		VertexShader = *TShaderMapRef<FRayMarchingShaderVS<1>>(GlobalShaderMap);
-		PixelShader = *TShaderMapRef<FRayMarchingShaderPS<1>>(GlobalShaderMap); 
+		PixelShader = *TShaderMapRef<FRayMarchingShaderPS<1>>(GlobalShaderMap);
 		break;
 	case ERayMarchingShader::ProteanCloud:
 		VertexShader = *TShaderMapRef<FRayMarchingShaderVS<2>>(GlobalShaderMap);
-		PixelShader = *TShaderMapRef<FRayMarchingShaderPS<2>>(GlobalShaderMap); 
+		PixelShader = *TShaderMapRef<FRayMarchingShaderPS<2>>(GlobalShaderMap);
 		break;
 	}
+
+	FIntPoint DrawTargetResolution(OutputRenderTargetResource->GetSizeX(), OutputRenderTargetResource->GetSizeY());  
+    RHICmdList.SetViewport(0, 0, 0.0f, DrawTargetResolution.X, DrawTargetResolution.Y, 1.0f);    //设置视口大小
+
+	FRHIRenderPassInfo RPInfo(OutputRenderTargetResource->GetRenderTargetTexture(), ERenderTargetActions::Load_Store, OutputRenderTargetResource->TextureRHI);
+	RHICmdList.BeginRenderPass(RPInfo, TEXT("RayMarchingShader"));
 
 	FRayMarchingVertexDeclaration VertexDeclaration;   
 	VertexDeclaration.InitRHI(); //创建定点输入布局

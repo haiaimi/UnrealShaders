@@ -5,15 +5,56 @@
 #include "ProceduralMeshComponent.h"
 #include "KismetProceduralMeshLibrary.h"
 #include "RHICommandList.h"
+#include "PhysicsEngine/BodySetup.h"
 
 #define GRAVITY 9.8f
 
 extern void ComputeRandomTable(int32 Size, TArray<FVector2D>& OutTable);
 extern void ComputeButterflyLookuptable(int32 Size, int32 Passes, TArray<float>& OutTable);
 
+void CreateWaveGridMesh(int32 HoriTiles, int32 VertTiles, int32 NumX, int32 NumY, TArray<int32>& Triangles, TArray<FVector>& Vertices, TArray<FVector2D>& UVs, float GridSpacing)
+{
+	Triangles.Empty();
+	Vertices.Empty();
+	UVs.Empty();
+
+	if (NumX >= 2 && NumY >= 2)
+	{
+		int HoriNum = (NumX - 1) * HoriTiles + 1;
+		int VertNum = (NumY - 1) * VertTiles + 1;
+		FVector2D Extent = FVector2D((HoriNum - 1)* GridSpacing, (VertNum - 1) * GridSpacing) / 2;
+		
+		for (int i = 0; i < VertNum; i++)
+		{
+			for (int j = 0; j < HoriNum; j++)
+			{
+				Vertices.Add(FVector((float)j * GridSpacing - Extent.X, (float)i * GridSpacing - Extent.Y, 0));
+				UVs.Add(FVector2D((float)HoriTiles * (float)j / ((float)HoriNum - 1), (float)VertTiles * (float)i / ((float)VertNum - 1)));
+			}
+		}
+
+		for (int i = 0; i < VertNum - 1; i++)
+		{
+			for (int j = 0; j < HoriNum - 1; j++)
+			{
+				int idx = j + (i * HoriNum);
+				Triangles.Add(idx);
+				Triangles.Add(idx + HoriNum);
+				Triangles.Add(idx + 1);
+
+				Triangles.Add(idx + 1);
+				Triangles.Add(idx + HoriNum);
+				Triangles.Add(idx + HoriNum + 1);
+			}
+		}
+	}
+}
+
 // Sets default values
 AFFTWaveSimulator::AFFTWaveSimulator():
 	WaveMesh(nullptr),
+	HorizontalTileCount(1),
+	VerticalTileCount(1),
 	MeshGridLength(100.f),
 	TimeRate(2.f),
 	WaveSize(64),
@@ -23,12 +64,6 @@ AFFTWaveSimulator::AFFTWaveSimulator():
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
-
-	if (WITH_EDITOR)
-	{
-		PrimaryActorTick.bCanEverTick = true;
-		PrimaryActorTick.bStartWithTickEnabled = true;
-	}
 
 	WindSpeed = FVector(10.f, 10.f, 0.f);
 	WaveAmplitude = 0.05f;
@@ -118,7 +153,9 @@ void AFFTWaveSimulator::CreateWaveGrid()
 	TArray<int32> Triangles;
 	TArray<FColor> Colors;
 	TArray<FProcMeshTangent> Tangents;
-	UKismetProceduralMeshLibrary::CreateGridMeshWelded(WaveSize + 1, WaveSize + 1, Triangles, WaveVertices, UVs, MeshGridLength);
+	WaveMesh->GetBodySetup()->bNeverNeedsCookedCollisionData = true;
+	CreateWaveGridMesh(HorizontalTileCount, VerticalTileCount, WaveSize + 1, WaveSize + 1, Triangles, WaveVertices, UVs, MeshGridLength);
+	//UKismetProceduralMeshLibrary::CreateGridMeshWelded(WaveSize + 1, WaveSize + 1, Triangles, WaveVertices, UVs, MeshGridLength);
 
 	WaveNormals.SetNum((WaveSize + 1) * (WaveSize + 1));
 	WavePosition.SetNum((WaveSize + 1) * (WaveSize + 1));
@@ -137,7 +174,13 @@ void AFFTWaveSimulator::CreateWaveGrid()
 
 	if (WaveMesh)
 	{ 
-		WaveMesh->CreateMeshSection(0, WaveVertices, Triangles, WaveNormals, UVs, Colors, Tangents, true);
+		if (WaveMesh->GetNumSections() > 0)
+		{
+			WaveMesh->ClearAllMeshSections();
+			WaveMesh->CreateMeshSection(0, WaveVertices, Triangles, WaveNormals, UVs, Colors, Tangents, false);
+		}
+		else
+			WaveMesh->CreateMeshSection(0, WaveVertices, Triangles, WaveNormals, UVs, Colors, Tangents, false);
 	}
 }
 
@@ -257,6 +300,8 @@ void AFFTWaveSimulator::ComputePositionAndNormal()
 		RHIUnlockTexture2D(DisplacementBuffer, 0, false);
 	}
 }
+static FName Name_HorizontalTileCount = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, HorizontalTileCount);
+static FName Name_VerticalTileCount = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, VerticalTileCount);
 static FName Name_MeshGridLength = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, MeshGridLength);
 static FName Name_WaveSize = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, WaveSize);
 static FName Name_GridLength = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, GridLength);
@@ -269,9 +314,11 @@ void AFFTWaveSimulator::PostEditChangeProperty(FPropertyChangedEvent& PropertyCh
 	UProperty* MemberPropertyThatChanged = PropertyChangedEvent.MemberProperty;
 	const FName MemberPropertyName = MemberPropertyThatChanged != NULL ? MemberPropertyThatChanged->GetFName() : NAME_None;
 
-	bool bWaveProperyChanged = MemberPropertyName == Name_MeshGridLength ||
-							   MemberPropertyName == Name_WaveSize || 
-							   MemberPropertyName == Name_GridLength || 
+	bool bWaveProperyChanged = MemberPropertyName == Name_HorizontalTileCount ||
+							   MemberPropertyName == Name_VerticalTileCount ||
+							   MemberPropertyName == Name_MeshGridLength ||
+							   MemberPropertyName == Name_WaveSize ||
+							   MemberPropertyName == Name_GridLength ||
 							   MemberPropertyName == Name_WaveAmplitude ||
 							   MemberPropertyName == Name_WindSpeed;
 	if (bWaveProperyChanged)
