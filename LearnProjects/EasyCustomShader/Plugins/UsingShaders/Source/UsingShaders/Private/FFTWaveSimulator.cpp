@@ -12,6 +12,10 @@
 extern void ComputeRandomTable(int32 Size, TArray<FVector2D>& OutTable);
 extern void ComputeButterflyLookuptable(int32 Size, int32 Passes, TArray<float>& OutTable);
 
+TMap<TSubclassOf<AFFTWaveSimulator>, TArray<AFFTWaveSimulator*>> GlobalRunningFFTWave;
+
+bool bIsWaveBegun = false;
+
 void CreateWaveGridMesh(int32 HoriTiles, int32 VertTiles, int32 NumX, int32 NumY, TArray<int32>& Triangles, TArray<FVector>& Vertices, TArray<FVector2D>& UVs, float GridSpacing)
 {
 	Triangles.Empty();
@@ -75,7 +79,55 @@ void AFFTWaveSimulator::BeginPlay()
 {
 	Super::BeginPlay();
 	
+	if (!bIsWaveBegun)
+	{
+		GlobalRunningFFTWave.Reset();
+		bIsWaveBegun = true;
+	}
 	InitWaveResource();
+}
+
+void AFFTWaveSimulator::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+}
+
+void AFFTWaveSimulator::EndPlay(EEndPlayReason::Type EndPlayReason)
+{
+	Super::EndPlay(EndPlayReason);
+
+	if (EndPlayReason == EEndPlayReason::EndPlayInEditor)
+	{
+		bIsWaveBegun = false;
+		GlobalRunningFFTWave.Reset();
+	}
+}
+
+void AFFTWaveSimulator::Destroyed()
+{
+	auto CurClass = GetClass();
+	TArray<AFFTWaveSimulator*>* Result = GlobalRunningFFTWave.Find(CurClass);
+	if (Result)
+	{
+		int32 OutIndex = INDEX_NONE;
+		if ((*Result).Find(this, OutIndex))
+		{
+			if (OutIndex == 0 && (*Result).Num() > 1)
+			{
+				FTransform Temp = (*Result)[1]->GetActorTransform();
+				(*Result)[0]->SetActorTransform(Temp);
+				(*Result)[1]->Destroy();
+			}
+			else
+			{
+				(*Result).RemoveAt(OutIndex);
+			}
+			if ((*Result).Num() == 0)
+				GlobalRunningFFTWave.Remove(CurClass);
+		}
+	}
+
+	Super::Destroyed();
 }
 
 // Called every frame
@@ -86,7 +138,18 @@ void AFFTWaveSimulator::Tick(float DeltaTime)
 	InitWaveResource();
 
 	if (GetWorld())
-		EvaluateWavesFFT(GetWorld()->TimeSeconds);
+	{
+		auto CurClass = GetClass();
+		TArray<AFFTWaveSimulator*>* Result = GlobalRunningFFTWave.Find(CurClass);
+		if (Result && (*Result).Num() > 0 && (*Result)[0] == this)
+		{
+			EvaluateWavesFFT(GetWorld()->TimeSeconds);
+		}
+		if (Result)
+			(*Result).AddUnique(this);
+		else
+			GlobalRunningFFTWave.Add(CurClass, { this });
+	}
 }
 
 void AFFTWaveSimulator::InitWaveResource()
@@ -307,6 +370,8 @@ static FName Name_WaveSize = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, WaveSize
 static FName Name_GridLength = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, GridLength);
 static FName Name_WaveAmplitude = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, WaveAmplitude);
 static FName Name_WindSpeed = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, WindSpeed);
+
+static int32 MacroNum = (void(0), 1);
 
 #if WITH_EDITOR
 void AFFTWaveSimulator::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
