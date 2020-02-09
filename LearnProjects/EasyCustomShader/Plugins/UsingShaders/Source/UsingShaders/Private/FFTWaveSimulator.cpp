@@ -378,6 +378,12 @@ void AFFTWaveSimulator::ComputePositionAndNormal()
 		RHIUnlockTexture2D(DisplacementBuffer, 0, false);
 	}
 }
+
+FVector2D AFFTWaveSimulator::GetWaveDimension() const
+{
+	return FVector2D(HorizontalTileCount * MeshGridLength * WaveSize, VerticalTileCount * MeshGridLength * WaveSize);
+}
+
 static FName Name_HorizontalTileCount = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, HorizontalTileCount);
 static FName Name_VerticalTileCount = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, VerticalTileCount);
 static FName Name_MeshGridLength = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, MeshGridLength);
@@ -404,6 +410,11 @@ void AFFTWaveSimulator::PostEditChangeProperty(FPropertyChangedEvent& PropertyCh
 	if (bWaveProperyChanged)
 	{
 		bHasInit = false;
+		AFFTWaveSimulator* Simulator = GetWorld()->SpawnActor<AFFTWaveSimulator>(GetActorLocation() + FVector::UpVector * 1000.f, GetActorRotation());
+		if (Simulator)
+		{
+			UKismetSystemLibrary::PrintString(this, Simulator->GetName());
+		}
 	}
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 }

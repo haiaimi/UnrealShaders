@@ -54,6 +54,8 @@ public:
 	// Run on cpu, don't use it
 	void ComputePositionAndNormal();
 
+	FVector2D GetWaveDimension()const;
+
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)override;
 
