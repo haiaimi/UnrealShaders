@@ -6,11 +6,15 @@
 #include "KismetProceduralMeshLibrary.h"
 #include "RHICommandList.h"
 #include "PhysicsEngine/BodySetup.h"
+#include "Kismet/KismetSystemLibrary.h"
+#include "Kismet/GameplayStatics.h"
+#include "GameFramework/PlayerController.h"
 
 #define GRAVITY 9.8f
 
 extern void ComputeRandomTable(int32 Size, TArray<FVector2D>& OutTable);
 extern void ComputeButterflyLookuptable(int32 Size, int32 Passes, TArray<float>& OutTable);
+//extern int32 GHZBOcclusion;
 
 TMap<TSubclassOf<AFFTWaveSimulator>, TArray<AFFTWaveSimulator*>> GlobalRunningFFTWave;
 
@@ -84,12 +88,30 @@ void AFFTWaveSimulator::BeginPlay()
 		GlobalRunningFFTWave.Reset();
 		bIsWaveBegun = true;
 	}
+	//Try to open hzb occlusion cull, or it will has some artifact
+	auto ConsoleResult = IConsoleManager::Get().FindConsoleVariable(TEXT("r.HZBOcclusion"));
+	if (ConsoleResult)
+	{
+		int32 CurState = ConsoleResult->GetInt();
+		if (CurState == 0 && GetWorld())
+		{
+			if (APlayerController* PlayerController = UGameplayStatics::GetPlayerController(this, 0))
+			{
+				PlayerController->ConsoleCommand(TEXT("r.HZBOcclusion 1"));
+			}
+		}
+	}
 	InitWaveResource();
 }
 
 void AFFTWaveSimulator::PostInitializeComponents()
 {
 	Super::PostInitializeComponents();
+}
+
+void AFFTWaveSimulator::PostActorCreated()
+{
+	Super::PostActorCreated();
 }
 
 void AFFTWaveSimulator::EndPlay(EEndPlayReason::Type EndPlayReason)
@@ -112,16 +134,7 @@ void AFFTWaveSimulator::Destroyed()
 		int32 OutIndex = INDEX_NONE;
 		if ((*Result).Find(this, OutIndex))
 		{
-			if (OutIndex == 0 && (*Result).Num() > 1)
-			{
-				FTransform Temp = (*Result)[1]->GetActorTransform();
-				(*Result)[0]->SetActorTransform(Temp);
-				(*Result)[1]->Destroy();
-			}
-			else
-			{
-				(*Result).RemoveAt(OutIndex);
-			}
+			(*Result).RemoveAt(OutIndex);
 			if ((*Result).Num() == 0)
 				GlobalRunningFFTWave.Remove(CurClass);
 		}
@@ -144,6 +157,7 @@ void AFFTWaveSimulator::Tick(float DeltaTime)
 		if (Result && (*Result).Num() > 0 && (*Result)[0] == this)
 		{
 			EvaluateWavesFFT(GetWorld()->TimeSeconds);
+			
 		}
 		if (Result)
 			(*Result).AddUnique(this);
@@ -158,6 +172,7 @@ void AFFTWaveSimulator::InitWaveResource()
 	if (GridMaterial && WaveMesh)
 		WaveMesh->SetMaterial(0, GridMaterial);
 
+	WaveMesh->Bounds.BoxExtent.Z = 0.f;
 	CreateWaveGrid();
 	ComputeSpectrum();
 

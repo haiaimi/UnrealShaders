@@ -22,6 +22,8 @@ protected:
 
 	virtual void PostInitializeComponents()override;
 
+	virtual void PostActorCreated()override;
+
 	virtual void EndPlay(EEndPlayReason::Type EndPlayReason)override;
 
 	virtual void Destroyed()override;
