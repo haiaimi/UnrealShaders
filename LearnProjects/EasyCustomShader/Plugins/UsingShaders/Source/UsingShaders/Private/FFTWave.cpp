@@ -822,7 +822,8 @@ void AFFTWaveSimulator::EvaluateWavesFFT(float TimeSeconds)
 			}
 			PrepareFFT_RenderThread(RHICmdList, FeatureLevel, TimeSeconds * WaveSimulatorPtr->TimeRate, WaveSimulatorPtr->WaveSize, WaveSimulatorPtr->GridLength, WaveSimulatorPtr->DispersionTableSRV, WaveSimulatorPtr->Spectrum, WaveSimulatorPtr->SpectrumConj, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV);
 			EvaluateWavesFFT_RenderThread(RHICmdList, FeatureLevel, TimeSeconds, WaveSimulatorPtr->WaveSize, 0, WaveSimulatorPtr->HeightBuffer, WaveSimulatorPtr->SlopeBuffer,WaveSimulatorPtr->DisplacementBuffer, HeightBufferUAV, SlopeBufferUAV, DisplacementBufferUAV, WaveSimulatorPtr);
-		
+
+			WaveSimulatorPtr->ComputePositionAndNormal();
 			if (WaveSimulatorPtr->WaveHeightMapRenderTarget && WaveSimulatorPtr->WaveNormalRenderTarget)
 				ComputePosAndNormal_RenderThread(RHICmdList, FeatureLevel, WaveSimulatorPtr->WaveHeightMapRenderTarget->GetRenderTargetResource(), WaveSimulatorPtr->WaveNormalRenderTarget->GetRenderTargetResource(), WaveSimulatorPtr->WaveSize, WaveSimulatorPtr->HeightBuffer, WaveSimulatorPtr->SlopeBuffer, WaveSimulatorPtr->DisplacementBuffer);
 		}

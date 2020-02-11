@@ -9,6 +9,7 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/PlayerController.h"
+#include "DrawDebugHelpers.h"
 
 #define GRAVITY 9.8f
 
@@ -68,6 +69,7 @@ AFFTWaveSimulator::AFFTWaveSimulator():
 	WaveSize(64),
 	GridLength(1.f),
 	WaveHeightMapRenderTarget(nullptr),
+	DrawNormal(false),
 	bHasInit(false)
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
@@ -158,6 +160,14 @@ void AFFTWaveSimulator::Tick(float DeltaTime)
 		{
 			EvaluateWavesFFT(GetWorld()->TimeSeconds);
 			
+			if(DrawNormal)
+				for (int32 i = 0; i < WaveVertices.Num(); ++i)
+				{
+					DrawDebugDirectionalArrow(GetWorld(), GetActorLocation() + WaveVertices[i], GetActorLocation() + WaveVertices[i] + WaveNormals[i] * 100.f, 20.f, FColor::Red, false, -1.f, 0, 5.f);
+					/*TArray<FColor> Colors;
+					TArray<FProcMeshTangent> Tangents;
+					WaveMesh->UpdateMeshSection(0, WavePosition, WaveNormals, UVs, Colors, Tangents);*/
+				}
 		}
 		if (Result)
 			(*Result).AddUnique(this);
@@ -307,9 +317,12 @@ void AFFTWaveSimulator::CreateResources()
 
 void AFFTWaveSimulator::ComputePositionAndNormal()
 {
-	if ((int32)HeightBuffer->GetSizeX() >= WaveSize * WaveSize && 
+	if (DrawNormal && 
+		(int32)HeightBuffer->GetSizeX() >= WaveSize * WaveSize &&
 		(int32)SlopeBuffer->GetSizeX() >= WaveSize * WaveSize && 
-		(int32)DisplacementBuffer->GetSizeX() >= WaveSize * WaveSize)
+		(int32)DisplacementBuffer->GetSizeX() >= WaveSize * WaveSize && 
+		WaveVertices.Num() >= (WaveSize + 1) * (WaveSize + 1)
+		)
 	{
 		uint32 Stride;
 		FVector2D* HeightBufferData = static_cast<FVector2D*>(RHILockTexture2D(HeightBuffer, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
@@ -332,14 +345,14 @@ void AFFTWaveSimulator::ComputePositionAndNormal()
 				Sign = (int32)Signs[(n + m) & 1];
 
 				// Get height
-				WaveVertices[Index1].Z = HeightBufferData[Index].X * Sign / 500.f;
+				WaveVertices[Index1].Z = HeightBufferData[Index].X * Sign;
 
 				// Get displacement
-				WaveVertices[Index1].X = WavePosition[Index1].X + DisplacementBufferData[Index].X * Lambda * Sign / 500.f;
-				WaveVertices[Index1].Y = WavePosition[Index1].Y + DisplacementBufferData[Index].Y * Lambda * Sign / 500.f;
+				WaveVertices[Index1].X = WavePosition[Index1].X + DisplacementBufferData[Index].Z * Lambda * Sign;
+				WaveVertices[Index1].Y = WavePosition[Index1].Y + DisplacementBufferData[Index].X * Lambda * Sign;
 				
 				// Get normal
-				FVector Normal(-SlopeBufferData[Index].X *Sign, -SlopeBufferData[Index].Y *Sign, 1.f);
+				FVector Normal(-SlopeBufferData[Index].Z *Sign, -SlopeBufferData[Index].X *Sign, 1.f);
 				Normal.Normalize();
 
 				WaveNormals[Index1].X = Normal.X;
@@ -364,14 +377,15 @@ void AFFTWaveSimulator::ComputePositionAndNormal()
 					continue;
 
 				WaveVertices[TileIndex].Z = HeightBufferData[Index].X * Sign;
-				WaveVertices[TileIndex].X = WavePosition[TileIndex].X + DisplacementBufferData[Index].X * Lambda * Sign;
-				WaveVertices[TileIndex].Y = WavePosition[TileIndex].Y + DisplacementBufferData[Index].Z * Lambda * Sign;
+				WaveVertices[TileIndex].X = WavePosition[TileIndex].X + DisplacementBufferData[Index].Z * Lambda * Sign;
+				WaveVertices[TileIndex].Y = WavePosition[TileIndex].Y + DisplacementBufferData[Index].X * Lambda * Sign;
 				
 				WaveNormals[TileIndex].X = Normal.X;
 				WaveNormals[TileIndex].Y = Normal.Y;
 				WaveNormals[TileIndex].Z = Normal.Z;
 			}
 		}
+
 		// Unlock the buffers
 		RHIUnlockTexture2D(HeightBuffer, 0, false);
 		RHIUnlockTexture2D(SlopeBuffer, 0, false);
@@ -410,11 +424,6 @@ void AFFTWaveSimulator::PostEditChangeProperty(FPropertyChangedEvent& PropertyCh
 	if (bWaveProperyChanged)
 	{
 		bHasInit = false;
-		AFFTWaveSimulator* Simulator = GetWorld()->SpawnActor<AFFTWaveSimulator>(GetActorLocation() + FVector::UpVector * 1000.f, GetActorRotation());
-		if (Simulator)
-		{
-			UKismetSystemLibrary::PrintString(this, Simulator->GetName());
-		}
 	}
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 }

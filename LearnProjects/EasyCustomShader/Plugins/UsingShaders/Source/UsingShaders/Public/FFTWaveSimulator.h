@@ -103,6 +103,9 @@ public:
 	UPROPERTY(EditAnywhere, Category = WaveRenderResource)
 	class UTextureRenderTarget* WaveNormalRenderTarget;
 
+	UPROPERTY(EditAnywhere, Category = Debug)
+	bool DrawNormal;
+
 	TArray<FVector2D> RandomTable;
 
 	TArray<float> ButterflyLookupTable;
