@@ -104,6 +104,8 @@ void AFFTWaveSimulator::BeginPlay()
 		}
 	}
 	InitWaveResource();
+
+	//DrawNormal = true;
 }
 
 void AFFTWaveSimulator::PostInitializeComponents()
@@ -164,9 +166,9 @@ void AFFTWaveSimulator::Tick(float DeltaTime)
 				for (int32 i = 0; i < WaveVertices.Num(); ++i)
 				{
 					DrawDebugDirectionalArrow(GetWorld(), GetActorLocation() + WaveVertices[i], GetActorLocation() + WaveVertices[i] + WaveNormals[i] * 100.f, 20.f, FColor::Red, false, -1.f, 0, 5.f);
-					/*TArray<FColor> Colors;
+					TArray<FColor> Colors;
 					TArray<FProcMeshTangent> Tangents;
-					WaveMesh->UpdateMeshSection(0, WavePosition, WaveNormals, UVs, Colors, Tangents);*/
+					WaveMesh->UpdateMeshSection(0, WavePosition, WaveNormals, UVs, Colors, Tangents);
 				}
 		}
 		if (Result)
