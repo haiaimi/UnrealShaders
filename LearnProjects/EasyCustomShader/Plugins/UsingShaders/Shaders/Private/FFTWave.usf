@@ -240,7 +240,7 @@ void GetPosOffsetAndNormal(int2 Coord, int Size, out float3 PosOffset, out float
     float Lambda = -1.f;
 
 	PosOffset = float3(DisplacementBuffer[int2(Index, 1)].z * Lambda * Sign, DisplacementBuffer[int2(Index, 1)].x * Lambda * Sign, HeightBuffer[int2(Index, 1)].x * Sign);
-	Normal = float3(normalize(-SlopeBuffer[int2(Index, 1)].zx * Sign), 2.f);
+	Normal = float3(-SlopeBuffer[int2(Index, 1)].zx * Sign, GridLength);
 	Normal /= length(Normal);
 	//Normal = normalize(float3(0.f, 0.f, 1.f));
 }

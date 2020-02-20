@@ -10,6 +10,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/PlayerController.h"
 #include "DrawDebugHelpers.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 #define GRAVITY 9.8f
 
@@ -165,10 +166,10 @@ void AFFTWaveSimulator::Tick(float DeltaTime)
 			if(DrawNormal)
 				for (int32 i = 0; i < WaveVertices.Num(); ++i)
 				{
-					DrawDebugDirectionalArrow(GetWorld(), GetActorLocation() + WaveVertices[i], GetActorLocation() + WaveVertices[i] + WaveNormals[i] * 100.f, 20.f, FColor::Red, false, -1.f, 0, 5.f);
+					DrawDebugDirectionalArrow(GetWorld(), GetActorLocation() + WaveVertices[i] * (MeshGridLength / GridLength), GetActorLocation() + WaveVertices[i] * (MeshGridLength / GridLength) + WaveNormals[i] * 100.f, 20.f, FColor::Red, false, -1.f, 0, 5.f);
 					TArray<FColor> Colors;
 					TArray<FProcMeshTangent> Tangents;
-					WaveMesh->UpdateMeshSection(0, WavePosition, WaveNormals, UVs, Colors, Tangents);
+					//WaveMesh->UpdateMeshSection(0, WavePosition, WaveNormals, UVs, Colors, Tangents);
 				}
 		}
 		if (Result)
@@ -244,8 +245,14 @@ void AFFTWaveSimulator::CreateWaveGrid()
 	TArray<FColor> Colors;
 	TArray<FProcMeshTangent> Tangents;
 	WaveMesh->GetBodySetup()->bNeverNeedsCookedCollisionData = true;
-	CreateWaveGridMesh(HorizontalTileCount, VerticalTileCount, WaveSize + 1, WaveSize + 1, Triangles, WaveVertices, UVs, MeshGridLength);
+	CreateWaveGridMesh(HorizontalTileCount, VerticalTileCount, WaveSize + 1, WaveSize + 1, Triangles, WaveVertices, UVs, GridLength);
 	//UKismetProceduralMeshLibrary::CreateGridMeshWelded(WaveSize + 1, WaveSize + 1, Triangles, WaveVertices, UVs, MeshGridLength);
+	WaveMesh->SetWorldScale3D((MeshGridLength / GridLength) * FVector(1.f, 1.f, 1.f));
+
+	if (UMaterialInstanceDynamic* DynMaterial = WaveMesh->CreateAndSetMaterialInstanceDynamic(0))
+	{
+		DynMaterial->SetScalarParameterValue(WaveDisplacementScale, (MeshGridLength / GridLength));
+	}
 
 	WaveNormals.SetNum((WaveSize + 1) * (WaveSize + 1));
 	WavePosition.SetNum((WaveSize + 1) * (WaveSize + 1));

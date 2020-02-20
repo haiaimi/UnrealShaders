@@ -94,7 +94,7 @@ public:
 	UPROPERTY(EditAnywhere, Category = SpectrumProperty)
 	float WaveAmplitude;
 	
-	UPROPERTY(EditAnywhere, Category =WaveRenderResource)
+	UPROPERTY(EditAnywhere, Category = WaveRenderResource)
 	class UMaterialInterface* GridMaterial;
 
 	UPROPERTY(EditAnywhere, Category = WaveRenderResource)
@@ -102,6 +102,9 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = WaveRenderResource)
 	class UTextureRenderTarget* WaveNormalRenderTarget;
+
+	UPROPERTY(EditAnywhere, Category = WaveRenderResource)
+	FName WaveDisplacementScale;
 
 	UPROPERTY(EditAnywhere, Category = Debug)
 	bool DrawNormal;

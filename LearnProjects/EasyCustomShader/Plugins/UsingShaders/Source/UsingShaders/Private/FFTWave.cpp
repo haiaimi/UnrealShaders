@@ -364,6 +364,7 @@ public:
 		FGlobalShader(Initializer)
 	{
 		WaveSize.Bind(Initializer.ParameterMap, TEXT("WaveSize"));
+		GridLength.Bind(Initializer.ParameterMap, TEXT("GridLength"));
 		TextureSampler.Bind(Initializer.ParameterMap, TEXT("TextureSampler"));
 		HeightBuffer.Bind(Initializer.ParameterMap, TEXT("HeightBuffer"));
 		SlopeBuffer.Bind(Initializer.ParameterMap, TEXT("SlopeBuffer"));
@@ -388,12 +389,14 @@ public:
 	void SetParameters(
 		FRHICommandListImmediate& RHICmdList,
 		int32 InWaveSize,
+		float InGridLength,
 		FTexture2DRHIParamRef InHeightBuffer,
 		FTexture2DRHIParamRef InSlopeBuffer,
 		FTexture2DRHIParamRef InDisplacementBuffer
 	)
 	{
-		SetShaderValue(RHICmdList, GetPixelShader(), WaveSize, WaveSize);
+		SetShaderValue(RHICmdList, GetPixelShader(), WaveSize, InWaveSize);
+		SetShaderValue(RHICmdList, GetPixelShader(), GridLength, InGridLength);
 		SetSamplerParameter(RHICmdList, GetPixelShader(), TextureSampler, TStaticSamplerState<SF_AnisotropicLinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 		SetTextureParameter(RHICmdList, GetPixelShader(), HeightBuffer, InHeightBuffer);
 		SetTextureParameter(RHICmdList, GetPixelShader(), SlopeBuffer, InSlopeBuffer);
@@ -409,6 +412,7 @@ public:
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 
 		Ar << WaveSize;
+		Ar << GridLength;
 		Ar << HeightBuffer;
 		Ar << SlopeBuffer;
 		Ar << DisplacementBuffer;
@@ -418,6 +422,7 @@ public:
 
 private:
 	FShaderParameter WaveSize;
+	FShaderParameter GridLength;
 
 	FShaderResourceParameter HeightBuffer;
 	FShaderResourceParameter SlopeBuffer;
@@ -631,6 +636,7 @@ static void ComputePosAndNormal_RenderThread(
 	FTextureRenderTargetResource* OutputPosRenderTargetResource,
 	FTextureRenderTargetResource* OutputNormalRenderTargetResource,
 	int32 InWaveSize,
+	float InGridLength,
 	FTexture2DRHIParamRef HeightBuffer,
 	FTexture2DRHIParamRef SlopeBuffer,
 	FTexture2DRHIParamRef DisplacementBuffer
@@ -664,7 +670,7 @@ static void ComputePosAndNormal_RenderThread(
 		GraphicPSPoint.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ComputePosAndNormalPS);
 		SetGraphicsPipelineState(RHICmdList, GraphicPSPoint);
 
-		ComputePosAndNormalPS->SetParameters(RHICmdList, InWaveSize, HeightBuffer, SlopeBuffer, DisplacementBuffer);
+		ComputePosAndNormalPS->SetParameters(RHICmdList, InWaveSize, InGridLength, HeightBuffer, SlopeBuffer, DisplacementBuffer);
 
 		FUVertexInput Vertices[4];
 		Vertices[0].Position.Set(-1.0f, 1.0f, 0, 1.0f);
@@ -825,7 +831,7 @@ void AFFTWaveSimulator::EvaluateWavesFFT(float TimeSeconds)
 
 			WaveSimulatorPtr->ComputePositionAndNormal();
 			if (WaveSimulatorPtr->WaveHeightMapRenderTarget && WaveSimulatorPtr->WaveNormalRenderTarget)
-				ComputePosAndNormal_RenderThread(RHICmdList, FeatureLevel, WaveSimulatorPtr->WaveHeightMapRenderTarget->GetRenderTargetResource(), WaveSimulatorPtr->WaveNormalRenderTarget->GetRenderTargetResource(), WaveSimulatorPtr->WaveSize, WaveSimulatorPtr->HeightBuffer, WaveSimulatorPtr->SlopeBuffer, WaveSimulatorPtr->DisplacementBuffer);
+				ComputePosAndNormal_RenderThread(RHICmdList, FeatureLevel, WaveSimulatorPtr->WaveHeightMapRenderTarget->GetRenderTargetResource(), WaveSimulatorPtr->WaveNormalRenderTarget->GetRenderTargetResource(), WaveSimulatorPtr->WaveSize, WaveSimulatorPtr->GridLength, WaveSimulatorPtr->HeightBuffer, WaveSimulatorPtr->SlopeBuffer, WaveSimulatorPtr->DisplacementBuffer);
 		}
 	});
 }
