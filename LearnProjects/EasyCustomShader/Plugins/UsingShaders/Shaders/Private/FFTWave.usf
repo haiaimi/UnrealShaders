@@ -245,6 +245,19 @@ void GetPosOffsetAndNormal(int2 Coord, int Size, out float3 PosOffset, out float
 	//Normal = normalize(float3(0.f, 0.f, 1.f));
 }
 
+float3 GaurodInterpolate(float2 FirstUV, float2 SecondUV, float2 ThirdUV, float3 FirstVal, float3 SecondVal, float3 ThirdVal, float TargetUV)
+{
+	float TriangleArea = 0.5f;
+	float2 V0 = ThirdUV - FirstUV;
+	float2 V1 = SecondUV - FirstUV;
+	float2 VT = TargetUV - FirstUV;
+
+	float SecondW = abs(VT.x * V0.y - VT.y * V0.x) / (2 * TriangleArea);
+	float ThirdW = abs(VT.x * V1.y - VT.y * V1.x) / (2 * TriangleArea);
+	float FirstW = 1 - SecondW - ThirdW;
+	return FirstW * FirstVal + SecondW * SecondVal + ThirdW * ThirdVal;
+}
+
 void ComputePosAndNormalPS(
 	in float2 UV : TEXCOORD0,
 	out float4 OutPosOffset : SV_Target0,
@@ -285,6 +298,19 @@ void ComputePosAndNormalPS(
 	GetPosOffsetAndNormal(int2(PointX, DownPoint), Size, DownLeftPos, DownLeftNormal);
 	GetPosOffsetAndNormal(int2(RightPoint, DownPoint), Size, DownRightPos, DownRightNormal);
 	//Bilinear lerp
-	OutPosOffset = float4(lerp(lerp(TopLeftPos, TopRightPos, LerpAlphaX), lerp(DownLeftPos, DownRightPos, LerpAlphaX), LerpAlphaY), 1.f);
+	//OutPosOffset = float4(lerp(lerp(TopLeftPos, TopRightPos, LerpAlphaX), lerp(DownLeftPos, DownRightPos, LerpAlphaX), LerpAlphaY), 1.f);
 	OutNormal = float4(lerp(lerp(TopLeftNormal, TopRightNormal, LerpAlphaX), lerp(DownLeftNormal, DownRightNormal, LerpAlphaX), LerpAlphaY), 1.f);
+	//return;
+
+	//Triangle lerp(Gaurod)
+	if(LerpAlphaY >= LerpAlphaX)
+	{
+		OutPosOffset = float4(GaurodInterpolate(float2(0.f, 0.f), float2(1.f, 1.f), float2(0.f, 1.f), TopLeftPos, DownRightPos, DownLeftPos, float2(LerpAlphaX, LerpAlphaY)), 1.f);
+		//OutNormal = float4(GaurodInterpolate(float2(0.f, 0.f), float2(1.f, 1.f), float2(0.f, 1.f), TopLeftNormal, DownRightNormal, DownLeftNormal, float2(LerpAlphaX, LerpAlphaY)), 1.f);
+	}
+	else
+	{
+		OutPosOffset = float4(GaurodInterpolate(float2(0.f, 0.f), float2(1.f, 0.f), float2(1.f, 1.f), TopLeftPos, TopRightPos, DownRightPos, float2(LerpAlphaX, LerpAlphaY)), 1.f);
+		//OutNormal = float4(GaurodInterpolate(float2(0.f, 0.f), float2(1.f, 0.f), float2(1.f, 1.f), TopLeftNormal, TopRightNormal, DownRightNormal, float2(LerpAlphaX, LerpAlphaY)), 1.f);
+	}
 }
