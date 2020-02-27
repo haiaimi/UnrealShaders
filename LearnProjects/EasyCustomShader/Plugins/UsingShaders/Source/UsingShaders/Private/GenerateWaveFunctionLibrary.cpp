@@ -27,7 +27,7 @@ void GetMinAndMax(const TArray<FVector>& AllVectors, FVector& OutMin, FVector& O
 
 bool IsPointInTriangle(const FVector& FirstVec, const FVector& SecondVec, const FVector& ThirdVec, const FVector& Point)
 {
-	if (FirstVec.Z == SecondVec.Z == ThirdVec.Z)
+	if (FirstVec.Z == SecondVec.Z  && FirstVec.Z == ThirdVec.Z)
 	{
 		FVector V0 = ThirdVec - FirstVec;
 		FVector V1 = SecondVec - FirstVec;
@@ -72,7 +72,7 @@ void UGenerateWaveFunctionLibrary::TriangleNormalInterpolation(const UObject* Wo
 
 		const FVector V0 = ThirdVec - FirstVec;
 		const FVector V1 = SecondVec - FirstVec;
-		const float TriangleArea = (V0 | V1) / 2.f;
+		const float TriangleArea = FMath::Abs(FVector2D(V0) ^ FVector2D(V1) / 2.f);
 
 		for (int32 i = 0; i < InterpolationNum; ++i)
 			for (int32 j = 0;j < InterpolationNum; ++j)
@@ -80,8 +80,8 @@ void UGenerateWaveFunctionLibrary::TriangleNormalInterpolation(const UObject* Wo
 				const FVector Pos = Min + (i + 1) * HoriTileOffset + (j + 1) * VertTileOffset;
 				if (IsPointInTriangle(FirstVec, SecondVec, ThirdVec, Pos))
 				{
-					const float Second = ((Pos - FirstVec) | V0) / (2.f * TriangleArea);
-					const float Third = ((Pos - FirstVec) | V1) / (2.f * TriangleArea);
+					const float Second = FMath::Abs(FVector2D(Pos - FirstVec) ^ FVector2D(V0)) / (2.f * TriangleArea);
+					const float Third = FMath::Abs(FVector2D(Pos - FirstVec) ^ FVector2D(V1)) / (2.f * TriangleArea);
 					const float First = 1.f - Second - Third;
 					FVector LerpNormal = First * FirstColor + Second * SecondColor + Third * ThirdColor;
 					LerpNormal.Normalize();
