@@ -122,8 +122,8 @@ float2 InitSpectrum(float TimeSeconds, int n, int m)
 void PrepareForFFT(float TimeSeconds, int n, int m)
 {
 	float KX, KY, Len, Lambda = -1.f;
-	KY = PI * (2.f * m - WaveSize) / GridLength;
 	KX = PI * (2.f * n - WaveSize) / GridLength;
+	KY = PI * (2.f * m - WaveSize) / GridLength;   // Get it from: 2 * PI * (m - WaveSize / 2) / GridLength
 	
 	Len = sqrt(KX * KX + KY * KY);
 	int Index = m * WaveSize + n;

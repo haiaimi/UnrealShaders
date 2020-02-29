@@ -163,14 +163,18 @@ void AFFTWaveSimulator::Tick(float DeltaTime)
 		{
 			EvaluateWavesFFT(GetWorld()->TimeSeconds);
 			
-			if(DrawNormal)
+			if (DrawNormal)
+			{
 				for (int32 i = 0; i < WaveVertices.Num(); ++i)
 				{
 					DrawDebugDirectionalArrow(GetWorld(), GetActorLocation() + WaveVertices[i] * (MeshGridLength / GridLength), GetActorLocation() + WaveVertices[i] * (MeshGridLength / GridLength) + WaveNormals[i] * 100.f, 20.f, FColor::Red, false, -1.f, 0, 5.f);
-					TArray<FColor> Colors;
-					TArray<FProcMeshTangent> Tangents;
-					//WaveMesh->UpdateMeshSection(0, WavePosition, WaveNormals, UVs, Colors, Tangents);
 				}
+
+				TArray<FColor> Colors;
+				TArray<FProcMeshTangent> Tangents;
+				WaveMesh->UpdateMeshSection(0, WavePosition, WaveNormals, UVs, Colors, Tangents);
+			}
+				
 		}
 		if (Result)
 			(*Result).AddUnique(this);
