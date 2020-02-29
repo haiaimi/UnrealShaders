@@ -72,9 +72,9 @@ void PhillipsSpectrumCS(
 	int3 GroupThreadID : SV_GroupThreadID,
 	int3 DispatchThreadID : SV_DispatchThreadID)
 {
-	int index = DispatchThreadID.x * (WaveSize + 1) + DispatchThreadID.y;
-	RWSpectrum[uint2(index, 0)] = GetSpectrum(DispatchThreadID.y, DispatchThreadID.x);   //compute h_0(k)
-	float2 Conj = GetSpectrum(-DispatchThreadID.y, -DispatchThreadID.x);
+	int index = DispatchThreadID.y * (WaveSize + 1) + DispatchThreadID.x;
+	RWSpectrum[uint2(index, 0)] = GetSpectrum(DispatchThreadID.x, DispatchThreadID.y);   //compute h_0(k)
+	float2 Conj = GetSpectrum(-DispatchThreadID.x, -DispatchThreadID.y);
 	Conj.y *= -1.0f;  // compute conj of h_0(k)
 	RWSpectrumConj[uint2(index, 0)] = Conj;
 }
@@ -240,7 +240,7 @@ void GetPosOffsetAndNormal(int2 Coord, int Size, out float3 PosOffset, out float
     float Lambda = -1.f;
 
 	PosOffset = float3(DisplacementBuffer[int2(Index, 1)].z * Lambda * Sign, DisplacementBuffer[int2(Index, 1)].x * Lambda * Sign, HeightBuffer[int2(Index, 1)].x * Sign);
-	Normal = float3(-SlopeBuffer[int2(Index, 1)].zx * Sign, GridLength);
+	Normal = float3(-SlopeBuffer[int2(Index, 1)].zx * Sign, 100);
 	Normal /= length(Normal);
 	//Normal = normalize(float3(0.f, 0.f, 1.f));
 }
@@ -298,9 +298,9 @@ void ComputePosAndNormalPS(
 	GetPosOffsetAndNormal(int2(PointX, DownPoint), Size, DownLeftPos, DownLeftNormal);
 	GetPosOffsetAndNormal(int2(RightPoint, DownPoint), Size, DownRightPos, DownRightNormal);
 	//Bilinear lerp
-	//OutPosOffset = float4(lerp(lerp(TopLeftPos, TopRightPos, LerpAlphaX), lerp(DownLeftPos, DownRightPos, LerpAlphaX), LerpAlphaY), 1.f);
+	OutPosOffset = float4(lerp(lerp(TopLeftPos, TopRightPos, LerpAlphaX), lerp(DownLeftPos, DownRightPos, LerpAlphaX), LerpAlphaY), 1.f);
 	OutNormal = float4(lerp(lerp(TopLeftNormal, TopRightNormal, LerpAlphaX), lerp(DownLeftNormal, DownRightNormal, LerpAlphaX), LerpAlphaY), 1.f);
-	//return;
+	return;
 
 	//Triangle lerp(Gaurod)
 	if(LerpAlphaY >= LerpAlphaX)
