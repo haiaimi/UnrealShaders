@@ -158,3 +158,13 @@ $\int_{m\in\Theta}G_1(m,v)D(m)(v\cdot m)^+ dm=v\cdot n$
 就是根据环境贴图来计算环境光，环境光一般是一张CubeMap。
 
 IBL同样也是分为Diffuse和Specular，它们需要分开计算，前面知道要计算光照需要对半球体进行积分，在实时渲染中不可能这样计算，所以这就需要蒙特卡洛积分。
+
+首先是看一下反射方程：
+$L_o(p,w_o)=\int_\Omega(k_d\frac{c}{\pi}+k_s\frac{DFG}{4(w_o\cdot n)(w_i\cdot n)})L_i(p,w_i)n\cdot w_idw_i$
+
+其中$k_d + k_s = 1$（因为要能量守恒）。
+
+Specular部分： 
+镜面反射部分整个积分上不是常数，受很多因素影响，由其反射方程$f_r(p,w_i,w_o)=\frac{DFG}{4(w_o\cdot n)(w_i\cdot n)}$可见其不仅依赖于$w_i$还有$w_o$和$n$，EpicGames得分割求和近似法将预计算分成两个单独得部分求解，拆解如下:$L_o(p,w_o)=\int_\Omega L_i(p,w_i)dw_i*\int_\Omega f_r(p,w_i,w_o)n\cdot w_idw_i$。
+
+其中第一部分就是预滤波环境贴图，类似于辐照度贴图，但是考虑到了粗糙度，把粗糙度分成5个级别对应的结果分别存储在mipmap中，
