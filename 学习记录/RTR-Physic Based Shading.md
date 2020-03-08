@@ -216,6 +216,36 @@ vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness)
 
 以上代码就是根据粗糙度和低差异序列值$Xi$获得一个采样向量，大体是围绕预估的微表面的半向量。
 
+计算预滤波环境贴图部分代码：
+```cpp
+void main()
+{       
+    vec3 N = normalize(localPos);    
+    vec3 R = N;
+    vec3 V = R;
+
+    const uint SAMPLE_COUNT = 1024u;
+    float totalWeight = 0.0;   
+    vec3 prefilteredColor = vec3(0.0);     
+    for(uint i = 0u; i < SAMPLE_COUNT; ++i)
+    {
+        vec2 Xi = Hammersley(i, SAMPLE_COUNT);
+        vec3 H  = ImportanceSampleGGX(Xi, N, roughness);
+        vec3 L  = normalize(2.0 * dot(V, H) * H - V);
+
+        float NdotL = max(dot(N, L), 0.0);
+        if(NdotL > 0.0)
+        {
+            prefilteredColor += texture(environmentMap, L).rgb * NdotL;
+            totalWeight      += NdotL;
+        }
+    }
+    prefilteredColor = prefilteredColor / totalWeight;
+
+    FragColor = vec4(prefilteredColor, 1.0);
+}  
+```
+
 * 预计算BRDF      
 BRDF部分的方程：$\int_\Omega f_r(p,w_i,w_o)n\cdot w_idw_i=\int_\Omega f_r(p,w_i,w_o)\frac{F(w_o,h)}{F(w_o,h)}n\cdot w_idw_i$       
 =$\int_\Omega \frac{f_r(p,w_i,w_o)}{F(w_o,h)}F(w_o,h)n\cdot w_idw_i$   
@@ -227,8 +257,10 @@ BRDF部分的方程：$\int_\Omega f_r(p,w_i,w_o)n\cdot w_idw_i=\int_\Omega f_r(
 分拆到两个积分里    
 =$\int_\Omega \frac{f_r(p,w_i,w_o)}{F(w_o,h)}(F_0*(1-\alpha))n\cdot w_idw_i+\int_\Omega \frac{f_r(p,w_i,w_o)}{F(w_o,h)}(\alpha))n\cdot w_idw_i$      
 由于$F_0$是常数，可以提出来，同时$f_r(p,w_i,w_o)$中包含了$F$可以约掉  
-=$\int_\Omega f_r(p,w_i,w_o)(F_0*(1-(1-w_o\cdot h)^5)n\cdot w_idw_i+\int_\Omega f_r(p,w_i,w_o)(1-w_o\cdot h)^5)n\cdot w_idw_i$   
+=$F_0*(\int_\Omega f_r(p,w_i,w_o)(1-(1-w_o\cdot h)^5)n\cdot w_idw_i+\int_\Omega f_r(p,w_i,w_o)(1-w_o\cdot h)^5)n\cdot w_idw_i$   
 其积分代码如下：   
+
+可以分别对这两部分进行蒙特卡洛积分
 ```cpp
 vec2 IntegrateBRDF(float NdotV, float roughness)
 {
@@ -247,7 +279,7 @@ vec2 IntegrateBRDF(float NdotV, float roughness)
     {
         vec2 Xi = Hammersley(i, SAMPLE_COUNT);
         vec3 H  = ImportanceSampleGGX(Xi, N, roughness);
-        vec3 L  = normalize(2.0 * dot(V, H) * H - V);
+        vec3 L  = normalize(2.0 * dot(V, H) * H - V);  //计算入射光方向
 
         float NdotL = max(L.z, 0.0);
         float NdotH = max(H.z, 0.0);
@@ -255,6 +287,7 @@ vec2 IntegrateBRDF(float NdotV, float roughness)
 
         if(NdotL > 0.0)
         {
+            //可见没有法线分布函数，因为法线分布函数被当成
             float G = GeometrySmith(N, V, L, roughness);
             float G_Vis = (G * VdotH) / (NdotH * NdotV);
             float Fc = pow(1.0 - VdotH, 5.0);
@@ -268,4 +301,53 @@ vec2 IntegrateBRDF(float NdotV, float roughness)
     return vec2(A, B);
 }
 ```
-在与IBL一起使用的时候$k$项会有所不同如下$k_{direct}=\frac{(\alpha +1)^2}{8}$, $k_{IBL}=\frac{\alpha ^2}{2}$。
+在与IBL一起使用的时候$k$项会有所不同如下$k_{direct}=\frac{(\alpha +1)^2}{8}$, $k_{IBL}=\frac{\alpha ^2}{2}$。其几何函数代码如下：
+
+```cpp
+float GeometrySchlickGGX(float NdotV, float roughness)
+{
+    float a = roughness;
+    float k = (a * a) / 2.0;
+
+    float nom   = NdotV;
+    float denom = NdotV * (1.0 - k) + k;
+
+    return nom / denom;
+}
+// ----------------------------------------------------------------------------
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
+{
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+
+    return ggx1 * ggx2;
+}  
+```
+
+那么最终将两部分结合起来的代码：
+```cpp
+vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
+{
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(1.0 - cosTheta, 5.0);
+}   
+
+vec3 F = FresnelSchlickRoughness(max(dot(N, V), 0.0), F0, roughness);
+
+vec3 kS = F;
+vec3 kD = 1.0 - kS;
+kD *= 1.0 - metallic;   //可见金属度越高，漫反射越少
+
+vec3 irradiance = texture(irradianceMap, N).rgb;  //对预计算出的辐照度贴图进行采样
+vec3 diffuse    = irradiance * albedo;
+
+const float MAX_REFLECTION_LOD = 4.0;
+vec3 prefilteredColor = textureLod(prefilterMap, R,  roughness * MAX_REFLECTION_LOD).rgb;   
+vec2 envBRDF  = texture(brdfLUT, vec2(max(dot(N, V), 0.0), roughness)).rg;
+vec3 specular = prefilteredColor * (F * envBRDF.x + envBRDF.y);
+
+vec3 ambient = (kD * diffuse + specular) * ao; 
+```
+
+以上$IBL$代码都在Epic Games的一篇论文中。
