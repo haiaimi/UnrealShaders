@@ -36,4 +36,18 @@ UE4中的3D 控件的渲染方式就是把Slate中内容渲染到一张RenderTar
       CurrentDrawSize,  //渲染的尺寸，也就是RenderTarget的大小
       DeltaTime)
   ```
-  当然这个Renderer是SlateRenderer，与常见的DeferredRenderer还是有区别的，它没有正常渲染模型那么复杂，其对应的Shader也是GlobalShader，所以光照什么的不会考虑进去。
+  当然这个Renderer是SlateRenderer，与常见的DeferredRenderer还是有区别的，它没有正常渲染模型那么复杂，其对应的Shader也是GlobalShader，所以就单单渲染这张RenderTarget光照什么的不会考虑进去。
+  不过需要注意的是渲染一张Widget的过程还是比较复杂的，渲染前需要对widget里所有Element（一个Box或一个Border都是一个Element）按层次（Layer）进行收集，合批并生成对应的模型，其中主要的部分如下图：
+
+
+Widget大致渲染步骤:
+
+a. FSlate3DRenderer下的FSlateElementBatcher调用AddToElements，传入的参数是FSlateWindowElementList，可以理解为前面创建的VirtualWindow 
+
+b. 依次对Window中的每一个Layer（FSlateDrawLayer）进行处理，把FSlateDrawElement的内容加到FElementBatchMap中，会根据不同的Element类型进行添加，如Box，Border，Text，Line等等
+
+c. 这里也是合批的关键，每次尝试添加FSlateDrawElement时都会向FElementBatchMap中检查是否已经有类型想同的Element，如果没有就为FSlateBatchData添加新的顶点索引数组（TArray<FSlateVertexArray>, TArray<FSlateIndexArray>），如果有就沿用之前的数组并继续添加
+
+d. 顶点和索引已经收集完成，SlateBatchData调用CreateRenderBatches来生成渲染所需要的TArray<FRenderBatches>
+
+e. FSlateRenderingPolicy调用DrawElements依次绘制FRenderBatche
