@@ -158,3 +158,196 @@ $\int_{m\in\Theta}G_1(m,v)D(m)(v\cdot m)^+ dm=v\cdot n$
 就是根据环境贴图来计算环境光，环境光一般是一张CubeMap。
 
 IBL同样也是分为Diffuse和Specular，它们需要分开计算，前面知道要计算光照需要对半球体进行积分，在实时渲染中不可能这样计算，所以这就需要蒙特卡洛积分。
+
+首先是看一下反射方程：
+$L_o(p,w_o)=\int_\Omega(k_d\frac{c}{\pi}+k_s\frac{DFG}{4(w_o\cdot n)(w_i\cdot n)})L_i(p,w_i)n\cdot w_idw_i$
+
+其中$k_d + k_s = 1$（因为要能量守恒）。
+
+ Specular部分： 
+镜面反射部分整个积分上不是常数，受很多因素影响，由其反射方程$f_r(p,w_i,w_o)=\frac{DFG}{4(w_o\cdot n)(w_i\cdot n)}$可见其不仅依赖于$w_i$还有$w_o$和$n$，EpicGames得分割求和近似法将预计算分成两个单独得部分求解，拆解如下:$L_o(p,w_o)=\int_\Omega L_i(p,w_i)dw_i*\int_\Omega f_r(p,w_i,w_o)n\cdot w_idw_i$。
+
+第一部分就是预滤波环境贴图，类似于辐照度贴图，但是考虑到了粗糙度，把粗糙度分成5个级别对应的结果分别存储在mipmap中，由于无法知道视角方向，所以把视角方向近似于输出的采样方向$w_o$。
+
+第二部分就是镜面反射积分的BRDF部分，就是在给定粗糙度、光线$w_i$法线$n$夹角$n\cdot w_i$情况下BRDF方程预积分（生成BRDF积分贴图）。
+
+要对上面两个部分积分就需要蒙特卡洛积分，蒙特卡洛积分建立在大数定律基础上，只是简单的从总体中挑选$N$个样本求平均，$N$越大越接近积分结果，其中比较重要的是概率密度函数$pdf$（probability density function）表示该样本在整体样本集上的发生概率。这就需要相对应的随机采样，常见的伪随机分布不是很均匀，所以可以对一种名为*低差异序列*的东西进行蒙特卡洛积分，生成的也是随机样本，但是分布更均匀，这过程被称为*拟蒙特卡洛积分*。同时在镜面反射的情况下，反射的光向量被限制在镜面波瓣中，波瓣大小取决于粗糙度，而波瓣外则与镜面积分无关，所以需要*重要性采样*。所以就通过拟蒙特卡洛积分与低差异序列结合，并且使用重要性采样偏置样本向量的方法，可以获得更高的收敛速度，因此求解速度也就越快。
+
+低差异序列获取的方法是$Hammersley$序列，UE4也有对应的方法：
+```cpp
+float RadicalInverse_VdC(uint bits) 
+{
+    bits = (bits << 16u) | (bits >> 16u);
+    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+    return float(bits) * 2.3283064365386963e-10; // / 0x100000000
+}
+
+```
+
+GGX重要性采样，其相关代码：
+
+```cpp
+vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness)
+{
+    float a = roughness*roughness;
+
+    float phi = 2.0 * PI * Xi.x;
+    float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a*a - 1.0) * Xi.y));
+    float sinTheta = sqrt(1.0 - cosTheta*cosTheta);
+
+    // from spherical coordinates to cartesian coordinates
+    vec3 H;
+    H.x = cos(phi) * sinTheta;
+    H.y = sin(phi) * sinTheta;
+    H.z = cosTheta;
+
+    // from tangent-space vector to world-space sample vector
+    vec3 up        = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+    vec3 tangent   = normalize(cross(up, N));
+    vec3 bitangent = cross(N, tangent);
+
+    vec3 sampleVec = tangent * H.x + bitangent * H.y + N * H.z;
+    return normalize(sampleVec);
+}
+```
+
+以上代码就是根据粗糙度和低差异序列值$Xi$获得一个采样向量，大体是围绕预估的微表面的半向量。
+
+计算预滤波环境贴图部分代码：
+```cpp
+void main()
+{       
+    vec3 N = normalize(localPos);    
+    vec3 R = N;
+    vec3 V = R;
+
+    const uint SAMPLE_COUNT = 1024u;
+    float totalWeight = 0.0;   
+    vec3 prefilteredColor = vec3(0.0);     
+    for(uint i = 0u; i < SAMPLE_COUNT; ++i)
+    {
+        vec2 Xi = Hammersley(i, SAMPLE_COUNT);
+        vec3 H  = ImportanceSampleGGX(Xi, N, roughness);
+        vec3 L  = normalize(2.0 * dot(V, H) * H - V);
+
+        float NdotL = max(dot(N, L), 0.0);
+        if(NdotL > 0.0)
+        {
+            prefilteredColor += texture(environmentMap, L).rgb * NdotL;
+            totalWeight      += NdotL;
+        }
+    }
+    prefilteredColor = prefilteredColor / totalWeight;
+
+    FragColor = vec4(prefilteredColor, 1.0);
+}  
+```
+
+* 预计算BRDF      
+BRDF部分的方程：$\int_\Omega f_r(p,w_i,w_o)n\cdot w_idw_i=\int_\Omega f_r(p,w_i,w_o)\frac{F(w_o,h)}{F(w_o,h)}n\cdot w_idw_i$       
+=$\int_\Omega \frac{f_r(p,w_i,w_o)}{F(w_o,h)}F(w_o,h)n\cdot w_idw_i$   
+用Fresnel_Schlick近似公式替换   
+=$\int_\Omega \frac{f_r(p,w_i,w_o)}{F(w_o,h)}(F_0+(1-F_0)(1-w_o\cdot h)^5)n\cdot w_idw_i$      
+用$\alpha$替换$(1-w_o\cdot h)^5$    
+=$\int_\Omega \frac{f_r(p,w_i,w_o)}{F(w_o,h)}(F_0+(1-F_0)\alpha )n\cdot w_idw_i$      
+=$\int_\Omega \frac{f_r(p,w_i,w_o)}{F(w_o,h)}(F_0+(1-F_0)(F_0*(1-\alpha)+\alpha))n\cdot w_idw_i$   
+分拆到两个积分里    
+=$\int_\Omega \frac{f_r(p,w_i,w_o)}{F(w_o,h)}(F_0*(1-\alpha))n\cdot w_idw_i+\int_\Omega \frac{f_r(p,w_i,w_o)}{F(w_o,h)}(\alpha))n\cdot w_idw_i$      
+由于$F_0$是常数，可以提出来，同时$f_r(p,w_i,w_o)$中包含了$F$可以约掉  
+=$F_0*(\int_\Omega f_r(p,w_i,w_o)(1-(1-w_o\cdot h)^5)n\cdot w_idw_i+\int_\Omega f_r(p,w_i,w_o)(1-w_o\cdot h)^5)n\cdot w_idw_i$   
+其积分代码如下：   
+
+可以分别对这两部分进行蒙特卡洛积分
+```cpp
+vec2 IntegrateBRDF(float NdotV, float roughness)
+{
+    vec3 V;
+    V.x = sqrt(1.0 - NdotV*NdotV);
+    V.y = 0.0;
+    V.z = NdotV;
+
+    float A = 0.0;
+    float B = 0.0;
+
+    vec3 N = vec3(0.0, 0.0, 1.0);
+
+    const uint SAMPLE_COUNT = 1024u;
+    for(uint i = 0u; i < SAMPLE_COUNT; ++i)
+    {
+        vec2 Xi = Hammersley(i, SAMPLE_COUNT);
+        vec3 H  = ImportanceSampleGGX(Xi, N, roughness);
+        vec3 L  = normalize(2.0 * dot(V, H) * H - V);  //计算入射光方向
+
+        float NdotL = max(L.z, 0.0);
+        float NdotH = max(H.z, 0.0);
+        float VdotH = max(dot(V, H), 0.0);
+
+        if(NdotL > 0.0)
+        {
+            //可见没有法线分布函数，因为法线分布函数被当成
+            float G = GeometrySmith(N, V, L, roughness);
+            float G_Vis = (G * VdotH) / (NdotH * NdotV);
+            float Fc = pow(1.0 - VdotH, 5.0);
+
+            A += (1.0 - Fc) * G_Vis;
+            B += Fc * G_Vis;
+        }
+    }
+    A /= float(SAMPLE_COUNT);
+    B /= float(SAMPLE_COUNT);
+    return vec2(A, B);
+}
+```
+在与IBL一起使用的时候$k$项会有所不同如下$k_{direct}=\frac{(\alpha +1)^2}{8}$, $k_{IBL}=\frac{\alpha ^2}{2}$。其几何函数代码如下：
+
+```cpp
+float GeometrySchlickGGX(float NdotV, float roughness)
+{
+    float a = roughness;
+    float k = (a * a) / 2.0;
+
+    float nom   = NdotV;
+    float denom = NdotV * (1.0 - k) + k;
+
+    return nom / denom;
+}
+// ----------------------------------------------------------------------------
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
+{
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+
+    return ggx1 * ggx2;
+}  
+```
+
+那么最终将两部分结合起来的代码：
+```cpp
+vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
+{
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(1.0 - cosTheta, 5.0);
+}   
+
+vec3 F = FresnelSchlickRoughness(max(dot(N, V), 0.0), F0, roughness);
+
+vec3 kS = F;
+vec3 kD = 1.0 - kS;
+kD *= 1.0 - metallic;   //可见金属度越高，漫反射越少
+
+vec3 irradiance = texture(irradianceMap, N).rgb;  //对预计算出的辐照度贴图进行采样
+vec3 diffuse    = irradiance * albedo;
+
+const float MAX_REFLECTION_LOD = 4.0;
+vec3 prefilteredColor = textureLod(prefilterMap, R,  roughness * MAX_REFLECTION_LOD).rgb;   
+vec2 envBRDF  = texture(brdfLUT, vec2(max(dot(N, V), 0.0), roughness)).rg;
+vec3 specular = prefilteredColor * (F * envBRDF.x + envBRDF.y);
+
+vec3 ambient = (kD * diffuse + specular) * ao; 
+```
+
+以上$IBL$代码都在Epic Games的一篇论文中。

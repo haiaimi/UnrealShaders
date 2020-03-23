@@ -5,17 +5,73 @@
 #include "ProceduralMeshComponent.h"
 #include "KismetProceduralMeshLibrary.h"
 #include "RHICommandList.h"
+#include "PhysicsEngine/BodySetup.h"
+#include "Kismet/KismetSystemLibrary.h"
+#include "Kismet/GameplayStatics.h"
+#include "GameFramework/PlayerController.h"
+#include "DrawDebugHelpers.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 #define GRAVITY 9.8f
 
+extern void ComputeRandomTable(int32 Size, TArray<FVector2D>& OutTable);
 extern void ComputeButterflyLookuptable(int32 Size, int32 Passes, TArray<float>& OutTable);
+//extern int32 GHZBOcclusion;
+
+TMap<TSubclassOf<AFFTWaveSimulator>, TArray<AFFTWaveSimulator*>> GlobalRunningFFTWave;
+
+bool bIsWaveBegun = false;
+
+void CreateWaveGridMesh(int32 HoriTiles, int32 VertTiles, int32 NumX, int32 NumY, TArray<int32>& Triangles, TArray<FVector>& Vertices, TArray<FVector2D>& UVs, float GridSpacing)
+{
+	Triangles.Empty();
+	Vertices.Empty();
+	UVs.Empty();
+
+	if (NumX >= 2 && NumY >= 2)
+	{
+		int HoriNum = (NumX - 1) * HoriTiles + 1;
+		int VertNum = (NumY - 1) * VertTiles + 1;
+		FVector2D Extent = FVector2D((HoriNum - 1)* GridSpacing, (VertNum - 1) * GridSpacing) / 2;
+		
+		for (int i = 0; i < VertNum; i++)
+		{
+			for (int j = 0; j < HoriNum; j++)
+			{
+				Vertices.Add(FVector((float)j * GridSpacing - Extent.X, (float)i * GridSpacing - Extent.Y, 0));
+				UVs.Add(FVector2D((float)HoriTiles * (float)j / ((float)HoriNum - 1), (float)VertTiles * (float)i / ((float)VertNum - 1)));
+			}
+		}
+
+		for (int i = 0; i < VertNum - 1; i++)
+		{
+			for (int j = 0; j < HoriNum - 1; j++)
+			{
+				int idx = j + (i * HoriNum);
+				Triangles.Add(idx);
+				Triangles.Add(idx + HoriNum);
+				Triangles.Add(idx + 1);
+
+				Triangles.Add(idx + 1);
+				Triangles.Add(idx + HoriNum);
+				Triangles.Add(idx + HoriNum + 1);
+			}
+		}
+	}
+}
 
 // Sets default values
 AFFTWaveSimulator::AFFTWaveSimulator():
 	WaveMesh(nullptr),
+	HorizontalTileCount(1),
+	VerticalTileCount(1),
+	MeshGridLength(100.f),
+	TimeRate(2.f),
 	WaveSize(64),
-	GridLength(100.f),
-	WaveHeightMapRenderTarget(nullptr)
+	GridLength(1.f),
+	WaveHeightMapRenderTarget(nullptr),
+	DrawNormal(false),
+	bHasInit(false)
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
@@ -30,10 +86,66 @@ void AFFTWaveSimulator::BeginPlay()
 {
 	Super::BeginPlay();
 	
-	if (GridMaterial && WaveMesh)
-		WaveMesh->SetMaterial(0, GridMaterial);
-
+	if (!bIsWaveBegun)
+	{
+		GlobalRunningFFTWave.Reset();
+		bIsWaveBegun = true;
+	}
+	//Try to open hzb occlusion cull, or it will has some artifact
+	auto ConsoleResult = IConsoleManager::Get().FindConsoleVariable(TEXT("r.HZBOcclusion"));
+	if (ConsoleResult)
+	{
+		int32 CurState = ConsoleResult->GetInt();
+		if (CurState == 0 && GetWorld())
+		{
+			if (APlayerController* PlayerController = UGameplayStatics::GetPlayerController(this, 0))
+			{
+				PlayerController->ConsoleCommand(TEXT("r.HZBOcclusion 1"));
+			}
+		}
+	}
 	InitWaveResource();
+
+	//DrawNormal = true;
+}
+
+void AFFTWaveSimulator::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+}
+
+void AFFTWaveSimulator::PostActorCreated()
+{
+	Super::PostActorCreated();
+}
+
+void AFFTWaveSimulator::EndPlay(EEndPlayReason::Type EndPlayReason)
+{
+	Super::EndPlay(EndPlayReason);
+
+	if (EndPlayReason == EEndPlayReason::EndPlayInEditor)
+	{
+		bIsWaveBegun = false;
+		GlobalRunningFFTWave.Reset();
+	}
+}
+
+void AFFTWaveSimulator::Destroyed()
+{
+	auto CurClass = GetClass();
+	TArray<AFFTWaveSimulator*>* Result = GlobalRunningFFTWave.Find(CurClass);
+	if (Result)
+	{
+		int32 OutIndex = INDEX_NONE;
+		if ((*Result).Find(this, OutIndex))
+		{
+			(*Result).RemoveAt(OutIndex);
+			if ((*Result).Num() == 0)
+				GlobalRunningFFTWave.Remove(CurClass);
+		}
+	}
+
+	Super::Destroyed();
 }
 
 // Called every frame
@@ -41,22 +153,47 @@ void AFFTWaveSimulator::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	FProcMeshSection* MeshSection = WaveMesh->GetProcMeshSection(0);
-	if (MeshSection)
-	{
-		TArray<FColor> Colors;
-		TArray<FProcMeshTangent> Tangents;
-		WaveMesh->UpdateMeshSection(0, WaveVertices, WaveNormals, UVs, Colors, Tangents);
-	}
+	InitWaveResource();
 
 	if (GetWorld())
-		EvaluateWavesFFT(GetWorld()->TimeSeconds);
+	{
+		auto CurClass = GetClass();
+		TArray<AFFTWaveSimulator*>* Result = GlobalRunningFFTWave.Find(CurClass);
+		if (Result && (*Result).Num() > 0 && (*Result)[0] == this)
+		{
+			EvaluateWavesFFT(GetWorld()->TimeSeconds);
+			
+			if (DrawNormal)
+			{
+				for (int32 i = 0; i < WaveVertices.Num(); ++i)
+				{
+					DrawDebugDirectionalArrow(GetWorld(), GetActorLocation() + WaveVertices[i] * (MeshGridLength / GridLength), GetActorLocation() + WaveVertices[i] * (MeshGridLength / GridLength) + WaveNormals[i] * 100.f, 20.f, FColor::Red, false, -1.f, 0, 5.f);
+				}
+
+				TArray<FColor> Colors;
+				TArray<FProcMeshTangent> Tangents;
+				WaveMesh->UpdateMeshSection(0, WavePosition, WaveNormals, UVs, Colors, Tangents);
+			}
+				
+		}
+		if (Result)
+			(*Result).AddUnique(this);
+		else
+			GlobalRunningFFTWave.Add(CurClass, { this });
+	}
 }
 
 void AFFTWaveSimulator::InitWaveResource()
 {
+	if (bHasInit)return;
+	if (GridMaterial && WaveMesh)
+		WaveMesh->SetMaterial(0, GridMaterial);
+
+	WaveMesh->Bounds.BoxExtent.Z = 0.f;
 	CreateWaveGrid();
 	ComputeSpectrum();
+
+	bHasInit = true;
 }
 
 FVector2D AFFTWaveSimulator::InitSpectrum(float TimeSeconds, int32 n, int32 m)
@@ -109,10 +246,17 @@ float AFFTWaveSimulator::Dispersion(int32 n, int32 m)
 void AFFTWaveSimulator::CreateWaveGrid()
 {
 	TArray<int32> Triangles;
-	TArray<FVector2D> UV1;
 	TArray<FColor> Colors;
 	TArray<FProcMeshTangent> Tangents;
-	UKismetProceduralMeshLibrary::CreateGridMeshWelded(WaveSize + 1, WaveSize + 1, Triangles, WaveVertices, UVs, GridLength);
+	WaveMesh->GetBodySetup()->bNeverNeedsCookedCollisionData = true;
+	CreateWaveGridMesh(HorizontalTileCount, VerticalTileCount, WaveSize + 1, WaveSize + 1, Triangles, WaveVertices, UVs, GridLength);
+	//UKismetProceduralMeshLibrary::CreateGridMeshWelded(WaveSize + 1, WaveSize + 1, Triangles, WaveVertices, UVs, MeshGridLength);
+	WaveMesh->SetWorldScale3D((MeshGridLength / GridLength) * FVector(1.f, 1.f, 1.f));
+
+	if (UMaterialInstanceDynamic* DynMaterial = WaveMesh->CreateAndSetMaterialInstanceDynamic(0))
+	{
+		DynMaterial->SetScalarParameterValue(WaveDisplacementScale, (MeshGridLength / GridLength));
+	}
 
 	WaveNormals.SetNum((WaveSize + 1) * (WaveSize + 1));
 	WavePosition.SetNum((WaveSize + 1) * (WaveSize + 1));
@@ -130,8 +274,14 @@ void AFFTWaveSimulator::CreateWaveGrid()
 		}
 
 	if (WaveMesh)
-	{
-		WaveMesh->CreateMeshSection(0, WaveVertices, Triangles, WaveNormals, UVs, Colors, Tangents, true);
+	{ 
+		if (WaveMesh->GetNumSections() > 0)
+		{
+			WaveMesh->ClearAllMeshSections();
+			WaveMesh->CreateMeshSection(0, WaveVertices, Triangles, WaveNormals, UVs, Colors, Tangents, false);
+		}
+		else
+			WaveMesh->CreateMeshSection(0, WaveVertices, Triangles, WaveNormals, UVs, Colors, Tangents, false);
 	}
 }
 
@@ -146,18 +296,28 @@ void AFFTWaveSimulator::CreateResources()
 	DisplacementBuffer = RHICreateTexture2D(WaveSize * WaveSize, 2, PF_A32B32G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo); //float4
 	//FUnorderedAccessViewRHIRef TempTextureUAV = RHICreateUnorderedAccessView(TempTexture);
 
+	ComputeRandomTable(WaveSize + 1, RandomTable);
 	ComputeButterflyLookuptable(WaveSize, (int32)FMath::Log2(WaveSize), ButterflyLookupTable);
 
+	RandomTableVB.SafeRelease();
+	RandomTableSRV.SafeRelease();
 	ButterflyLookupTableVB.SafeRelease();
 	ButterflyLookupTableSRV.SafeRelease();
 	DispersionTableVB.SafeRelease();
 	DispersionTableSRV.SafeRelease();
 	FRHIResourceCreateInfo CreateInfo;
+	RandomTableVB = RHICreateVertexBuffer(RandomTable.Num() * sizeof(FVector2D), BUF_Volatile | BUF_ShaderResource, CreateInfo);
+	RandomTableSRV = RHICreateShaderResourceView(RandomTableVB, sizeof(FVector2D), PF_G32R32F);
+
 	ButterflyLookupTableVB = RHICreateVertexBuffer(ButterflyLookupTable.Num() * sizeof(float), BUF_Volatile | BUF_ShaderResource, CreateInfo);
 	ButterflyLookupTableSRV = RHICreateShaderResourceView(ButterflyLookupTableVB, sizeof(float), PF_R32_FLOAT);
 
 	DispersionTableVB = RHICreateVertexBuffer(DispersionTable.Num() * sizeof(float), BUF_Volatile | BUF_ShaderResource, CreateInfo);
 	DispersionTableSRV = RHICreateShaderResourceView(DispersionTableVB, sizeof(float), PF_R32_FLOAT);
+
+	void* RandomTableData = RHILockVertexBuffer(RandomTableVB, 0, RandomTable.Num() * sizeof(FVector2D), RLM_WriteOnly);
+	FPlatformMemory::Memcpy(RandomTableData, RandomTable.GetData(), RandomTable.Num() * sizeof(FVector2D));
+	RHIUnlockVertexBuffer(RandomTableVB);
 
 	void* ButterflyLockedData = RHILockVertexBuffer(ButterflyLookupTableVB, 0, ButterflyLookupTable.Num() * sizeof(float), RLM_WriteOnly);
 	FPlatformMemory::Memcpy(ButterflyLockedData, ButterflyLookupTable.GetData(), ButterflyLookupTable.Num() * sizeof(float));
@@ -170,9 +330,12 @@ void AFFTWaveSimulator::CreateResources()
 
 void AFFTWaveSimulator::ComputePositionAndNormal()
 {
-	if ((int32)HeightBuffer->GetSizeX() >= WaveSize * WaveSize && 
+	if (DrawNormal && 
+		(int32)HeightBuffer->GetSizeX() >= WaveSize * WaveSize &&
 		(int32)SlopeBuffer->GetSizeX() >= WaveSize * WaveSize && 
-		(int32)DisplacementBuffer->GetSizeX() >= WaveSize * WaveSize)
+		(int32)DisplacementBuffer->GetSizeX() >= WaveSize * WaveSize && 
+		WaveVertices.Num() >= (WaveSize + 1) * (WaveSize + 1)
+		)
 	{
 		uint32 Stride;
 		FVector2D* HeightBufferData = static_cast<FVector2D*>(RHILockTexture2D(HeightBuffer, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
@@ -195,14 +358,14 @@ void AFFTWaveSimulator::ComputePositionAndNormal()
 				Sign = (int32)Signs[(n + m) & 1];
 
 				// Get height
-				WaveVertices[Index1].Z = HeightBufferData[Index].X * Sign / 500.f;
+				WaveVertices[Index1].Z = HeightBufferData[Index].X * Sign;
 
 				// Get displacement
-				WaveVertices[Index1].X = WavePosition[Index1].X + DisplacementBufferData[Index].X * Lambda * Sign / 500.f;
-				WaveVertices[Index1].Y = WavePosition[Index1].Y + DisplacementBufferData[Index].Y * Lambda * Sign / 500.f;
+				WaveVertices[Index1].X = WavePosition[Index1].X + DisplacementBufferData[Index].Z * Lambda * Sign;
+				WaveVertices[Index1].Y = WavePosition[Index1].Y + DisplacementBufferData[Index].X * Lambda * Sign;
 				
 				// Get normal
-				FVector Normal(-SlopeBufferData[Index].X *Sign, -SlopeBufferData[Index].Y *Sign, 1.f);
+				FVector Normal(-SlopeBufferData[Index].Z *Sign, -SlopeBufferData[Index].X *Sign, 1.f);
 				Normal.Normalize();
 
 				WaveNormals[Index1].X = Normal.X;
@@ -227,14 +390,15 @@ void AFFTWaveSimulator::ComputePositionAndNormal()
 					continue;
 
 				WaveVertices[TileIndex].Z = HeightBufferData[Index].X * Sign;
-				WaveVertices[TileIndex].X = WavePosition[TileIndex].X + DisplacementBufferData[Index].X * Lambda * Sign;
-				WaveVertices[TileIndex].Y = WavePosition[TileIndex].Y + DisplacementBufferData[Index].Z * Lambda * Sign;
+				WaveVertices[TileIndex].X = WavePosition[TileIndex].X + DisplacementBufferData[Index].Z * Lambda * Sign;
+				WaveVertices[TileIndex].Y = WavePosition[TileIndex].Y + DisplacementBufferData[Index].X * Lambda * Sign;
 				
 				WaveNormals[TileIndex].X = Normal.X;
 				WaveNormals[TileIndex].Y = Normal.Y;
 				WaveNormals[TileIndex].Z = Normal.Z;
 			}
 		}
+
 		// Unlock the buffers
 		RHIUnlockTexture2D(HeightBuffer, 0, false);
 		RHIUnlockTexture2D(SlopeBuffer, 0, false);
@@ -242,9 +406,38 @@ void AFFTWaveSimulator::ComputePositionAndNormal()
 	}
 }
 
+FVector2D AFFTWaveSimulator::GetWaveDimension() const
+{
+	return FVector2D(HorizontalTileCount * MeshGridLength * WaveSize, VerticalTileCount * MeshGridLength * WaveSize);
+}
+
+static FName Name_HorizontalTileCount = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, HorizontalTileCount);
+static FName Name_VerticalTileCount = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, VerticalTileCount);
+static FName Name_MeshGridLength = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, MeshGridLength);
+static FName Name_WaveSize = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, WaveSize);
+static FName Name_GridLength = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, GridLength);
+static FName Name_WaveAmplitude = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, WaveAmplitude);
+static FName Name_WindSpeed = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, WindSpeed);
+
+static int32 MacroNum = (void(0), 1);
+
 #if WITH_EDITOR
 void AFFTWaveSimulator::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
+	UProperty* MemberPropertyThatChanged = PropertyChangedEvent.MemberProperty;
+	const FName MemberPropertyName = MemberPropertyThatChanged != NULL ? MemberPropertyThatChanged->GetFName() : NAME_None;
+
+	bool bWaveProperyChanged = MemberPropertyName == Name_HorizontalTileCount ||
+							   MemberPropertyName == Name_VerticalTileCount ||
+							   MemberPropertyName == Name_MeshGridLength ||
+							   MemberPropertyName == Name_WaveSize ||
+							   MemberPropertyName == Name_GridLength ||
+							   MemberPropertyName == Name_WaveAmplitude ||
+							   MemberPropertyName == Name_WindSpeed;
+	if (bWaveProperyChanged)
+	{
+		bHasInit = false;
+	}
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 }
 #endif

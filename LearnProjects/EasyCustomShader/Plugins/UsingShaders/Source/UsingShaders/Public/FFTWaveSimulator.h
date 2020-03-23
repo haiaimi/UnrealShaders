@@ -20,6 +20,14 @@ protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
+	virtual void PostInitializeComponents()override;
+
+	virtual void PostActorCreated()override;
+
+	virtual void EndPlay(EEndPlayReason::Type EndPlayReason)override;
+
+	virtual void Destroyed()override;
+
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
@@ -46,35 +54,67 @@ public:
 	// Run on cpu, don't use it
 	void ComputePositionAndNormal();
 
+	FVector2D GetWaveDimension()const;
+
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)override;
+
+	virtual bool ShouldTickIfViewportsOnly()const override
+	{
+		return true;
+	}
 #endif
 
+public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	class UProceduralMeshComponent* WaveMesh;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = WaveProperty)
+	int32 HorizontalTileCount;
+
+	UPROPERTY(EditAnywhere, Category = WaveProperty)
+	int32 VerticalTileCount;
+
+	UPROPERTY(EditAnywhere, Category = WaveProperty)
+	float MeshGridLength;
+
+	UPROPERTY(EditAnywhere, Category = WaveProperty)
+	int32 TimeRate;
+
+	UPROPERTY(EditAnywhere, Category = WaveProperty)
 	int32 WaveSize;
 
-	UPROPERTY(EditAnywhere)
+	/**not mean the wave mesh grid length, only use in shader*/
+	UPROPERTY(EditAnywhere, Category = SpectrumProperty)
 	float GridLength;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = SpectrumProperty)
 	FVector WindSpeed;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = SpectrumProperty)
 	float WaveAmplitude;
-
-	UPROPERTY(EditAnywhere)
+	
+	UPROPERTY(EditAnywhere, Category = WaveRenderResource)
 	class UMaterialInterface* GridMaterial;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = WaveRenderResource)
 	class UTextureRenderTarget* WaveHeightMapRenderTarget;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category = WaveRenderResource)
 	class UTextureRenderTarget* WaveNormalRenderTarget;
 
+	UPROPERTY(EditAnywhere, Category = WaveRenderResource)
+	FName WaveDisplacementScale;
+
+	UPROPERTY(EditAnywhere, Category = Debug)
+	bool DrawNormal;
+
+	TArray<FVector2D> RandomTable;
+
 	TArray<float> ButterflyLookupTable;
+
+	FVertexBufferRHIRef RandomTableVB;
+	FShaderResourceViewRHIRef RandomTableSRV;
 
 	FVertexBufferRHIRef ButterflyLookupTableVB;
 	FShaderResourceViewRHIRef ButterflyLookupTableSRV;
@@ -96,4 +136,6 @@ private:
 	FTexture2DRHIRef HeightBuffer;
 	FTexture2DRHIRef SlopeBuffer;
 	FTexture2DRHIRef DisplacementBuffer;
+
+	bool bHasInit;
 };

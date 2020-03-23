@@ -8,6 +8,7 @@
 UENUM(BlueprintType)
 enum ERayMarchingShader
 {
+	None,
 	Seascape,
 	ProteanCloud
 };
