@@ -457,5 +457,13 @@ OcclusionCull的大致流程：
 上面主要都是GPU硬件剔除，UE4支持软件剔除，使用的是Potential Visible Set(PVS)，这些数据需要提前烘焙，消耗的时间比较多
 
 
+下面看一下荒野大镖客2中的大气渲染，体积雾同样是固定的部分，如下：
 
-  
+基于物理的体积雾渲染：        
+Scattered Light: $SL(x)=\sum_{i}^{|light|}P(g,\theta _i)V(i,x)L(i,x)$   
+Transmittance (Beer's Law): $T(a,b)=e^{-\int _{x=a}^b\sigma_{ext}(x)dx}$       
+Extinction: $\sigma_{ext}(x)=\sigma_{abs}(x)+\sigma_{scat}(x)$   
+
+Integration: $Li(a,b)=Li(b)T(a,b)+\int _{x=a}^bSL(x)\sigma_{scat}(x)T(a,x)dx$
+
+越多的粒子在In-scattering light path中，就会有越多的光分散（out scatter）。每个粒子可以认为是所有经过V方法和P方法调制过的光强度之和。
