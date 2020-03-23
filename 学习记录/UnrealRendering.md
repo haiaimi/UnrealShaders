@@ -460,10 +460,23 @@ OcclusionCull的大致流程：
 下面看一下荒野大镖客2中的大气渲染，体积雾同样是固定的部分，如下：
 
 基于物理的体积雾渲染：        
-Scattered Light: $SL(x)=\sum_{i}^{|light|}P(g,\theta _i)V(i,x)L(i,x)$   
-Transmittance (Beer's Law): $T(a,b)=e^{-\int _{x=a}^b\sigma_{ext}(x)dx}$       
-Extinction: $\sigma_{ext}(x)=\sigma_{abs}(x)+\sigma_{scat}(x)$   
+$Scattered Light: SL(x)=\sum_{i}^{|light|}P(g,\theta _i)V(i,x)L(i,x)$   
+$Transmittance (Beer's Law): T(a,b)=e^{-\int _{x=a}^b\sigma_{ext}(x)dx}$       
+$Extinction: \sigma_{ext}(x)=\sigma_{abs}(x)+\sigma_{scat}(x)$   
 
-Integration: $Li(a,b)=Li(b)T(a,b)+\int _{x=a}^bSL(x)\sigma_{scat}(x)T(a,x)dx$
+$Integration: Li(a,b)=Li(b)T(a,b)+\int _{x=a}^bSL(x)\sigma_{scat}(x)T(a,x)dx$
 
 越多的粒子在In-scattering light path中，就会有越多的光分散（out scatter）。每个粒子可以认为是所有经过V方法和P方法调制过的光强度之和。
+
+*Phase Function*就是解释散射光的方向性的概率函数。
+
+*Transmittance*可以被解释为指数型的衰减方法。并且解释了在体积媒介中指定的path中传送了多少光。
+
+
+前期工作：  
+* Analytical Models
+* Raymarching Fog
+* Volumetric Fog
+* PBR Froxels
+* RayMarched cloudscapes
+* Atmospheric scattering models
