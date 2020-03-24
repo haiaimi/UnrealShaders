@@ -456,7 +456,7 @@ OcclusionCull的大致流程：
 
 上面主要都是GPU硬件剔除，UE4支持软件剔除，使用的是Potential Visible Set(PVS)，这些数据需要提前烘焙，消耗的时间比较多
 
-
+# Atmosphere World In Red Dead Demption2
 下面看一下荒野大镖客2中的大气渲染，体积雾同样是固定的部分，如下：
 
 基于物理的体积雾渲染：        
@@ -480,3 +480,26 @@ $Integration: Li(a,b)=Li(b)T(a,b)+\int _{x=a}^bSL(x)\sigma_{scat}(x)T(a,x)dx$
 * PBR Froxels
 * RayMarched cloudscapes
 * Atmospheric scattering models
+
+## Cloud Map
+
+云的分布主要是通过生成一张从上向下的CloudMap覆盖游戏世界。通过混合mask和noise纹理并且结合天气和时间来生成有一个有两层云密度的2通道贴图，这里是*512x512 R16G16 Texture*。
+
+## Cloud Height Lut
+Cloud Map是二维分布，这里的Lut是基于海拔分布（altitude-based）包括积云和层云（cumulus and stratus）信息，这张贴图的。通过从一张包含高度梯度的查找表中采样来生成积云和层云，在指定的Pass中我们从*Cloud Lut atlas*中复制对应的天气片段到一个单独的长条纹理（*1x128 RGBA Texture*）中，这允许我们混合LUTs到天气变换中。
+
+## Cloud Detail
+我们从*Cloud Map*和*LUT*定义的Cloud Shape中雕刻出额外的细节。这需要从一个2D的Displacement Map中在xy和xz采样两次，并且生成一个3D Vector用来沿着风速方向给3D noise采样进行偏移。如下一段伪代码：
+```cpp
+float rescale(vMin, vMax, v)
+{
+	return saturate((v - vMin) / (vMax - vMin));
+}
+
+float2 c = SampleCloudMap(ray.p);
+float3 cloudLut = SampleCloudLut(altitude);
+float density = smoothstep(g_CloudShape.xz + cloudLut.xy, g_CloudShape.yw + cloudLut.xy, c.xy);
+density = rescale(noise, cloutLut.z, density);
+```
+
+雕刻Cloud Detail利用rescale方法，也被称为*linstep*或者*inverse lerp*，LUT的z通道控制着噪声的柔和度。
