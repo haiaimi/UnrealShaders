@@ -481,14 +481,15 @@ $Integration: Li(a,b)=Li(b)T(a,b)+\int _{x=a}^bSL(x)\sigma_{scat}(x)T(a,x)dx$
 * RayMarched cloudscapes
 * Atmospheric scattering models
 
-## Cloud Map
-
+## Data Model
+### Cloud
+#### Cloud Map
 云的分布主要是通过生成一张从上向下的CloudMap覆盖游戏世界。通过混合mask和noise纹理并且结合天气和时间来生成有一个有两层云密度的2通道贴图，这里是*512x512 R16G16 Texture*。
 
-## Cloud Height Lut
+#### Cloud Height Lut
 Cloud Map是二维分布，这里的Lut是基于海拔分布（altitude-based）包括积云和层云（cumulus and stratus）信息，这张贴图的。通过从一张包含高度梯度的查找表中采样来生成积云和层云，在指定的Pass中我们从*Cloud Lut atlas*中复制对应的天气片段到一个单独的长条纹理（*1x128 RGBA Texture*）中，这允许我们混合LUTs到天气变换中。
 
-## Cloud Detail
+#### Cloud Detail
 我们从*Cloud Map*和*LUT*定义的Cloud Shape中雕刻出额外的细节。这需要从一个2D的Displacement Map中在xy和xz采样两次，并且生成一个3D Vector用来沿着风速方向给3D noise采样进行偏移。如下一段伪代码：
 ```cpp
 float rescale(vMin, vMax, v)
@@ -503,3 +504,27 @@ density = rescale(noise, cloutLut.z, density);
 ```
 
 雕刻Cloud Detail利用rescale方法，也被称为*linstep*或者*inverse lerp*，LUT的z通道控制着噪声的柔和度。
+
+### Rain Fog
+#### Fog Map
+局部雾通过查找一张Fog Map，和Cloud Map相似覆盖游戏世界，这张Map包含三个通道（包含开始高度，下落距离和密度，*512x512x512 R11G11B10*）。通过混合噪声贴图，天气和游戏时间参数合成，所以它支持水体上雾的消散效果。局部雾可以和全局高度雾结合起来。
+
+#### Fog Volumes
+另外一种局部雾通过体积雾来实现，可以附着在粒子和载具，可以是球形和方盒形，并且支持Additive和aplha混合。
+
+## Rendering
+* Scattered Light
+* Frustum Volumes
+* RayMarch
+* Performance
+
+在近距离使用一个视锥体进行采样位置，在远处使用RayMarch。
+
+## Shading Model
+* 在每个点上应用的着色模型是着重于单个散射行为和波长无关的投射率。
+* 多重散射通过应用两条八度的直射光（two octave of direct light）
+* 具体的计算方法就是前面提到的*Scattered Light*方法
+* *Visibiliy V*是通过阴影贴图的查找和二次*Ray T*
+
+## Phase Function
+这里的Phase Function考虑美术的便捷性和性能，使用*Henyey-GreenStein*
