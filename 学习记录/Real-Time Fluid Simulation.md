@@ -25,7 +25,9 @@ static dens[size], dens_prev[size];
 ![image](https://github.com/haiaimi/UnrealShaders/blob/master/RenderPictures/Real-Time%20Fluid%20Simulation/FluidGrids.png)
 
 ## Moving Densities
-首先解释密度场在一个固定的速度场中移，上述的等式表明导致密度改变有三个原因：1.密度需要跟随速度场，2.密度在一个固定的频率扩散，3.密度由于源头增加。第一个还是比较好实现，可以认为每帧的源由数组*s[]*提供，而这个数组则是跟据游戏中检测密度源的部分填充，例如可以是玩家鼠标的移动。可以看下图：
+首先解释密度场在一个固定的速度场中移，上述的等式表明导致密度改变有三个原因：1.密度需要跟随速度场，2.密度在一个固定的频率扩散，3.密度由于源头增加。
+
+1. 第一步还是比较好实现，可以认为每帧的源由数组*s[]*提供，而这个数组则是跟据游戏中检测密度源的部分填充，例如可以是玩家鼠标的移动。可以看下图：
 
 ![image](https://github.com/haiaimi/UnrealShaders/blob/master/RenderPictures/Real-Time%20Fluid%20Simulation/DensityTerms.png)
 
@@ -38,3 +40,42 @@ void add_source(int N, float* x, float* s, float dt)
         x[i]+=dt*s[i];
 }
 ```
+
+2. 第二步解释了以*diff*扩散的可能，当*diff>0*时密度将在小格子间扩散，首先考虑单一的小格子，在这种情况下这个小格子将只向周围的4个小格子进行密度交换。一个可能的扩散解算方法是在每个小格子进行简单的计算交换量，然后累加到已有值，如下代码：
+```cpp
+void diffuse_bad(int N, int b, float* x, foat* x0, float diff, float dt)
+{
+    int i,j;
+    float a = dt*diff*N*N;
+    for(i=1; i<=N; i++){
+        for(j=1; j<=N; j++){
+            x[IX(i, j)] = x0[IX(i, j)] + a * (x0[IX(i-1,j)]+x0[IX(i+1,j)]+x0[IX(i,j-1)]+x0[IX(i,j+1)]-4*x0[IX(i,j)]);
+        }
+    }
+    set_bnd(N,b,x);
+}
+```
+这里的set_bnd()方法是用来设置边界的小格子。但是上面的计算方法实际中不管用，不稳定，对于较大的扩散率密度开始震荡，变为负数并最终发散，使模拟无效。所以需要考虑一个稳定的方法，这个方法的基本思想就是找到在时间向后时开始时的密度，如下代码：
+```cpp
+ x0[IX(i, j)] = x[IX(i, j)] - a * (x[IX(i-1,j)]+x[IX(i+1,j)]+x[IX(i,j-1)]+x[IX(i,j+1)]-4*x[IX(i,j)]);
+```
+对于未知数*X[IX(i,j)]*来说是一个线性系统，可以为这个线性系统构建矩阵然后调用标准矩阵求逆的方法。可以用*Gauss-Seidel迭代*法（高斯－赛德尔迭代）进行求解，如下代码:
+```cpp
+void diffuse(int N, int b, float* x, float* 0， float diff, float dt)
+{
+    int i,j,k;
+    float a=dt*diff*N*N;
+
+    for(k=0; k<20; ++k){
+        for(i=1; i<N; ++i){
+            for(j=1; j<=N; ++j)
+            {
+                x[IX(i,j)] = (x0[IX(i,j)] + a*(x[IX(i-1, j)] + x[IX(i+1, j)] + x[IX(i, j-1)] + x[IX(i, j+1)]))/(1 + 4*a);
+            }
+        }
+        set_bnd(N, b x);
+    }
+}
+```
+
+3. 最后一步是把密度应用到速度场上，和算扩散一样，可以设置一个线性系统，并用*Gauss-Seidel*结算，然而得出线性方程基于速度，所以要进行trick，
