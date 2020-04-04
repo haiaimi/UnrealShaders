@@ -82,9 +82,70 @@ void diffuse(int N, int b, float* x, float* 0， float diff, float dt)
 
 $Ax=b$   同解变形得
 
-$x=Bx+f$   构造迭代公式
+$x=Bx+f$   构造迭代公式得
 
 $x^{(k+1)}=Bx^{(k)}+f$
 
-3. 最后一步是把密度应用到速度场上，和算扩散一样，可以设置一个线性系统，并用*Gauss-Seidel*结算，然而得出线性方程基于速度，所以要进行trick，
+首先是雅可比迭代法：
+ $x(n)=\begin{cases}
+    a_{11}x_1+a_{12}x_2+...+a_{1n}x_n=b_1\\
+    a_{21}x_1+a_{22}x_2+...+a_{2n}x_n=b_2\\
+    ...\\
+    a_{n1}x_1+a_{n2}x_2+...+a_{nn}x_n=b_n
+     \end{cases}$
+
+可迭代公式为：
+ $x(n)=\begin{cases}
+    x_{(0)}=(x_1^{(0)},x_2^{(0)},x_3^{(0)},...,x_n^{(0)})^T\\
+  x_i^{(k+1)}=\frac{1}{a_{ii}}(b_i-\sum_{i=1,j\neq i}^na_{ij}x_j^{(k)})
+     \end{cases}$
+    
+
+雅可比迭代的矩阵形式，上面的A为非奇异，A分裂为$A=D+L+U$，如下：
+$$
+ D=\left[
+ \begin{matrix}
+   a_{11} &  & &  \\
+    & a_{22} & & \\
+    &  & \ddots &  \\
+    &  & & a_{nn}
+  \end{matrix}
+  \right]
+$$
+$$
+ L=\left[
+ \begin{matrix}
+    0 & & &  \\
+    a_{21}& 0 & & \\
+    \cdots& & \ddots &  \\
+    a_{n1}& a_{n2} & \cdots & 0
+  \end{matrix}
+  \right]
+$$
+
+$$
+ U=\left[
+ \begin{matrix}
+    0 & a_{12} & \cdots &a_{1n}  \\
+    & 0 & \cdots & a_{2n} \\
+    & & \ddots & \cdots\\
+    & & & 0
+  \end{matrix}
+  \right]
+$$
+
+所以可以变形为
+$Dx=-(L+U)x+b$
+
+即$x=-D^{-1}(L+U)x+D^{-1}b$
+
+所以雅可比矩阵形式为：
+$x(n)=\begin{cases}
+    x_{(0)}=(x_1^{(0)},x_2^{(0)},x_3^{(0)},...,x_n^{(0)})^T\\
+  x^{(k+1)}=-D^{-1}(L+U)x^{(k)}+D^{-1}b
+     \end{cases}$
+
+高斯赛德尔迭代法会使用前一个计算出来的值来加快收敛，因此效果可能会更好
+
+1. 最后一步是把密度应用到速度场上，和算扩散一样，可以设置一个线性系统，并用*Gauss-Seidel*结算，然而得出线性方程基于速度，所以要进行trick，
 
