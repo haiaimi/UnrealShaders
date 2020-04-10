@@ -249,5 +249,20 @@ $$ \left|\begin{array}{cccc}
 \end{array}\right|=\lambda (\lambda-2)^3=0 $$
 这里$\lambda$可以等于2，所以 $\rho(B)=2>1$，G-S迭代发散。
 
-1. 最后一步是把密度应用到速度场上，和算扩散一样，可以设置一个线性系统，并用*Gauss-Seidel*结算，然而得出线性方程基于速度，所以要进行trick，
+1. 最后一步是把密度应用到速度场上，和算扩散一样，可以设置一个线性系统，并用*Gauss-Seidel*结算，然而得出线性方程基于速度，所以要进行trick，这个方法的核心是把密度看成是一系列粒子，所以只需要简单的在速度场中跟踪粒子。
+
+如下代码：
+```cpp
+void advect(int N, int b, float* d, float* d0, float* v, float dt)
+{
+  int i, j, i0, j0, i1, j1;
+  float x, y, s0, t0, s1, t1, dt0;
+  dt0 = dt * N;
+  for(i=1; i<=N; i++){
+    for(j=1; j<=N; j++){
+      x = i-dt*u[IX(i,j)];
+    }
+  }
+}
+```
 
