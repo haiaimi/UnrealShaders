@@ -16,7 +16,7 @@
 #include "Common.h"
 #include "Engine/TextureRenderTarget.h"
 
-#define WAVE_GROUP_THREAD_COUNTS 4
+#define WAVE_GROUP_THREAD_COUNTS 8
 
 //BEGIN_SHADER_PARAMETER_STRUCT(FWaveBuffer, )
 //SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
@@ -56,6 +56,7 @@ public:
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREAD_GROUP_SIZE"), WAVE_GROUP_THREAD_COUNTS);
 	}
 
 	void SetParameters(
@@ -147,6 +148,7 @@ public:
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREAD_GROUP_SIZE"), WAVE_GROUP_THREAD_COUNTS);
 	}
 
 	void SetParameters(
@@ -270,7 +272,7 @@ public:
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 
-		//OutEnvironment.SetDefine(TEXT("BLUR_MICRO"), 1);
+		OutEnvironment.SetDefine(TEXT("THREAD_GROUP_SIZE"), WAVE_GROUP_THREAD_COUNTS);
 	}
 
 	void SetParameters(
@@ -350,8 +352,8 @@ private:
 	FShaderResourceParameter RWDisplacementBuffer;
 };
 
-IMPLEMENT_SHADER_TYPE(template<>, FWaveFFTCS<1>,  TEXT("/Plugins/Shaders/Private/FFTWave.usf"), TEXT("PerformFFTCS1"), SF_Compute)
-IMPLEMENT_SHADER_TYPE(template<>, FWaveFFTCS<2>,  TEXT("/Plugins/Shaders/Private/FFTWave.usf"), TEXT("PerformFFTCS2"), SF_Compute)
+IMPLEMENT_SHADER_TYPE(template<>, FWaveFFTCS<1>,  TEXT("/Plugins/Shaders/Private/FFTWave.usf"), TEXT("PerformFFTCS_Horizontal"), SF_Compute)
+IMPLEMENT_SHADER_TYPE(template<>, FWaveFFTCS<2>,  TEXT("/Plugins/Shaders/Private/FFTWave.usf"), TEXT("PerformFFTCS_Vertical"), SF_Compute)
 
 class FComputePosAndNormalShader : public FGlobalShader
 {

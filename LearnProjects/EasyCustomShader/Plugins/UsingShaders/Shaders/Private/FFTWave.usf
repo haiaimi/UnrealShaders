@@ -3,6 +3,10 @@
 #define PI 3.1415
 #define GRAVITY 9.8
 
+#ifndef THREAD_GROUP_SIZE 
+#define THREAD_GROUP_SIZE 8
+#endif
+
 int WaveSize;
 float GridLength;
 float WaveAmplitude;
@@ -43,15 +47,18 @@ float PhillipsSpectrum(int n, int m)
 		return 0.0f;
 	float klength2 = klength * klength;
 	float klength4 = klength2 * klength2;
-	k = normalize(k);
 	
-	float kdotw = dot(k, WindSpeed.xy);
-	float kdotw2 = kdotw * kdotw * kdotw * kdotw * kdotw * kdotw;
+	k = normalize(k);
+	float kdotw = dot(k, normalize(WindSpeed.xy));
+	float kdotw2 = kdotw * kdotw;   //we can only compute square of kdotw 
+	// Is Magic?
+	//float kdotw2 = kdotw * kdotw * kdotw * kdotw * kdotw * kdotw;
 	
 	float wlength = length(WindSpeed.xy);
 	float L = wlength * wlength / GRAVITY;
 	float L2 = L * L;
 
+	// Add damping for wave
 	float damping = 0.001f;
 	float l2 = L2 * damping * damping;
 	return WaveAmplitude * exp(-rcp(klength2 * L2)) / klength4 * kdotw2 * exp(-klength2 * l2);  //compute P_h(k)
@@ -66,7 +73,7 @@ float2 GetSpectrum(int n, int m)
 	return r * sqrt(PhillipsSpectrum(n, m) / 2.f);
 }
 
-[numthreads(4, 4, 1)]
+[numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, 1)]
 void PhillipsSpectrumCS(
 	int3 GroupId : SV_GroupID,
 	int3 GroupThreadID : SV_GroupThreadID,
@@ -135,25 +142,18 @@ void PrepareForFFT(float TimeSeconds, int n, int m)
 
 	// Compute the slope for normal, i*(KX, KY)*C.  ---------ddx-------      ---------ddy------- 
 	//                                               real    imaginary        real    imaginary
-	RWSlopeBuffer[uint2(Index, 1)] =         float4(-C.y * KX, C.x * KX,    -C.y * KY, C.x * KY);
-
-	if (Len < 0.000001f)
-	{
-		RWDisplacementBuffer[uint2(Index, 1)] = 0.f;
-	}
-	else
-	{
-		RWDisplacementBuffer[uint2(Index, 1)] = float4(-C.y * -(KX / Len), C.x * -(KX / Len), -C.y * -(KY / Len), C.x * -(KY / Len));
-	}
+	RWSlopeBuffer[uint2(Index, 1)] =         float4(-C.y * KX, C.x * KX,    -C.x * KY, C.y * KY);
+	
+	RWDisplacementBuffer[uint2(Index, 1)] = Len < 0.000001f ? 0.f : float4(-C.y * -(KX / Len), C.x * -(KX / Len), -C.y * -(KY / Len), C.x * -(KY / Len));
 }
 
-[numthreads(4, 4, 1)]
+[numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, 1)]
 void PrepareFFTCS(
 	uint3 GroupId : SV_GroupID,
 	uint3 GroupThreadID : SV_GroupThreadID,
 	uint3 DispatchThreadID : SV_DispatchThreadID)
 {
-	//TODO
+	// TODO
 	PrepareForFFT(TimeSeconds, DispatchThreadID.x, DispatchThreadID.y);
 }
 
@@ -175,8 +175,8 @@ float2 FFT(float2 w, float2 input1, float2 input2)
 	return input1;
 }
 
-[numthreads(4, 4, 1)]
-void PerformFFTCS1(
+[numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, 1)]
+void PerformFFTCS_Horizontal(
 	uint3 GroupId : SV_GroupID, 
 	uint3 GroupThreadID : SV_GroupThreadID,
 	uint3 DispatchThreadID : SV_DispatchThreadID)
@@ -194,8 +194,8 @@ void PerformFFTCS1(
 
 }
 
-[numthreads(4, 4, 1)]
-void PerformFFTCS2(
+[numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, 1)]
+void PerformFFTCS_Vertical(
 	uint3 GroupId : SV_GroupID,
 	uint3 GroupThreadID : SV_GroupThreadID,
 	uint3 DispatchThreadID : SV_DispatchThreadID)
@@ -271,7 +271,7 @@ void ComputePosAndNormalPS(
 	float CoordX = Size * UV.x;
 	int PointX = floor(CoordX);
 	float LerpAlphaX = frac(CoordX);
-	[branch]
+	FLATTEN
 	if (PointX == Size)
 	{
 		PointX -= 1;
@@ -280,7 +280,7 @@ void ComputePosAndNormalPS(
 	float CoordY = Size * UV.y;
 	int PointY = floor(CoordY);
 	float LerpAlphaY = frac(CoordY);
-	[branch]
+	FLATTEN
 	if (PointY == Size)
 	{
 		PointY -= 1;

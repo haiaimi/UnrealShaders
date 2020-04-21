@@ -236,7 +236,8 @@ FVector2D AFFTWaveSimulator::InitSpectrum(float TimeSeconds, int32 n, int32 m)
 
 float AFFTWaveSimulator::Dispersion(int32 n, int32 m)
 {
-	float W_0 = 2.0f * PI / 200.f;
+	//float W_0 = 2.0f * PI / 200.f;  // Use this value, time will be slow, so that the wave will be slow too 
+	float W_0 = 1.f;
 	float KX = PI * (2 * n - WaveSize) / GridLength; //k=2*PI*n/L
 	float KY = PI * (2 * m - WaveSize) / GridLength;
 	// w=sqrt(g*|k|)
