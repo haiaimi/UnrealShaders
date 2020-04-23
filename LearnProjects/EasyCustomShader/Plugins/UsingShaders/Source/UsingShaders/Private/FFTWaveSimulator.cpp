@@ -288,11 +288,11 @@ void AFFTWaveSimulator::CreateWaveGrid()
 
 void AFFTWaveSimulator::CreateResources()
 {
-	Spectrum.Initialize(sizeof(FVector2D), (WaveSize + 1) * (WaveSize + 1));
-	SpectrumConj.Initialize(sizeof(FVector2D), (WaveSize + 1) * (WaveSize + 1));
-	HeightBuffer.Initialize(sizeof(FVector2D), WaveSize * WaveSize * 2);
-	SlopeBuffer.Initialize(sizeof(FVector4), WaveSize * WaveSize * 2);
-	DisplacementBuffer.Initialize(sizeof(FVector4), WaveSize * WaveSize * 2);
+	Spectrum.Initialize(sizeof(FVector2D), (WaveSize + 1) * (WaveSize + 1), PF_G32R32F, BUF_Static | BUF_DrawIndirect);
+	SpectrumConj.Initialize(sizeof(FVector2D), (WaveSize + 1) * (WaveSize + 1), PF_G32R32F, BUF_Static | BUF_DrawIndirect);
+	HeightBuffer.Initialize(sizeof(FVector2D), WaveSize * WaveSize * 2, PF_G32R32F, BUF_Static | BUF_DrawIndirect);
+	SlopeBuffer.Initialize(sizeof(FVector4), WaveSize * WaveSize * 2, PF_A32B32G32R32F, BUF_Static | BUF_DrawIndirect);
+	DisplacementBuffer.Initialize(sizeof(FVector4), WaveSize * WaveSize * 2, PF_A32B32G32R32F, BUF_Static | BUF_DrawIndirect);
 	//FUnorderedAccessViewRHIRef TempTextureUAV = RHICreateUnorderedAccessView(TempTexture);
 
 	ComputeRandomTable(WaveSize + 1, RandomTable);

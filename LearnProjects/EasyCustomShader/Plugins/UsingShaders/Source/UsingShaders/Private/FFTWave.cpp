@@ -554,12 +554,14 @@ static void ComputePhillipsSpecturm_RenderThread(
 	FUnorderedAccessViewRHIRef Spectrum,
 	FUnorderedAccessViewRHIRef SpectrumConj)
 {
+	RHICmdList.BeginComputePass(TEXT("ComputePhillipsSpecturmPass"));
 	TShaderMapRef<FPhillipsSpectrumCS> PhillipsSpecturmShader(GetGlobalShaderMap(FeatureLevel));
 
 	RHICmdList.SetComputeShader(PhillipsSpecturmShader->GetComputeShader());
 	PhillipsSpecturmShader->SetParameters(RHICmdList, WaveSize, GridLength, WaveAmplitude, WindSpeed, RandomTableSRV, Spectrum, SpectrumConj);
 	DispatchComputeShader(RHICmdList, *PhillipsSpecturmShader, FMath::DivideAndRoundUp(WaveSize + 1, WAVE_GROUP_THREAD_COUNTS), FMath::DivideAndRoundUp(WaveSize + 1, WAVE_GROUP_THREAD_COUNTS), 1); 
 	PhillipsSpecturmShader->UnbindUAV(RHICmdList);
+	RHICmdList.EndComputePass();
 }
 
 static void PrepareFFT_RenderThread(
@@ -569,21 +571,23 @@ static void PrepareFFT_RenderThread(
 	int32 WaveSize,
 	float GridLength,
 	FShaderResourceViewRHIParamRef DispersionTableSRV,
-	FRWBufferStructured& Spectrum,
-	FRWBufferStructured& SpectrumConj,
-	FRWBufferStructured& HeightBuffer, 
-	FRWBufferStructured& SlopeBuffer, 
-	FRWBufferStructured& DisplacementBuffer
+	FRWBuffer& Spectrum,
+	FRWBuffer& SpectrumConj,
+	FRWBuffer& HeightBuffer, 
+	FRWBuffer& SlopeBuffer, 
+	FRWBuffer& DisplacementBuffer
 )
 {
 	check(IsInRenderingThread());
 
+	RHICmdList.BeginComputePass(TEXT("PrepareFFTPass"));
 	TShaderMapRef<FPrepareFFTCS> PrepareFFTShader(GetGlobalShaderMap(FeatureLevel));
 
 	RHICmdList.SetComputeShader(PrepareFFTShader->GetComputeShader());
 	PrepareFFTShader->SetParameters(RHICmdList, TimeSeconds, WaveSize, GridLength, DispersionTableSRV, Spectrum.SRV, SpectrumConj.SRV, HeightBuffer.UAV, SlopeBuffer.UAV, DisplacementBuffer.UAV);
 	DispatchComputeShader(RHICmdList, *PrepareFFTShader, FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), 1); 
 	PrepareFFTShader->UnbindUAV(RHICmdList);
+	RHICmdList.EndComputePass();
 }
 
 static void EvaluateWavesFFT_RenderThread(
@@ -593,9 +597,9 @@ static void EvaluateWavesFFT_RenderThread(
 	int32 WaveSize,
 	int32 StartIndex,
 	FShaderResourceViewRHIParamRef ButterflyLookupTableSRV,
-	FRWBufferStructured& HeightBuffer,
-	FRWBufferStructured& SlopeBuffer,
-	FRWBufferStructured& DisplacementBuffer)
+	FRWBuffer& HeightBuffer,
+	FRWBuffer& SlopeBuffer,
+	FRWBuffer& DisplacementBuffer)
 {
 	check(IsInRenderingThread());
 
@@ -605,6 +609,7 @@ static void EvaluateWavesFFT_RenderThread(
 	FShaderResourceViewRHIRef IndirectShadowCapsuleShapesSRV;
 
 	int32 Passes = FMath::RoundToInt(FMath::Log2(WaveSize));
+	RHICmdList.BeginComputePass(TEXT("EvaluateFFTPass"));
 	for (int32 i = 0; i < Passes; ++i)
 	{
 		RHICmdList.SetComputeShader(WaveFFTCS1->GetComputeShader());
@@ -620,6 +625,7 @@ static void EvaluateWavesFFT_RenderThread(
 		DispatchComputeShader(RHICmdList, *WaveFFTCS2, FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), 1);
 		WaveFFTCS2->UnbindUAV(RHICmdList);
 	}
+	RHICmdList.EndComputePass();
 }
 
 static void ComputePosAndNormal_RenderThread(
@@ -629,9 +635,9 @@ static void ComputePosAndNormal_RenderThread(
 	FTextureRenderTargetResource* OutputNormalRenderTargetResource,
 	int32 InWaveSize,
 	float InGridLength,
-	FRWBufferStructured& HeightBuffer,
-	FRWBufferStructured& SlopeBuffer,
-	FRWBufferStructured& DisplacementBuffer
+	FRWBuffer& HeightBuffer,
+	FRWBuffer& SlopeBuffer,
+	FRWBuffer& DisplacementBuffer
 )
 {
 	check(IsInRenderingThread());

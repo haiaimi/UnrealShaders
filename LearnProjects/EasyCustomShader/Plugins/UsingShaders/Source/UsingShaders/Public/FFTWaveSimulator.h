@@ -130,12 +130,12 @@ public:
 	TArray<float> DispersionTable;
 
 	// Render resources
-	FRWBufferStructured Spectrum;
-	FRWBufferStructured SpectrumConj;
+	FRWBuffer Spectrum;
+	FRWBuffer SpectrumConj;
 
-	FRWBufferStructured HeightBuffer;
-	FRWBufferStructured SlopeBuffer;
-	FRWBufferStructured DisplacementBuffer;
+	FRWBuffer HeightBuffer;
+	FRWBuffer SlopeBuffer;
+	FRWBuffer DisplacementBuffer;
 
 	bool bHasInit;
 };
