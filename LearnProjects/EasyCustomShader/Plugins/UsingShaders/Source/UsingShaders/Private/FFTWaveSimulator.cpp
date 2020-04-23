@@ -204,32 +204,32 @@ FVector2D AFFTWaveSimulator::InitSpectrum(float TimeSeconds, int32 n, int32 m)
 	float Cos = FMath::Cos(Omegat);
 	float Sin = FMath::Sin(Omegat);
 
-	uint32 Stride;
-	if (Spectrum->GetSizeX() > (uint32)Index && SpectrumConj->GetSizeX() > (uint32)Index)
-	{
-		FVector2D* SpectrumData = static_cast<FVector2D*>(RHILockTexture2D(Spectrum, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
-		//SpectrumData += m * Stride / sizeof(FVector2D);
-		float C0a = SpectrumData[Index].X*Cos - SpectrumData[Index].Y*Sin;
-		float C0b = SpectrumData[Index].X*Sin - SpectrumData[Index].Y*Cos;
+	//uint32 Stride;
+	//if (Spectrum->GetSizeX() > (uint32)Index && SpectrumConj->GetSizeX() > (uint32)Index)
+	//{
+	//	FVector2D* SpectrumData = static_cast<FVector2D*>(RHILockTexture2D(Spectrum, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
+	//	//SpectrumData += m * Stride / sizeof(FVector2D);
+	//	float C0a = SpectrumData[Index].X*Cos - SpectrumData[Index].Y*Sin;
+	//	float C0b = SpectrumData[Index].X*Sin - SpectrumData[Index].Y*Cos;
 
-		TArray<FVector2D> AllData;
-		AllData.SetNum((WaveSize + 1)*(WaveSize + 1));
-		for (int32 i = 0; i < AllData.Num(); ++i)
-		{
-			AllData[i] = SpectrumData[i];
-		}
+	//	TArray<FVector2D> AllData;
+	//	AllData.SetNum((WaveSize + 1)*(WaveSize + 1));
+	//	for (int32 i = 0; i < AllData.Num(); ++i)
+	//	{
+	//		AllData[i] = SpectrumData[i];
+	//	}
 
-		FVector2D* SpectrumConjData = static_cast<FVector2D*>(RHILockTexture2D(SpectrumConj, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
-		//SpectrumConjData += m * Stride / sizeof(FVector2D);
- 		float C1a = SpectrumConjData[Index].X*Cos - SpectrumConjData[Index].Y*-Sin;
-		float C1b = SpectrumConjData[Index].X*-Sin - SpectrumConjData[Index].Y*Cos;
+	//	FVector2D* SpectrumConjData = static_cast<FVector2D*>(RHILockTexture2D(SpectrumConj, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
+	//	//SpectrumConjData += m * Stride / sizeof(FVector2D);
+ //		float C1a = SpectrumConjData[Index].X*Cos - SpectrumConjData[Index].Y*-Sin;
+	//	float C1b = SpectrumConjData[Index].X*-Sin - SpectrumConjData[Index].Y*Cos;
 
-		//Unlock
-		RHIUnlockTexture2D(Spectrum, 0, false);
-		RHIUnlockTexture2D(SpectrumConj, 0, false);
+	//	//Unlock
+	//	RHIUnlockTexture2D(Spectrum, 0, false);
+	//	RHIUnlockTexture2D(SpectrumConj, 0, false);
 
-		return FVector2D(C0a + C1a, C0b + C1b);
-	}
+	//	return FVector2D(C0a + C1a, C0b + C1b);
+	//}
 
 	return FVector2D::ZeroVector;
 }
@@ -288,13 +288,11 @@ void AFFTWaveSimulator::CreateWaveGrid()
 
 void AFFTWaveSimulator::CreateResources()
 {
-	FRHIResourceCreateInfo RHIResourceCreateInfo, RHIResourceCreateInfo1;
-	
-	Spectrum = RHICreateTexture2D((WaveSize + 1)*(WaveSize + 1), 1, PF_G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo);
-	SpectrumConj = RHICreateTexture2D((WaveSize + 1)*(WaveSize + 1), 1, PF_G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo);
-	HeightBuffer = RHICreateTexture2D(WaveSize * WaveSize, 2, PF_G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo1); //float2
-	SlopeBuffer = RHICreateTexture2D(WaveSize * WaveSize, 2, PF_A32B32G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo); //float4
-	DisplacementBuffer = RHICreateTexture2D(WaveSize * WaveSize, 2, PF_A32B32G32R32F, 1, 1, TexCreate_ShaderResource | TexCreate_UAV, RHIResourceCreateInfo); //float4
+	Spectrum.Initialize(sizeof(FVector2D), (WaveSize + 1) * (WaveSize + 1));
+	SpectrumConj.Initialize(sizeof(FVector2D), (WaveSize + 1) * (WaveSize + 1));
+	HeightBuffer.Initialize(sizeof(FVector2D), WaveSize * WaveSize * 2);
+	SlopeBuffer.Initialize(sizeof(FVector4), WaveSize * WaveSize * 2);
+	DisplacementBuffer.Initialize(sizeof(FVector4), WaveSize * WaveSize * 2);
 	//FUnorderedAccessViewRHIRef TempTextureUAV = RHICreateUnorderedAccessView(TempTexture);
 
 	ComputeRandomTable(WaveSize + 1, RandomTable);
@@ -331,80 +329,80 @@ void AFFTWaveSimulator::CreateResources()
 
 void AFFTWaveSimulator::ComputePositionAndNormal()
 {
-	if (DrawNormal && 
-		(int32)HeightBuffer->GetSizeX() >= WaveSize * WaveSize &&
-		(int32)SlopeBuffer->GetSizeX() >= WaveSize * WaveSize && 
-		(int32)DisplacementBuffer->GetSizeX() >= WaveSize * WaveSize && 
-		WaveVertices.Num() >= (WaveSize + 1) * (WaveSize + 1)
-		)
-	{
-		uint32 Stride;
-		FVector2D* HeightBufferData = static_cast<FVector2D*>(RHILockTexture2D(HeightBuffer, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
-		HeightBufferData += Stride / sizeof(FVector2D);
-		FVector4* SlopeBufferData = static_cast<FVector4*>(RHILockTexture2D(SlopeBuffer, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
-		SlopeBufferData += Stride / sizeof(FVector4);
-		FVector4* DisplacementBufferData = static_cast<FVector4*>(RHILockTexture2D(DisplacementBuffer, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
-		DisplacementBufferData += Stride / sizeof(FVector4);
+	//if (DrawNormal && 
+	//	(int32)HeightBuffer->GetSizeX() >= WaveSize * WaveSize &&
+	//	(int32)SlopeBuffer->GetSizeX() >= WaveSize * WaveSize && 
+	//	(int32)DisplacementBuffer->GetSizeX() >= WaveSize * WaveSize && 
+	//	WaveVertices.Num() >= (WaveSize + 1) * (WaveSize + 1)
+	//	)
+	//{
+	//	uint32 Stride;
+	//	FVector2D* HeightBufferData = static_cast<FVector2D*>(RHILockTexture2D(HeightBuffer, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
+	//	HeightBufferData += Stride / sizeof(FVector2D);
+	//	FVector4* SlopeBufferData = static_cast<FVector4*>(RHILockTexture2D(SlopeBuffer, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
+	//	SlopeBufferData += Stride / sizeof(FVector4);
+	//	FVector4* DisplacementBufferData = static_cast<FVector4*>(RHILockTexture2D(DisplacementBuffer, 0, EResourceLockMode::RLM_ReadOnly, Stride, false));
+	//	DisplacementBufferData += Stride / sizeof(FVector4);
 
-		int32 Sign;
-		static float Signs[2] = { 1.f,-1.f };
-		float Lambda = -1.f;
-		for (int32 m = 0; m < WaveSize; ++m)
-		{
-			for (int32 n = 0; n < WaveSize; ++n)
-			{
-				int32 Index = m * WaveSize + n;
-				int32 Index1 = m * (WaveSize + 1) + n;
+	//	int32 Sign;
+	//	static float Signs[2] = { 1.f,-1.f };
+	//	float Lambda = -1.f;
+	//	for (int32 m = 0; m < WaveSize; ++m)
+	//	{
+	//		for (int32 n = 0; n < WaveSize; ++n)
+	//		{
+	//			int32 Index = m * WaveSize + n;
+	//			int32 Index1 = m * (WaveSize + 1) + n;
 
-				Sign = (int32)Signs[(n + m) & 1];
+	//			Sign = (int32)Signs[(n + m) & 1];
 
-				// Get height
-				WaveVertices[Index1].Z = HeightBufferData[Index].X * Sign;
+	//			// Get height
+	//			WaveVertices[Index1].Z = HeightBufferData[Index].X * Sign;
 
-				// Get displacement
-				WaveVertices[Index1].X = WavePosition[Index1].X + DisplacementBufferData[Index].Z * Lambda * Sign;
-				WaveVertices[Index1].Y = WavePosition[Index1].Y + DisplacementBufferData[Index].X * Lambda * Sign;
-				
-				// Get normal
-				FVector Normal(-SlopeBufferData[Index].Z *Sign, -SlopeBufferData[Index].X *Sign, 1.f);
-				Normal.Normalize();
+	//			// Get displacement
+	//			WaveVertices[Index1].X = WavePosition[Index1].X + DisplacementBufferData[Index].Z * Lambda * Sign;
+	//			WaveVertices[Index1].Y = WavePosition[Index1].Y + DisplacementBufferData[Index].X * Lambda * Sign;
+	//			
+	//			// Get normal
+	//			FVector Normal(-SlopeBufferData[Index].Z *Sign, -SlopeBufferData[Index].X *Sign, 1.f);
+	//			Normal.Normalize();
 
-				WaveNormals[Index1].X = Normal.X;
-				WaveNormals[Index1].Y = Normal.Y;
-				WaveNormals[Index1].Z = Normal.Z;
+	//			WaveNormals[Index1].X = Normal.X;
+	//			WaveNormals[Index1].Y = Normal.Y;
+	//			WaveNormals[Index1].Z = Normal.Z;
 
-				int32 TileIndex;
-				//Handle tiling
-				if (n == 0 && m == 0)
-				{
-					TileIndex = Index1 + WaveSize + (WaveSize + 1)*WaveSize;
-				}
-				else if (n == 0)
-				{
-					TileIndex = Index1 + WaveSize;
-				}
-				else if (m == 0)
-				{
-					TileIndex = Index1 + (WaveSize + 1) * WaveSize;
-				}
-				else
-					continue;
+	//			int32 TileIndex;
+	//			//Handle tiling
+	//			if (n == 0 && m == 0)
+	//			{
+	//				TileIndex = Index1 + WaveSize + (WaveSize + 1)*WaveSize;
+	//			}
+	//			else if (n == 0)
+	//			{
+	//				TileIndex = Index1 + WaveSize;
+	//			}
+	//			else if (m == 0)
+	//			{
+	//				TileIndex = Index1 + (WaveSize + 1) * WaveSize;
+	//			}
+	//			else
+	//				continue;
 
-				WaveVertices[TileIndex].Z = HeightBufferData[Index].X * Sign;
-				WaveVertices[TileIndex].X = WavePosition[TileIndex].X + DisplacementBufferData[Index].Z * Lambda * Sign;
-				WaveVertices[TileIndex].Y = WavePosition[TileIndex].Y + DisplacementBufferData[Index].X * Lambda * Sign;
-				
-				WaveNormals[TileIndex].X = Normal.X;
-				WaveNormals[TileIndex].Y = Normal.Y;
-				WaveNormals[TileIndex].Z = Normal.Z;
-			}
-		}
+	//			WaveVertices[TileIndex].Z = HeightBufferData[Index].X * Sign;
+	//			WaveVertices[TileIndex].X = WavePosition[TileIndex].X + DisplacementBufferData[Index].Z * Lambda * Sign;
+	//			WaveVertices[TileIndex].Y = WavePosition[TileIndex].Y + DisplacementBufferData[Index].X * Lambda * Sign;
+	//			
+	//			WaveNormals[TileIndex].X = Normal.X;
+	//			WaveNormals[TileIndex].Y = Normal.Y;
+	//			WaveNormals[TileIndex].Z = Normal.Z;
+	//		}
+	//	}
 
-		// Unlock the buffers
-		RHIUnlockTexture2D(HeightBuffer, 0, false);
-		RHIUnlockTexture2D(SlopeBuffer, 0, false);
-		RHIUnlockTexture2D(DisplacementBuffer, 0, false);
-	}
+	//	// Unlock the buffers
+	//	RHIUnlockTexture2D(HeightBuffer, 0, false);
+	//	RHIUnlockTexture2D(SlopeBuffer, 0, false);
+	//	RHIUnlockTexture2D(DisplacementBuffer, 0, false);
+	//}
 }
 
 FVector2D AFFTWaveSimulator::GetWaveDimension() const

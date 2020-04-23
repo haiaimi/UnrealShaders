@@ -13,8 +13,11 @@ float WaveAmplitude;
 float3 WindSpeed;
 
 Buffer<float2> RandomTable;
-RWTexture2D<float2> RWSpectrum;
-RWTexture2D<float2> RWSpectrumConj;
+//RWTexture2D<float2> RWSpectrum;
+//RWTexture2D<float2> RWSpectrumConj;
+
+RWStructuredBuffer<float2> RWSpectrum;
+RWStructuredBuffer<float2> RWSpectrumConj;
 
 float RandFast(uint2 PixelPos, float Magic = 3571.0)
 {
@@ -80,22 +83,29 @@ void PhillipsSpectrumCS(
 	int3 DispatchThreadID : SV_DispatchThreadID)
 {
 	int index = DispatchThreadID.y * (WaveSize + 1) + DispatchThreadID.x;
-	RWSpectrum[uint2(index, 0)] = GetSpectrum(DispatchThreadID.x, DispatchThreadID.y);   //compute h_0(k)
+	//RWSpectrum[uint2(index, 0)] = GetSpectrum(DispatchThreadID.x, DispatchThreadID.y);   //compute h_0(k)
+	RWSpectrum[index] = GetSpectrum(DispatchThreadID.x, DispatchThreadID.y);   //compute h_0(k)
 	float2 Conj = GetSpectrum(-DispatchThreadID.x, -DispatchThreadID.y);
 	Conj.y *= -1.0f;  // compute conj of h_0(k)
-	RWSpectrumConj[uint2(index, 0)] = Conj;
+	RWSpectrumConj[index] = Conj;
 }
 
 float  TimeSeconds;
 int StartIndex;
 Buffer<float> DispersionTable;
-Texture2D<float2> Spectrum;
-Texture2D<float2> SpectrumConj;
+//Texture2D<float2> Spectrum;
+//Texture2D<float2> SpectrumConj;
 
-RWTexture2D<float2> RWHeightBuffer;
-RWTexture2D<float4> RWSlopeBuffer;
-RWTexture2D<float4> RWDisplacementBuffer;
-SamplerState BufferSampler;
+StructuredBuffer<float2> Spectrum;
+StructuredBuffer<float2> SpectrumConj;
+
+//RWTexture2D<float2> RWHeightBuffer;
+//RWTexture2D<float4> RWSlopeBuffer;
+//RWTexture2D<float4> RWDisplacementBuffer;
+
+RWStructuredBuffer<float2> RWHeightBuffer;
+RWStructuredBuffer<float4> RWSlopeBuffer;
+RWStructuredBuffer<float4> RWDisplacementBuffer;
 
 Buffer<float>  ButterflyLookupTable;
 
@@ -114,11 +124,11 @@ float2 InitSpectrum(float TimeSeconds, int n, int m)
 	{
 		//Compute the Phullips spectrum h(k,t),because of 'Euler's identity'-> e^(ix)=cosx + i*sinx
 		//Make h=(a,i*b), we can get: (a, i*b)*(cosx, i*sinx) = (a*cosx-b*sinx, a*sinx+b*cosx)
-		float C0a = Spectrum[uint2(Index, 0)].x * Cos - Spectrum[uint2(Index, 0)].y * Sin;
-		float C0b = Spectrum[uint2(Index, 0)].x * Sin + Spectrum[uint2(Index, 0)].y * Cos;
+		float C0a = Spectrum[Index].x * Cos - Spectrum[Index].y * Sin;
+		float C0b = Spectrum[Index].x * Sin + Spectrum[Index].y * Cos;
 
-		float C1a = SpectrumConj[uint2(Index, 0)].x * Cos - SpectrumConj[uint2(Index, 0)].y * -Sin;
-		float C1b = SpectrumConj[uint2(Index, 0)].x * -Sin + SpectrumConj[uint2(Index, 0)].y * Cos;
+		float C1a = SpectrumConj[Index].x * Cos - SpectrumConj[Index].y * -Sin;
+		float C1b = SpectrumConj[Index].x * -Sin + SpectrumConj[Index].y * Cos;
 		//            real part    imaginary part 
 		return float2(C0a + C1a,    C0b + C1b);
 	}
@@ -133,18 +143,18 @@ void PrepareForFFT(float TimeSeconds, int n, int m)
 	KY = PI * (2.f * m - WaveSize) / GridLength;   // Get it from: 2 * PI * (m - WaveSize / 2) / GridLength
 	
 	Len = sqrt(KX * KX + KY * KY);
-	int Index = m * WaveSize + n;
+	int Index = (WaveSize * WaveSize) + m * WaveSize + n;
 	
 	float2 C = InitSpectrum(TimeSeconds, n, m);
 
 	// Get the height
-	RWHeightBuffer[uint2(Index, 1)] = C;
+	RWHeightBuffer[Index] = C;
 
 	// Compute the slope for normal, i*(KX, KY)*C.  ---------ddx-------      ---------ddy------- 
 	//                                               real    imaginary        real    imaginary
-	RWSlopeBuffer[uint2(Index, 1)] =         float4(-C.y * KX, C.x * KX,    -C.x * KY, C.y * KY);
+	RWSlopeBuffer[Index] = float4(-C.y * KX, C.x * KX, -C.x * KY, C.y * KY);
 	
-	RWDisplacementBuffer[uint2(Index, 1)] = Len < 0.000001f ? 0.f : float4(-C.y * -(KX / Len), C.x * -(KX / Len), -C.y * -(KY / Len), C.x * -(KY / Len));
+	RWDisplacementBuffer[Index] = Len < 0.000001f ? 0.f : float4(-C.y * -(KX / Len), C.x * -(KX / Len), -C.y * -(KY / Len), C.x * -(KY / Len));
 }
 
 [numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, 1)]
@@ -188,9 +198,12 @@ void PerformFFTCS_Horizontal(
 	int X = (int) ButterflyLookupTable[bftIdx + 0];
 	int Y = (int) ButterflyLookupTable[bftIdx + 1];
 	float2 w = float2(ButterflyLookupTable[bftIdx + 2], ButterflyLookupTable[bftIdx + 3]);
-	RWHeightBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * WaveSize, idx)] = FFT(w, RWHeightBuffer[uint2(X + DispatchThreadID.y * WaveSize, idx1)], RWHeightBuffer[uint2(Y + DispatchThreadID.y * WaveSize, idx1)]);
-	RWSlopeBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * WaveSize, idx)] = FFT(w, RWSlopeBuffer[uint2(X + DispatchThreadID.y * WaveSize, idx1)], RWSlopeBuffer[uint2(Y + DispatchThreadID.y * WaveSize, idx1)]);
-	RWDisplacementBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * WaveSize, idx)] = FFT(w, RWDisplacementBuffer[uint2(X + DispatchThreadID.y * WaveSize, idx1)], RWDisplacementBuffer[uint2(Y + DispatchThreadID.y * WaveSize, idx1)]);
+	uint BufferIndex = idx * (WaveSize * WaveSize) + DispatchThreadID.x + DispatchThreadID.y * WaveSize;
+	uint XIndex = X + idx * (WaveSize * WaveSize) + DispatchThreadID.y * WaveSize;
+	uint YIndex = Y + idx * (WaveSize * WaveSize) + DispatchThreadID.y * WaveSize;
+	RWHeightBuffer[BufferIndex] = FFT(w, RWHeightBuffer[XIndex], RWHeightBuffer[YIndex]);
+	RWSlopeBuffer[BufferIndex] = FFT(w, RWSlopeBuffer[XIndex], RWSlopeBuffer[YIndex]);
+	RWDisplacementBuffer[BufferIndex] = FFT(w, RWDisplacementBuffer[XIndex], RWDisplacementBuffer[YIndex]);
 
 }
 
@@ -208,15 +221,17 @@ void PerformFFTCS_Vertical(
 	int X = (int) ButterflyLookupTable[bftIdx + 0];
 	int Y = (int) ButterflyLookupTable[bftIdx + 1];
 	float2 w = { ButterflyLookupTable[bftIdx + 2], ButterflyLookupTable[bftIdx + 3] };
-	RWHeightBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * WaveSize, idx)] = FFT(w, RWHeightBuffer[uint2(DispatchThreadID.x + X * WaveSize, idx1)], RWHeightBuffer[uint2(DispatchThreadID.x + Y * WaveSize, idx1)]);
-	RWSlopeBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * WaveSize, idx)] = FFT(w, RWSlopeBuffer[uint2(DispatchThreadID.x + X * WaveSize, idx1)], RWSlopeBuffer[uint2(DispatchThreadID.x + Y * WaveSize, idx1)]);
-	RWDisplacementBuffer[uint2(DispatchThreadID.x + DispatchThreadID.y * WaveSize, idx)] = FFT(w, RWDisplacementBuffer[uint2(DispatchThreadID.x + X * WaveSize, idx1)], RWDisplacementBuffer[uint2(DispatchThreadID.x + Y * WaveSize, idx1)]);
+	uint BufferIndex = idx * (WaveSize * WaveSize) + DispatchThreadID.x + DispatchThreadID.y * WaveSize;
+	uint XIndex = idx1 * (WaveSize * WaveSize) + DispatchThreadID.x + X * WaveSize;
+	uint YIndex = idx1 * (WaveSize * WaveSize) + DispatchThreadID.x + Y * WaveSize;
+	RWHeightBuffer[BufferIndex] = FFT(w, RWHeightBuffer[XIndex], RWHeightBuffer[YIndex]);
+	RWSlopeBuffer[BufferIndex] = FFT(w, RWSlopeBuffer[XIndex], RWSlopeBuffer[YIndex]);
+	RWDisplacementBuffer[BufferIndex] = FFT(w, RWDisplacementBuffer[XIndex], RWDisplacementBuffer[YIndex]);
 }
 
-SamplerState TextureSampler;
-Texture2D<float2> HeightBuffer;
-Texture2D<float4> SlopeBuffer;
-Texture2D<float4> DisplacementBuffer;
+StructuredBuffer<float2> HeightBuffer;
+StructuredBuffer<float4> SlopeBuffer;
+StructuredBuffer<float4> DisplacementBuffer;
 
 void ComputePosAndNormalVS(
 	in float4 InPosition : ATTRIBUTE0,
@@ -235,12 +250,12 @@ void GetPosOffsetAndNormal(int2 Coord, int Size, out float3 PosOffset, out float
 {
     Coord.x -= (Coord.x / Size) * Coord.x; 
     Coord.y -= (Coord.y / Size) * Coord.y; 
-	int Index = Coord.x * Size + Coord.y;
+	int Index = (Size * Size) +	Coord.x * Size + Coord.y;
 	int Sign = Signs[(Coord.x + Coord.y) & 1];
     float Lambda = -1.f;
 
-	PosOffset = float3(DisplacementBuffer[int2(Index, 1)].z * Lambda * Sign, DisplacementBuffer[int2(Index, 1)].x * Lambda * Sign, -HeightBuffer[int2(Index, 1)].x * Sign);
-	Normal = float3(-SlopeBuffer[int2(Index, 1)].zx * Sign, 1);
+	PosOffset = float3(DisplacementBuffer[Index].z * Lambda * Sign, DisplacementBuffer[Index].x * Lambda * Sign, HeightBuffer[Index].x * Lambda * Sign);
+	Normal = float3(-SlopeBuffer[Index].zx * Sign, 1);
 	Normal /= length(Normal);
 	//Normal = normalize(float3(0.f, 0.f, 1.f));
 }
@@ -265,9 +280,9 @@ void ComputePosAndNormalPS(
 )
 {
 	int Sign;
-	int Width, Height;
-	HeightBuffer.GetDimensions(Width, Height);
-	int Size = sqrt(Width);
+	uint Num, Stride;
+	HeightBuffer.GetDimensions(Num, Stride);
+	int Size = sqrt(Num / 2);
 	float CoordX = Size * UV.x;
 	int PointX = floor(CoordX);
 	float LerpAlphaX = frac(CoordX);

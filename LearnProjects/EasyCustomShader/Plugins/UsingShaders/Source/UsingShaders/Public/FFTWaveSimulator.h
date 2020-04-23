@@ -121,7 +121,7 @@ public:
 
 	FVertexBufferRHIRef DispersionTableVB;
 	FShaderResourceViewRHIRef DispersionTableSRV;
-private:
+public:
 	TArray<FVector> WavePosition;
 	TArray<FVector> WaveVertices;
 	TArray<FVector> WaveNormals;
@@ -130,12 +130,12 @@ private:
 	TArray<float> DispersionTable;
 
 	// Render resources
-	FTexture2DRHIRef Spectrum;
-	FTexture2DRHIRef SpectrumConj;
+	FRWBufferStructured Spectrum;
+	FRWBufferStructured SpectrumConj;
 
-	FTexture2DRHIRef HeightBuffer;
-	FTexture2DRHIRef SlopeBuffer;
-	FTexture2DRHIRef DisplacementBuffer;
+	FRWBufferStructured HeightBuffer;
+	FRWBufferStructured SlopeBuffer;
+	FRWBufferStructured DisplacementBuffer;
 
 	bool bHasInit;
 };
