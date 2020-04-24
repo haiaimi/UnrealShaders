@@ -99,13 +99,13 @@ Buffer<float> DispersionTable;
 Buffer<float2> Spectrum;
 Buffer<float2> SpectrumConj;
 
-//RWTexture2D<float2> RWHeightBuffer;
-//RWTexture2D<float4> RWSlopeBuffer;
-//RWTexture2D<float4> RWDisplacementBuffer;
+RWTexture2D<float2> RWHeightBuffer;
+RWTexture2D<float4> RWSlopeBuffer;
+RWTexture2D<float4> RWDisplacementBuffer;
 
-RWBuffer<float2> RWHeightBuffer;
-RWBuffer<float4> RWSlopeBuffer;
-RWBuffer<float4> RWDisplacementBuffer;
+Texture2D<float2> HeightBuffer;
+Texture2D<float4> SlopeBuffer;
+Texture2D<float4> DisplacementBuffer;
 
 Buffer<float>  ButterflyLookupTable;
 
@@ -143,7 +143,7 @@ void PrepareForFFT(float TimeSeconds, int n, int m)
 	KY = PI * (2.f * m - WaveSize) / GridLength;   // Get it from: 2 * PI * (m - WaveSize / 2) / GridLength
 	
 	Len = sqrt(KX * KX + KY * KY);
-	int Index = (WaveSize * WaveSize) + m * WaveSize + n;
+	uint2 Index = uint2(n, m + WaveSize);
 	
 	float2 C = InitSpectrum(TimeSeconds, n, m);
 
@@ -191,20 +191,19 @@ void PerformFFTCS_Horizontal(
 	uint3 GroupThreadID : SV_GroupThreadID,
 	uint3 DispatchThreadID : SV_DispatchThreadID)
 {
-	int idx = StartIndex % 2;
-	int idx1 = (StartIndex + 1) % 2;
-	int bftIdx = 4 * (DispatchThreadID.x + StartIndex * WaveSize);
+	uint idx = StartIndex % 2;
+	uint idx1 = (StartIndex + 1) % 2;
+	uint bftIdx = 4 * (DispatchThreadID.x + StartIndex * WaveSize);
 	
-	int X = (int) ButterflyLookupTable[bftIdx + 0];
-	int Y = (int) ButterflyLookupTable[bftIdx + 1];
+	uint X = (int) ButterflyLookupTable[bftIdx + 0];
+	uint Y = (int) ButterflyLookupTable[bftIdx + 1];
 	float2 w = float2(ButterflyLookupTable[bftIdx + 2], ButterflyLookupTable[bftIdx + 3]);
-	uint BufferIndex = idx * (WaveSize * WaveSize) + DispatchThreadID.x + DispatchThreadID.y * WaveSize;
-	uint XIndex = X + idx1 * (WaveSize * WaveSize) + DispatchThreadID.y * WaveSize;
-	uint YIndex = Y + idx1 * (WaveSize * WaveSize) + DispatchThreadID.y * WaveSize;
+	uint2 BufferIndex = uint2(DispatchThreadID.x, idx * WaveSize + DispatchThreadID.y);
+	uint2 XIndex = uint2(X, idx1 * WaveSize + DispatchThreadID.y);
+	uint2 YIndex = uint2(Y, idx1 * WaveSize + DispatchThreadID.y);
 	RWHeightBuffer[BufferIndex] = FFT(w, RWHeightBuffer[XIndex], RWHeightBuffer[YIndex]);
 	RWSlopeBuffer[BufferIndex] = FFT(w, RWSlopeBuffer[XIndex], RWSlopeBuffer[YIndex]);
 	RWDisplacementBuffer[BufferIndex] = FFT(w, RWDisplacementBuffer[XIndex], RWDisplacementBuffer[YIndex]);
-
 }
 
 [numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, 1)]
@@ -213,25 +212,23 @@ void PerformFFTCS_Vertical(
 	uint3 GroupThreadID : SV_GroupThreadID,
 	uint3 DispatchThreadID : SV_DispatchThreadID)
 {
-	int passes = round(log2(WaveSize)); // equal to log(WaveSize)/log(2)
-	int idx = (StartIndex + passes) % 2;
-	int idx1 = (StartIndex + passes + 1) % 2;
-	int bftIdx = 4 * (DispatchThreadID.y + StartIndex * WaveSize);
+	uint passes = round(log2(WaveSize)); // equal to log(WaveSize)/log(2)
+	uint idx = (StartIndex + passes) % 2;
+	uint idx1 = (StartIndex + passes + 1) % 2;
+	uint bftIdx = 4 * (DispatchThreadID.y + StartIndex * WaveSize);
 	
-	int X = (int) ButterflyLookupTable[bftIdx + 0];
-	int Y = (int) ButterflyLookupTable[bftIdx + 1];
-	float2 w = { ButterflyLookupTable[bftIdx + 2], ButterflyLookupTable[bftIdx + 3] };
-	uint BufferIndex = idx * (WaveSize * WaveSize) + DispatchThreadID.x + DispatchThreadID.y * WaveSize;
-	uint XIndex = idx1 * (WaveSize * WaveSize) + DispatchThreadID.x + X * WaveSize;
-	uint YIndex = idx1 * (WaveSize * WaveSize) + DispatchThreadID.x + Y * WaveSize;
+	uint X = (uint) ButterflyLookupTable[bftIdx + 0];
+	uint Y = (uint) ButterflyLookupTable[bftIdx + 1];
+	float2 w = float2(ButterflyLookupTable[bftIdx + 2], ButterflyLookupTable[bftIdx + 3]);
+	uint2 BufferIndex = uint2(DispatchThreadID.y, idx * WaveSize + DispatchThreadID.x);
+	uint2 XIndex = uint2(DispatchThreadID.x, idx1 * WaveSize + X);
+	uint2 YIndex = uint2(DispatchThreadID.x, idx1 * WaveSize + Y);
 	RWHeightBuffer[BufferIndex] = FFT(w, RWHeightBuffer[XIndex], RWHeightBuffer[YIndex]);
 	RWSlopeBuffer[BufferIndex] = FFT(w, RWSlopeBuffer[XIndex], RWSlopeBuffer[YIndex]);
 	RWDisplacementBuffer[BufferIndex] = FFT(w, RWDisplacementBuffer[XIndex], RWDisplacementBuffer[YIndex]);
 }
 
-Buffer<float2> HeightBuffer;
-Buffer<float4> SlopeBuffer;
-Buffer<float4> DisplacementBuffer;
+SamplerState TextureSampler;
 
 void ComputePosAndNormalVS(
 	in float4 InPosition : ATTRIBUTE0,
@@ -246,11 +243,11 @@ void ComputePosAndNormalVS(
 
 static float Signs[2] = { 1.f, -1.f };
 
-void GetPosOffsetAndNormal(int2 Coord, int Size, out float3 PosOffset, out float3 Normal)
+void GetPosOffsetAndNormal(uint2 Coord, uint Size, out float3 PosOffset, out float3 Normal)
 {
     Coord.x -= (Coord.x / Size) * Coord.x; 
     Coord.y -= (Coord.y / Size) * Coord.y; 
-	int Index = (Size * Size) +	Coord.x * Size + Coord.y;
+	uint2 Index = uint2(Coord.y, Size + Coord.x);
 	int Sign = Signs[(Coord.x + Coord.y) & 1];
     float Lambda = -1.f;
 
@@ -260,7 +257,7 @@ void GetPosOffsetAndNormal(int2 Coord, int Size, out float3 PosOffset, out float
 	//Normal = normalize(float3(0.f, 0.f, 1.f));
 }
 
-float3 GaurodInterpolate(float2 FirstUV, float2 SecondUV, float2 ThirdUV, float3 FirstVal, float3 SecondVal, float3 ThirdVal, float TargetUV)
+float3 GaurodInterpolate(float2 FirstUV, float2 SecondUV, float2 ThirdUV, float3 FirstVal, float3 SecondVal, float3 ThirdVal, float2 TargetUV)
 {
 	float TriangleArea = 0.5f;
 	float2 V0 = ThirdUV - FirstUV;
@@ -280,11 +277,11 @@ void ComputePosAndNormalPS(
 )
 {
 	int Sign;
-	uint Num;
-	HeightBuffer.GetDimensions(Num);
-	int Size = sqrt(Num / 2);
+	uint Width, Height;
+	HeightBuffer.GetDimensions(Width, Height);
+	uint Size = Width;
 	float CoordX = Size * UV.x;
-	int PointX = floor(CoordX);
+	uint PointX = floor(CoordX);
 	float LerpAlphaX = frac(CoordX);
 	FLATTEN
 	if (PointX == Size)
@@ -293,7 +290,7 @@ void ComputePosAndNormalPS(
 		LerpAlphaX = 1.f;
 	}
 	float CoordY = Size * UV.y;
-	int PointY = floor(CoordY);
+	uint PointY = floor(CoordY);
 	float LerpAlphaY = frac(CoordY);
 	FLATTEN
 	if (PointY == Size)
@@ -302,16 +299,16 @@ void ComputePosAndNormalPS(
 		LerpAlphaY = 1.f;
 	}
 	
-	int RightPoint = PointX + sign(LerpAlphaX);
-	int DownPoint = PointY + sign(LerpAlphaY);
+	uint RightPoint = PointX + sign(LerpAlphaX);
+	uint DownPoint = PointY + sign(LerpAlphaY);
 	bool bInBorderRight = (RightPoint == Size);
 	bool bInBorderDown = (DownPoint == Size);
 	float3 TopLeftPos, TopRightPos, DownLeftPos, DownRightPos;
 	float3 TopLeftNormal, TopRightNormal, DownLeftNormal, DownRightNormal;
-	GetPosOffsetAndNormal(int2(PointX, PointY), Size, TopLeftPos, TopLeftNormal);
-	GetPosOffsetAndNormal(int2(RightPoint, PointY), Size, TopRightPos, TopRightNormal);
-	GetPosOffsetAndNormal(int2(PointX, DownPoint), Size, DownLeftPos, DownLeftNormal);
-	GetPosOffsetAndNormal(int2(RightPoint, DownPoint), Size, DownRightPos, DownRightNormal);
+	GetPosOffsetAndNormal(uint2(PointX, PointY), Size, TopLeftPos, TopLeftNormal);
+	GetPosOffsetAndNormal(uint2(RightPoint, PointY), Size, TopRightPos, TopRightNormal);
+	GetPosOffsetAndNormal(uint2(PointX, DownPoint), Size, DownLeftPos, DownLeftNormal);
+	GetPosOffsetAndNormal(uint2(RightPoint, DownPoint), Size, DownRightPos, DownRightNormal);
 	//Bilinear lerp
 	OutPosOffset = float4(lerp(lerp(TopLeftPos, TopRightPos, LerpAlphaX), lerp(DownLeftPos, DownRightPos, LerpAlphaX), LerpAlphaY), 1.f);
 	OutNormal = float4(lerp(lerp(TopLeftNormal, TopRightNormal, LerpAlphaX), lerp(DownLeftNormal, DownRightNormal, LerpAlphaX), LerpAlphaY), 1.f);

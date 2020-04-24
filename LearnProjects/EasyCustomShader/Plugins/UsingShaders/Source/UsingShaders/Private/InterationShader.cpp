@@ -72,7 +72,7 @@ public:
 		OutEnvironment.SetDefine(TEXT("TEST_MICRO"), 1);
 	}
 
-	void SetParameters(FRHICommandListImmediate& RHICmdList, const FLinearColor& MyColor, FTextureRHIParamRef& MyTexture)
+	void SetParameters(FRHICommandListImmediate& RHICmdList, const FLinearColor& MyColor, FRHITexture* MyTexture)
 	{
 		SetShaderValue(RHICmdList, GetPixelShader(), SimpleColorVal, MyColor);
 		 
@@ -165,7 +165,7 @@ static void DrawInterationShaderRenderTarget_RenderThread(
 	ERHIFeatureLevel::Type FeatureLevel,
 	FName TextureRenderTargetName,
 	FLinearColor MyColor,
-	FTextureRHIParamRef MyTexture  
+	FRHITexture* MyTexture  
 )
 {
 	check(IsInRenderingThread())
@@ -244,7 +244,7 @@ void UInterationShaderBlueprintLibrary::DrawInterationShaderRenderTarget(class U
 	if (!OutputRenderTarget)return;
 
 	FTextureRenderTargetResource* TextureRenderTargetResource = OutputRenderTarget->GameThread_GetRenderTargetResource();
-	FTextureRHIParamRef MyTextureRHI = MyTexture->TextureReference.TextureReferenceRHI;
+	FRHITexture* MyTextureRHI = MyTexture->TextureReference.TextureReferenceRHI;
 	UWorld* World = Ac->GetWorld();
 	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
 	FName TextureRenderTargetName = OutputRenderTarget->GetFName();
@@ -262,7 +262,7 @@ void UInterationShaderBlueprintLibrary::DrawInterationShaderRenderTarget_Blur(cl
 	if (!OutputRenderTarget)return;
 
 	FTextureRenderTargetResource* TextureRenderTargetResource = OutputRenderTarget->GameThread_GetRenderTargetResource();
-	FTextureRHIParamRef MyTextureRHI = MyTexture->TextureReference.TextureReferenceRHI;
+	FRHITexture* MyTextureRHI = MyTexture->TextureReference.TextureReferenceRHI;
 	UWorld* World = Ac->GetWorld();
 	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
 	FName TextureRenderTargetName = OutputRenderTarget->GetFName();

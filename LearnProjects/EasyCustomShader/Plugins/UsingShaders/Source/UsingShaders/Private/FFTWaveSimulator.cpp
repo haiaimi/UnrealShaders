@@ -288,11 +288,11 @@ void AFFTWaveSimulator::CreateWaveGrid()
 
 void AFFTWaveSimulator::CreateResources()
 {
-	Spectrum.Initialize(sizeof(FVector2D), (WaveSize + 1) * (WaveSize + 1), PF_G32R32F, BUF_Static | BUF_DrawIndirect);
-	SpectrumConj.Initialize(sizeof(FVector2D), (WaveSize + 1) * (WaveSize + 1), PF_G32R32F, BUF_Static | BUF_DrawIndirect);
-	HeightBuffer.Initialize(sizeof(FVector2D), WaveSize * WaveSize * 2, PF_G32R32F, BUF_Static | BUF_DrawIndirect);
-	SlopeBuffer.Initialize(sizeof(FVector4), WaveSize * WaveSize * 2, PF_A32B32G32R32F, BUF_Static | BUF_DrawIndirect);
-	DisplacementBuffer.Initialize(sizeof(FVector4), WaveSize * WaveSize * 2, PF_A32B32G32R32F, BUF_Static | BUF_DrawIndirect);
+	Spectrum.Initialize(sizeof(float) * 2, (WaveSize + 1) * (WaveSize + 1), EPixelFormat::PF_G32R32F, BUF_Static);
+	SpectrumConj.Initialize(sizeof(float) * 2, (WaveSize + 1) * (WaveSize + 1), EPixelFormat::PF_G32R32F, BUF_Static);
+	HeightBuffer.Initialize(sizeof(float) * 2, WaveSize, WaveSize * 2, EPixelFormat::PF_G32R32F);
+	SlopeBuffer.Initialize(sizeof(float) * 4, WaveSize, WaveSize * 2, EPixelFormat::PF_A32B32G32R32F);
+	DisplacementBuffer.Initialize(sizeof(float) * 4, WaveSize, WaveSize * 2, EPixelFormat::PF_A32B32G32R32F);
 	//FUnorderedAccessViewRHIRef TempTextureUAV = RHICreateUnorderedAccessView(TempTexture);
 
 	ComputeRandomTable(WaveSize + 1, RandomTable);

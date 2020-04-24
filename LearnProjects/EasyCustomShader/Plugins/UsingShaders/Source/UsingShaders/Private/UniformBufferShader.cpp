@@ -55,7 +55,7 @@ public:
 		OutEnvironment.SetDefine(TEXT("UNIFORM_BUFFER_MICRO"), 1);
 	}
 
-	void SetParameters(FRHICommandListImmediate& RHICmdList, const FLinearColor& MyColor, FTextureRHIParamRef& MyTexture, FUniformBufferData& MyData)
+	void SetParameters(FRHICommandListImmediate& RHICmdList, const FLinearColor& MyColor, FRHITexture* MyTexture, FUniformBufferData& MyData)
 	{
 		//设置一个普通变量
 		SetShaderValue(RHICmdList, GetPixelShader(), SimpleColorVal, MyColor);
@@ -158,7 +158,7 @@ static void DrawUniformBufferShaderRenderTarget_RenderThread(
 	ERHIFeatureLevel::Type FeatureLevel,
 	FName TextureRenderTargetName,
 	FLinearColor MyColor,
-	FTextureRHIParamRef MyTexture,
+	FRHITexture* MyTexture,
 	FUniformBufferData MyData
 )
 {
@@ -238,7 +238,7 @@ void UUniformShaderBlueprintLibrary::DrawUniformBufferShaderRenderTarget(class U
 	if (!OutputRenderTarget)return;
 
 	FTextureRenderTargetResource* TextureRenderTargetResource = OutputRenderTarget->GameThread_GetRenderTargetResource();
-	FTextureRHIParamRef MyTextureRHI = MyTexture->TextureReference.TextureReferenceRHI;
+	FRHITexture* MyTextureRHI = MyTexture->TextureReference.TextureReferenceRHI;
 	UWorld* World = Ac->GetWorld();
 	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
 	FName TextureRenderTargetName = OutputRenderTarget->GetFName();

@@ -8,7 +8,7 @@
  * 
  */
 
-void DrawBlurComputeShaderRenderTarget(AActor* Ac, int32 BlurCounts, FTextureRHIParamRef MyTexture, FTextureRHIParamRef UAVSource,FUnorderedAccessViewRHIParamRef TextureUAV);
+void DrawBlurComputeShaderRenderTarget(AActor* Ac, int32 BlurCounts,  FRHITexture* MyTexture,  FRHITexture* UAVSource,FRHIUnorderedAccessView* TextureUAV);
 
 
 

@@ -50,11 +50,12 @@ public:
 		OutEnvironment.SetDefine(TEXT("BLUR_MICRO"), 1);
 	}
 
-	void SetParameters(FRHICommandListImmediate& RHICmdList, const FTextureRHIParamRef& InTexture,FUnorderedAccessViewRHIRef OutputUAV)
+	void SetParameters(FRHICommandListImmediate& RHICmdList, FRHITexture* InTexture, FRHIUnorderedAccessView* OutputUAV)
 	{
 		if (OutputSurface.IsBound())
 			RHICmdList.SetUAVParameter(GetComputeShader(), OutputSurface.GetBaseIndex(), OutputUAV);
-
+		
+		//RHICmdList.SetShaderTexture(GetComputeShader(), InputSurface.GetBaseIndex(), InTexture);
 		SetTextureParameter(RHICmdList, GetComputeShader(), InputSurface, InputSampler, TStaticSamplerState<SF_AnisotropicLinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InTexture);
 
 		//SetUniformBufferParameter(RHICmdList, GetPixelShader(), GetUniformBufferParameter<FBlurComputeShaderData>(), FBlurComputeShaderData::CreateUniformBuffer(BlurData, EUniformBufferUsage::UniformBuffer_SingleDraw));
@@ -64,9 +65,7 @@ public:
 	void UnbindUAV(FRHICommandList& RHICmdList)
 	{
 		if (OutputSurface.IsBound())
-			RHICmdList.SetUAVParameter(GetComputeShader(), OutputSurface.GetBaseIndex(), FUnorderedAccessViewRHIParamRef());
-		if (InputSurface.IsBound())
-			RHICmdList.SetShaderTexture(GetComputeShader(), InputSurface.GetBaseIndex(), FTextureRHIParamRef());
+			RHICmdList.SetUAVParameter(GetComputeShader(), OutputSurface.GetBaseIndex(), nullptr);
 	}
 
 	virtual bool Serialize(FArchive& Ar) override
@@ -91,9 +90,9 @@ static void ExcuteBlurComputeShader_RenderThread(
 		FRHICommandListImmediate& RHICmdList,
 		ERHIFeatureLevel::Type FeatureLevel,
 		int32 BlurCounts,
-		FTextureRHIParamRef InTexture,
-		FTextureRHIParamRef UAVSource,
-		FUnorderedAccessViewRHIRef OutputUAV)
+		FRHITexture* InTexture,
+		FRHITexture* UAVSource,
+		FRHIUnorderedAccessView* OutputUAV)
 
 {
 	check(IsInRenderingThread())
@@ -107,7 +106,7 @@ static void ExcuteBlurComputeShader_RenderThread(
 	FUnorderedAccessViewRHIRef TempTextureUAV = RHICreateUnorderedAccessView(TempTexture);
 
 	//GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Blue, InTexture->GetSizeXYZ().ToString());
-	FTextureRHIParamRef IterTexture = InTexture;
+	FRHITexture* IterTexture = InTexture;
 
 	//多次模糊处理
 	for (int32 i = 0; i < BlurCounts; ++i)
@@ -127,7 +126,7 @@ static void ExcuteBlurComputeShader_RenderThread(
 	TempTextureUAV.SafeRelease();
 }
 
-void DrawBlurComputeShaderRenderTarget(AActor* Ac, int32 BlurCounts, FTextureRHIParamRef MyTexture, FTextureRHIParamRef UAVSource, FUnorderedAccessViewRHIParamRef TextureUAV)
+void DrawBlurComputeShaderRenderTarget(AActor* Ac, int32 BlurCounts, FRHITexture* MyTexture, FRHITexture* UAVSource, FRHIUnorderedAccessView* TextureUAV)
 {
 	UWorld* World = Ac->GetWorld();
 	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
