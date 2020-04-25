@@ -4,7 +4,7 @@
 #define GRAVITY 9.8
 
 #ifndef THREAD_GROUP_SIZE 
-#define THREAD_GROUP_SIZE 8
+#define THREAD_GROUP_SIZE 32
 #endif
 
 int WaveSize;
@@ -152,7 +152,7 @@ void PrepareForFFT(float TimeSeconds, int n, int m)
 
 	// Compute the slope for normal, i*(KX, KY)*C.  ---------ddx-------      ---------ddy------- 
 	//                                               real    imaginary        real    imaginary
-	RWSlopeBuffer[Index] = float4(-C.y * KX, C.x * KX, -C.x * KY, C.y * KY);
+	RWSlopeBuffer[Index] =                    float4(-C.y * KX, C.x * KX,   -C.x * KY, C.y * KY);
 	
 	RWDisplacementBuffer[Index] = Len < 0.000001f ? 0.f : float4(-C.y * -(KX / Len), C.x * -(KX / Len), -C.y * -(KY / Len), C.x * -(KY / Len));
 }
@@ -220,7 +220,7 @@ void PerformFFTCS_Vertical(
 	uint X = (uint) ButterflyLookupTable[bftIdx + 0];
 	uint Y = (uint) ButterflyLookupTable[bftIdx + 1];
 	float2 w = float2(ButterflyLookupTable[bftIdx + 2], ButterflyLookupTable[bftIdx + 3]);
-	uint2 BufferIndex = uint2(DispatchThreadID.y, idx * WaveSize + DispatchThreadID.x);
+	uint2 BufferIndex = uint2(DispatchThreadID.x, idx * WaveSize + DispatchThreadID.y);
 	uint2 XIndex = uint2(DispatchThreadID.x, idx1 * WaveSize + X);
 	uint2 YIndex = uint2(DispatchThreadID.x, idx1 * WaveSize + Y);
 	RWHeightBuffer[BufferIndex] = FFT(w, RWHeightBuffer[XIndex], RWHeightBuffer[YIndex]);
@@ -250,7 +250,7 @@ void GetPosOffsetAndNormal(uint2 Coord, uint Size, out float3 PosOffset, out flo
 	uint2 Index = uint2(Coord.y, Size + Coord.x);
 	int Sign = Signs[(Coord.x + Coord.y) & 1];
     float Lambda = -1.f;
-
+	
 	PosOffset = float3(DisplacementBuffer[Index].z * Lambda * Sign, DisplacementBuffer[Index].x * Lambda * Sign, HeightBuffer[Index].x * Lambda * Sign);
 	Normal = float3(-SlopeBuffer[Index].zx * Sign, 1);
 	Normal /= length(Normal);
@@ -314,15 +314,15 @@ void ComputePosAndNormalPS(
 	OutNormal = float4(lerp(lerp(TopLeftNormal, TopRightNormal, LerpAlphaX), lerp(DownLeftNormal, DownRightNormal, LerpAlphaX), LerpAlphaY), 1.f);
 	return;
 
-	//Triangle lerp(Gaurod)
-	if(LerpAlphaY >= LerpAlphaX)
-	{
-		OutPosOffset = float4(GaurodInterpolate(float2(0.f, 0.f), float2(1.f, 1.f), float2(0.f, 1.f), TopLeftPos, DownRightPos, DownLeftPos, float2(LerpAlphaX, LerpAlphaY)), 1.f);
-		//OutNormal = float4(GaurodInterpolate(float2(0.f, 0.f), float2(1.f, 1.f), float2(0.f, 1.f), TopLeftNormal, DownRightNormal, DownLeftNormal, float2(LerpAlphaX, LerpAlphaY)), 1.f);
-	}
-	else
-	{
-		OutPosOffset = float4(GaurodInterpolate(float2(0.f, 0.f), float2(1.f, 0.f), float2(1.f, 1.f), TopLeftPos, TopRightPos, DownRightPos, float2(LerpAlphaX, LerpAlphaY)), 1.f);
-		//OutNormal = float4(GaurodInterpolate(float2(0.f, 0.f), float2(1.f, 0.f), float2(1.f, 1.f), TopLeftNormal, TopRightNormal, DownRightNormal, float2(LerpAlphaX, LerpAlphaY)), 1.f);
-	}
+	////Triangle lerp(Gaurod)
+	//if(LerpAlphaY >= LerpAlphaX)
+	//{
+	//	OutPosOffset = float4(GaurodInterpolate(float2(0.f, 0.f), float2(1.f, 1.f), float2(0.f, 1.f), TopLeftPos, DownRightPos, DownLeftPos, float2(LerpAlphaX, LerpAlphaY)), 1.f);
+	//	//OutNormal = float4(GaurodInterpolate(float2(0.f, 0.f), float2(1.f, 1.f), float2(0.f, 1.f), TopLeftNormal, DownRightNormal, DownLeftNormal, float2(LerpAlphaX, LerpAlphaY)), 1.f);
+	//}
+	//else
+	//{
+	//	OutPosOffset = float4(GaurodInterpolate(float2(0.f, 0.f), float2(1.f, 0.f), float2(1.f, 1.f), TopLeftPos, TopRightPos, DownRightPos, float2(LerpAlphaX, LerpAlphaY)), 1.f);
+	//	//OutNormal = float4(GaurodInterpolate(float2(0.f, 0.f), float2(1.f, 0.f), float2(1.f, 1.f), TopLeftNormal, TopRightNormal, DownRightNormal, float2(LerpAlphaX, LerpAlphaY)), 1.f);
+	//}
 }

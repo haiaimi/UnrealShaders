@@ -17,7 +17,7 @@
 #include "Engine/TextureRenderTarget.h"
 #include "RHIUtilities.h"
 
-#define WAVE_GROUP_THREAD_COUNTS 8
+#define WAVE_GROUP_THREAD_COUNTS 32
 
 //BEGIN_SHADER_PARAMETER_STRUCT(FWaveBuffer, )
 //SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
@@ -386,9 +386,9 @@ public:
 		SetShaderValue(RHICmdList, GetPixelShader(), WaveSize, InWaveSize);
 		SetShaderValue(RHICmdList, GetPixelShader(), GridLength, InGridLength);
 		SetSamplerParameter(RHICmdList, GetPixelShader(), TextureSampler, TStaticSamplerState<SF_AnisotropicLinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
-		SetTextureParameter(RHICmdList, GetComputeShader(), HeightBuffer, InHeightBuffer);
-		SetTextureParameter(RHICmdList, GetComputeShader(), SlopeBuffer, InSlopeBuffer);
-		SetTextureParameter(RHICmdList, GetComputeShader(), DisplacementBuffer, InDisplacementBuffer);
+		SetTextureParameter(RHICmdList, GetPixelShader(), HeightBuffer, InHeightBuffer);
+		SetTextureParameter(RHICmdList, GetPixelShader(), SlopeBuffer, InSlopeBuffer);
+		SetTextureParameter(RHICmdList, GetPixelShader(), DisplacementBuffer, InDisplacementBuffer);
 	}
 
 	void UnbindUAV(FRHICommandList& RHICmdList)

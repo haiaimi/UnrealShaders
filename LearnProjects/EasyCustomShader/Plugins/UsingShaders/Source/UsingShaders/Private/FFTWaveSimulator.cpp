@@ -305,13 +305,13 @@ void AFFTWaveSimulator::CreateResources()
 	DispersionTableVB.SafeRelease();
 	DispersionTableSRV.SafeRelease();
 	FRHIResourceCreateInfo CreateInfo;
-	RandomTableVB = RHICreateVertexBuffer(RandomTable.Num() * sizeof(FVector2D), BUF_Volatile | BUF_ShaderResource, CreateInfo);
+	RandomTableVB = RHICreateVertexBuffer(RandomTable.Num() * sizeof(FVector2D), BUF_ShaderResource, CreateInfo);
 	RandomTableSRV = RHICreateShaderResourceView(RandomTableVB, sizeof(FVector2D), PF_G32R32F);
 
-	ButterflyLookupTableVB = RHICreateVertexBuffer(ButterflyLookupTable.Num() * sizeof(float), BUF_Volatile | BUF_ShaderResource, CreateInfo);
+	ButterflyLookupTableVB = RHICreateVertexBuffer(ButterflyLookupTable.Num() * sizeof(float), BUF_ShaderResource, CreateInfo);
 	ButterflyLookupTableSRV = RHICreateShaderResourceView(ButterflyLookupTableVB, sizeof(float), PF_R32_FLOAT);
 
-	DispersionTableVB = RHICreateVertexBuffer(DispersionTable.Num() * sizeof(float), BUF_Volatile | BUF_ShaderResource, CreateInfo);
+	DispersionTableVB = RHICreateVertexBuffer(DispersionTable.Num() * sizeof(float), BUF_ShaderResource, CreateInfo);
 	DispersionTableSRV = RHICreateShaderResourceView(DispersionTableVB, sizeof(float), PF_R32_FLOAT);
 
 	void* RandomTableData = RHILockVertexBuffer(RandomTableVB, 0, RandomTable.Num() * sizeof(FVector2D), RLM_WriteOnly);

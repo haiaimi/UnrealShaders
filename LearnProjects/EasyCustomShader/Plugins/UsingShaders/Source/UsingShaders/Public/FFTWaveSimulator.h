@@ -8,7 +8,7 @@
 #include "RHIUtilities.h"
 #include "FFTWaveSimulator.generated.h"
 
-/** Encapsulates a GPU read/write texture 2D with its UAV and SRV. */
+///** Encapsulates a GPU read/write texture 2D with its UAV and SRV. */
 struct FTextureRWBuffer2D
 {
 	FTexture2DRHIRef Buffer;
