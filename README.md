@@ -2,7 +2,7 @@
 虚幻4内Shader编写
 
 ### 1、FFT海水模拟
-  * 材质还是有些问题
+  * 计算FFT的尺寸是1024x1024，网格也是1024x1024，但是材质还是有些问题
 
 ![image](https://github.com/haiaimi/UnrealShaders/blob/master/RenderPictures/FFTWave.gif)
 
