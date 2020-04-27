@@ -11,6 +11,7 @@
 #include "GameFramework/PlayerController.h"
 #include "DrawDebugHelpers.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Components/StaticMeshComponent.h"
 
 #define GRAVITY 9.8f
 
@@ -63,12 +64,14 @@ void CreateWaveGridMesh(int32 HoriTiles, int32 VertTiles, int32 NumX, int32 NumY
 // Sets default values
 AFFTWaveSimulator::AFFTWaveSimulator():
 	WaveMesh(nullptr),
+	bUseStaticMesh(false),
+	WaveStaticMeshGridSize(100.f),
 	HorizontalTileCount(1),
 	VerticalTileCount(1),
 	MeshGridLength(100.f),
 	TimeRate(2.f),
 	WaveSize(64),
-	GridLength(1.f),
+	PatchLength(1.f),
 	WaveHeightMapRenderTarget(nullptr),
 	DrawNormal(false),
 	bHasInit(false)
@@ -78,7 +81,10 @@ AFFTWaveSimulator::AFFTWaveSimulator():
 
 	WindSpeed = FVector(10.f, 10.f, 0.f);
 	WaveAmplitude = 0.05f;
-	WaveMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("WaveMesh"));
+	//if (bUseStaticMesh && GridMaterial)
+		WaveMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WaveMesh"));
+	//else
+		//WaveMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("WaveMesh"));
 }
 
 // Called when the game starts or when spawned
@@ -167,12 +173,14 @@ void AFFTWaveSimulator::Tick(float DeltaTime)
 			{
 				for (int32 i = 0; i < WaveVertices.Num(); ++i)
 				{
-					DrawDebugDirectionalArrow(GetWorld(), GetActorLocation() + WaveVertices[i] * (MeshGridLength / GridLength), GetActorLocation() + WaveVertices[i] * (MeshGridLength / GridLength) + WaveNormals[i] * 100.f, 20.f, FColor::Red, false, -1.f, 0, 5.f);
+					DrawDebugDirectionalArrow(GetWorld(), GetActorLocation() + WaveVertices[i] * (MeshGridLength / PatchLength), GetActorLocation() + WaveVertices[i] * (MeshGridLength / PatchLength) + WaveNormals[i] * 100.f, 20.f, FColor::Red, false, -1.f, 0, 5.f);
 				}
 
 				TArray<FColor> Colors;
 				TArray<FProcMeshTangent> Tangents;
-				WaveMesh->UpdateMeshSection(0, WavePosition, WaveNormals, UVs, Colors, Tangents);
+				UProceduralMeshComponent* ProcMesh = Cast<UProceduralMeshComponent>(WaveMesh);
+				if (ProcMesh)
+					ProcMesh->UpdateMeshSection(0, WavePosition, WaveNormals, UVs, Colors, Tangents);
 			}
 				
 		}
@@ -185,11 +193,10 @@ void AFFTWaveSimulator::Tick(float DeltaTime)
 
 void AFFTWaveSimulator::InitWaveResource()
 {
-	if (bHasInit)return;
-	if (GridMaterial && WaveMesh)
-		WaveMesh->SetMaterial(0, GridMaterial);
+	if (bHasInit && WaveMesh)return;
 
-	WaveMesh->Bounds.BoxExtent.Z = 0.f;
+	if (WaveMesh)
+		WaveMesh->Bounds.BoxExtent.Z = 0.f;
 	CreateWaveGrid();
 	ComputeSpectrum();
 
@@ -238,51 +245,93 @@ float AFFTWaveSimulator::Dispersion(int32 n, int32 m)
 {
 	//float W_0 = 2.0f * PI / 200.f;  // Use this value, time will be slow, so that the wave will be slow too 
 	float W_0 = 1.f;
-	float KX = PI * (2 * n - WaveSize) / GridLength; //k=2*PI*n/L
-	float KY = PI * (2 * m - WaveSize) / GridLength;
+	float KX = PI * (2 * n - WaveSize) / PatchLength; //k=2*PI*n/L
+	float KY = PI * (2 * m - WaveSize) / PatchLength;
 	// w=sqrt(g*|k|)
 	return FMath::FloorToFloat(FMath::Sqrt(GRAVITY * FMath::Sqrt(KX * KX + KY * KY) / W_0)) * W_0;
 }
 
 void AFFTWaveSimulator::CreateWaveGrid()
 {
-	TArray<int32> Triangles;
-	TArray<FColor> Colors;
-	TArray<FProcMeshTangent> Tangents;
-	WaveMesh->GetBodySetup()->bNeverNeedsCookedCollisionData = true;
-	CreateWaveGridMesh(HorizontalTileCount, VerticalTileCount, WaveSize + 1, WaveSize + 1, Triangles, WaveVertices, UVs, GridLength);
-	//UKismetProceduralMeshLibrary::CreateGridMeshWelded(WaveSize + 1, WaveSize + 1, Triangles, WaveVertices, UVs, MeshGridLength);
-	WaveMesh->SetWorldScale3D((MeshGridLength / GridLength) * FVector(1.f, 1.f, 1.f));
+	float MeshScale = 1.f;
+	const bool bCanUseStaticMesh = bUseStaticMesh && WaveStaticMesh;
+	if (bCanUseStaticMesh)
+	{
+		if (WaveMesh && WaveMesh->IsA<UProceduralMeshComponent>())
+			WaveMesh->DestroyComponent();
+		UStaticMeshComponent* NewMesh = nullptr;
+		if (IsValid(WaveMesh) && WaveMesh->IsA<UStaticMeshComponent>())
+		{
+			NewMesh = Cast<UStaticMeshComponent>(WaveMesh);
+		}
+		else
+		{
+			NewMesh = NewObject<UStaticMeshComponent>(this);
+			NewMesh->RegisterComponent();
+		}
+		NewMesh->SetStaticMesh(WaveStaticMesh);
+		WaveMesh = NewMesh;
+		SetRootComponent(WaveMesh);
 
+		MeshScale = MeshGridLength / WaveStaticMeshGridSize;
+	}
+	else
+	{
+		if (WaveMesh && WaveMesh->IsA<UStaticMeshComponent>())
+			WaveMesh->DestroyComponent();
+		UProceduralMeshComponent* NewMesh = nullptr;
+		if (IsValid(WaveMesh) && WaveMesh->IsA<UProceduralMeshComponent>())
+		{
+			NewMesh = Cast<UProceduralMeshComponent>(WaveMesh);
+		}
+		else
+		{
+			NewMesh = NewObject<UProceduralMeshComponent>(this);
+			NewMesh->RegisterComponent();
+		}
+		TArray<int32> Triangles;
+		TArray<FColor> Colors;
+		TArray<FProcMeshTangent> Tangents;
+		if (WaveMesh && WaveMesh->GetBodySetup())
+			WaveMesh->GetBodySetup()->bNeverNeedsCookedCollisionData = true;
+		CreateWaveGridMesh(HorizontalTileCount, VerticalTileCount, WaveSize + 1, WaveSize + 1, Triangles, WaveVertices, UVs, PatchLength);
+
+		WaveNormals.SetNum((WaveSize + 1) * (WaveSize + 1));
+		WavePosition.SetNum((WaveSize + 1) * (WaveSize + 1));
+
+		if (NewMesh)
+		{
+			if (NewMesh->GetNumSections() > 0)
+			{
+				NewMesh->ClearAllMeshSections();
+				NewMesh->CreateMeshSection(0, WaveVertices, Triangles, WaveNormals, UVs, Colors, Tangents, false);
+			}
+			else
+				NewMesh->CreateMeshSection(0, WaveVertices, Triangles, WaveNormals, UVs, Colors, Tangents, false);
+		}
+		WaveMesh = NewMesh;
+		SetRootComponent(WaveMesh);
+		MeshScale = MeshGridLength / PatchLength;
+	}
+	if (GridMaterial && WaveMesh)
+		WaveMesh->SetMaterial(0, GridMaterial);
+	WaveMesh->SetWorldScale3D(MeshScale * FVector(1.f, 1.f, 1.f));
 	if (UMaterialInstanceDynamic* DynMaterial = WaveMesh->CreateAndSetMaterialInstanceDynamic(0))
 	{
-		DynMaterial->SetScalarParameterValue(WaveDisplacementScale, (MeshGridLength / GridLength));
+		DynMaterial->SetScalarParameterValue(WaveDisplacementScale, MeshGridLength / PatchLength);
+		DynMaterial->SetScalarParameterValue(WaveTexelOffset, 1.f / WaveSize);
+		DynMaterial->SetScalarParameterValue(WaveGradientZ, PatchLength);
 	}
 
-	WaveNormals.SetNum((WaveSize + 1) * (WaveSize + 1));
-	WavePosition.SetNum((WaveSize + 1) * (WaveSize + 1));
 	DispersionTable.SetNum((WaveSize + 1) * (WaveSize + 1));
 
 	for (int32 i = 0; i < WaveSize + 1; ++i)
+	{
 		for (int32 j = 0; j < WaveSize + 1; ++j)
 		{
 			int32 Index = i * (WaveSize + 1) + j;
-			WaveNormals[Index] = FVector(0.f, 0.f, 1.f);
-			WavePosition[Index] = WaveVertices[Index];
-			WavePosition[Index].Z = 0.f;
-
 			DispersionTable[Index] = Dispersion(j, i);
 		}
-
-	if (WaveMesh)
-	{ 
-		if (WaveMesh->GetNumSections() > 0)
-		{
-			WaveMesh->ClearAllMeshSections();
-			WaveMesh->CreateMeshSection(0, WaveVertices, Triangles, WaveNormals, UVs, Colors, Tangents, false);
-		}
-		else
-			WaveMesh->CreateMeshSection(0, WaveVertices, Triangles, WaveNormals, UVs, Colors, Tangents, false);
 	}
 }
 
@@ -407,14 +456,19 @@ void AFFTWaveSimulator::ComputePositionAndNormal()
 
 FVector2D AFFTWaveSimulator::GetWaveDimension() const
 {
-	return FVector2D(HorizontalTileCount * MeshGridLength * WaveSize, VerticalTileCount * MeshGridLength * WaveSize);
+	const bool bCanUseStaticMesh = bUseStaticMesh && WaveStaticMesh;
+	if (bCanUseStaticMesh)
+		return FVector2D(WaveStaticMeshGridSize * WaveSize, WaveStaticMeshGridSize * WaveSize);
+	else
+		return FVector2D(HorizontalTileCount * MeshGridLength * WaveSize, VerticalTileCount * MeshGridLength * WaveSize);
 }
 
+static FName Name_UseStaticMesh = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, bUseStaticMesh);
 static FName Name_HorizontalTileCount = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, HorizontalTileCount);
 static FName Name_VerticalTileCount = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, VerticalTileCount);
 static FName Name_MeshGridLength = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, MeshGridLength);
 static FName Name_WaveSize = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, WaveSize);
-static FName Name_GridLength = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, GridLength);
+static FName Name_PatchLength = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, PatchLength);
 static FName Name_WaveAmplitude = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, WaveAmplitude);
 static FName Name_WindSpeed = GET_MEMBER_NAME_CHECKED(AFFTWaveSimulator, WindSpeed);
 
@@ -426,11 +480,12 @@ void AFFTWaveSimulator::PostEditChangeProperty(FPropertyChangedEvent& PropertyCh
 	UProperty* MemberPropertyThatChanged = PropertyChangedEvent.MemberProperty;
 	const FName MemberPropertyName = MemberPropertyThatChanged != NULL ? MemberPropertyThatChanged->GetFName() : NAME_None;
 
-	bool bWaveProperyChanged = MemberPropertyName == Name_HorizontalTileCount ||
+	bool bWaveProperyChanged = MemberPropertyName == Name_UseStaticMesh ||
+							   MemberPropertyName == Name_HorizontalTileCount ||
 							   MemberPropertyName == Name_VerticalTileCount ||
 							   MemberPropertyName == Name_MeshGridLength ||
 							   MemberPropertyName == Name_WaveSize ||
-							   MemberPropertyName == Name_GridLength ||
+							   MemberPropertyName == Name_PatchLength ||
 							   MemberPropertyName == Name_WaveAmplitude ||
 							   MemberPropertyName == Name_WindSpeed;
 	if (bWaveProperyChanged)

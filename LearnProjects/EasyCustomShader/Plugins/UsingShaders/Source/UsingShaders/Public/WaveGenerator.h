@@ -48,7 +48,7 @@ public:
 
 private:
 	UPROPERTY()
-	TArray<AFFTWaveSimulator*> WaveSimulatorCache;
+	TMap<AFFTWaveSimulator*, FVector> WaveSimulatorCache;
 
 	UPROPERTY()
 	USceneComponent* BaseScene;

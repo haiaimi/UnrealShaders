@@ -709,7 +709,7 @@ void AFFTWaveSimulator::ComputeSpectrum()
 		ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
 
 		CreateResources();
-		ComputePhillipsSpecturm_RenderThread(RHICmdList, FeatureLevel, WaveSize, GridLength, WaveAmplitude, WindSpeed, RandomTableSRV, Spectrum.UAV, SpectrumConj.UAV);
+		ComputePhillipsSpecturm_RenderThread(RHICmdList, FeatureLevel, WaveSize, PatchLength, WaveAmplitude, WindSpeed, RandomTableSRV, Spectrum.UAV, SpectrumConj.UAV);
 	});
 }
 
@@ -786,12 +786,12 @@ void AFFTWaveSimulator::EvaluateWavesFFT(float TimeSeconds)
 		GEngine->PreRenderDelegate.AddWeakLambda(this, [FeatureLevel, this]() {
 			if (!bHasInit)return;
 			FRHICommandListImmediate& RHICmdList = GetImmediateCommandList_ForRenderCommand();
-			PrepareFFT_RenderThread(RHICmdList, FeatureLevel, GetWorld()->TimeSeconds * TimeRate, WaveSize, GridLength, DispersionTableSRV, Spectrum, SpectrumConj, HeightBuffer, SlopeBuffer, DisplacementBuffer);
+			PrepareFFT_RenderThread(RHICmdList, FeatureLevel, GetWorld()->TimeSeconds * TimeRate, WaveSize, PatchLength, DispersionTableSRV, Spectrum, SpectrumConj, HeightBuffer, SlopeBuffer, DisplacementBuffer);
 			EvaluateWavesFFT_RenderThread(RHICmdList, FeatureLevel, GetWorld()->TimeSeconds, WaveSize, 0, ButterflyLookupTableSRV, HeightBuffer, SlopeBuffer, DisplacementBuffer);
 
 			ComputePositionAndNormal();
 			if (WaveHeightMapRenderTarget && WaveNormalRenderTarget)
-				ComputePosAndNormal_RenderThread(RHICmdList, FeatureLevel, WaveHeightMapRenderTarget->GetRenderTargetResource(), WaveNormalRenderTarget->GetRenderTargetResource(), WaveSize, GridLength, HeightBuffer, SlopeBuffer, DisplacementBuffer);
+				ComputePosAndNormal_RenderThread(RHICmdList, FeatureLevel, WaveHeightMapRenderTarget->GetRenderTargetResource(), WaveNormalRenderTarget->GetRenderTargetResource(), WaveSize, PatchLength, HeightBuffer, SlopeBuffer, DisplacementBuffer);
 		});
 	}
 	

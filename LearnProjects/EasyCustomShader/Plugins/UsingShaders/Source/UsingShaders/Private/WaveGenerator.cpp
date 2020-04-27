@@ -30,7 +30,11 @@ void AWaveGenerator::BeginPlay()
 void AWaveGenerator::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
+	for (auto Iter : WaveSimulatorCache)
+	{
+		if (IsValid(Iter.Key))
+			Iter.Key->SetActorRelativeLocation(Iter.Value);
+	}
 }
 
 void AWaveGenerator::Destroyed()
@@ -39,8 +43,8 @@ void AWaveGenerator::Destroyed()
 
 	for (auto Iter : WaveSimulatorCache)
 	{
-		if (IsValid(Iter))
-			Iter->Destroy();
+		if (IsValid(Iter.Key))
+			Iter.Key->Destroy();
 	}
 	WaveSimulatorCache.Reset();
 }
@@ -49,8 +53,8 @@ void AWaveGenerator::CreateWaveSimulators()
 {
 	for (auto Iter : WaveSimulatorCache)
 	{
-		if (IsValid(Iter))
-			Iter->Destroy();
+		if (IsValid(Iter.Key))
+			Iter.Key->Destroy();
 	}
 	WaveSimulatorCache.Reset();
 
@@ -69,8 +73,9 @@ void AWaveGenerator::CreateWaveSimulators()
 					AFFTWaveSimulator* Simulator = GetWorld()->SpawnActor<AFFTWaveSimulator>(WaveClassType, GetActorLocation() + RelSpawnPos, GetActorRotation());
 					if (Simulator)
 					{
-						WaveSimulatorCache.Add(Simulator);
+						WaveSimulatorCache.Add(Simulator, RelSpawnPos);
 						Simulator->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
+						Simulator->SetActorRelativeLocation(RelSpawnPos);
 					}
 				}
 			}

@@ -135,13 +135,22 @@ public:
 
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
-	class UProceduralMeshComponent* WaveMesh;
+	class UMeshComponent* WaveMesh;
 
-	UPROPERTY(EditAnywhere, Category = WaveProperty)
-	int32 HorizontalTileCount;
+	UPROPERTY(EditAnywhere, Category = WaveRenderResource)
+	bool bUseStaticMesh;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = WaveRenderResource, meta=(editcondition = "bUseStaticMesh"))
+	class UStaticMesh* WaveStaticMesh;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = WaveRenderResource, meta = (editcondition = "bUseStaticMesh"))
+	float WaveStaticMeshGridSize;
 
 	UPROPERTY(EditAnywhere, Category = WaveProperty)
 	int32 VerticalTileCount;
+
+	UPROPERTY(EditAnywhere, Category = WaveProperty)
+	int32 HorizontalTileCount;
 
 	UPROPERTY(EditAnywhere, Category = WaveProperty)
 	float MeshGridLength;
@@ -154,7 +163,7 @@ public:
 
 	/**not mean the wave mesh grid length, only use in shader*/
 	UPROPERTY(EditAnywhere, Category = SpectrumProperty)
-	float GridLength;
+	float PatchLength;
 
 	UPROPERTY(EditAnywhere, Category = SpectrumProperty)
 	FVector WindSpeed;
@@ -171,8 +180,14 @@ public:
 	UPROPERTY(EditAnywhere, Category = WaveRenderResource)
 	class UTextureRenderTarget* WaveNormalRenderTarget;
 
-	UPROPERTY(EditAnywhere, Category = WaveRenderResource)
+	UPROPERTY(EditAnywhere, Category = WaveMaterialParams)
 	FName WaveDisplacementScale;
+
+	UPROPERTY(EditAnywhere, Category = WaveMaterialParams)
+	FName WaveTexelOffset;
+
+	UPROPERTY(EditAnywhere, Category = WaveMaterialParams)
+	FName WaveGradientZ;
 
 	UPROPERTY(EditAnywhere, Category = Debug)
 	bool DrawNormal;
