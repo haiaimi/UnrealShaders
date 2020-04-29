@@ -79,6 +79,13 @@ AFFTWaveSimulator::AFFTWaveSimulator():
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 
+	Spectrum = new FRWBuffer();
+	SpectrumConj = new FRWBuffer();
+
+	HeightBuffer = new FTextureRWBuffer2D();
+	SlopeBuffer = new FTextureRWBuffer2D();
+	DisplacementBuffer = new FTextureRWBuffer2D();
+
 	WindSpeed = FVector(10.f, 10.f, 0.f);
 	WaveAmplitude = 0.05f;
 	//if (bUseStaticMesh && GridMaterial)
@@ -134,6 +141,15 @@ void AFFTWaveSimulator::EndPlay(EEndPlayReason::Type EndPlayReason)
 		bIsWaveBegun = false;
 		GlobalRunningFFTWave.Reset();
 	}
+
+	ReleaseResource();
+}
+
+void AFFTWaveSimulator::BeginDestroy()
+{
+	ReleaseResource();
+
+	Super::BeginDestroy();
 }
 
 void AFFTWaveSimulator::Destroyed()
@@ -150,8 +166,26 @@ void AFFTWaveSimulator::Destroyed()
 				GlobalRunningFFTWave.Remove(CurClass);
 		}
 	}
+	ReleaseResource();
 
 	Super::Destroyed();
+}
+
+void AFFTWaveSimulator::ReleaseResource()
+{
+	ENQUEUE_RENDER_COMMAND(FRelseaseWaveResource)([=](FRHICommandListImmediate& RHICmdList)
+	{
+		if(Spectrum)delete Spectrum;
+		if(SpectrumConj)delete SpectrumConj;
+		if(HeightBuffer)delete HeightBuffer;
+		if(SlopeBuffer)delete SlopeBuffer;
+		if(DisplacementBuffer)delete DisplacementBuffer;
+	});
+	Spectrum = nullptr;
+	SpectrumConj = nullptr;
+	HeightBuffer = nullptr;
+	SlopeBuffer = nullptr;
+	DisplacementBuffer = nullptr;
 }
 
 // Called every frame
@@ -337,11 +371,11 @@ void AFFTWaveSimulator::CreateWaveGrid()
 
 void AFFTWaveSimulator::CreateResources()
 {
-	Spectrum.Initialize(sizeof(float) * 2, (WaveSize + 1) * (WaveSize + 1), EPixelFormat::PF_G32R32F, BUF_Static);
-	SpectrumConj.Initialize(sizeof(float) * 2, (WaveSize + 1) * (WaveSize + 1), EPixelFormat::PF_G32R32F, BUF_Static);
-	HeightBuffer.Initialize(sizeof(float) * 2, WaveSize, WaveSize * 2, EPixelFormat::PF_G32R32F);
-	SlopeBuffer.Initialize(sizeof(float) * 4, WaveSize, WaveSize * 2, EPixelFormat::PF_A32B32G32R32F);
-	DisplacementBuffer.Initialize(sizeof(float) * 4, WaveSize, WaveSize * 2, EPixelFormat::PF_A32B32G32R32F);
+	if(Spectrum) Spectrum->Initialize(sizeof(float) * 2, (WaveSize + 1) * (WaveSize + 1), EPixelFormat::PF_G32R32F, BUF_Static);
+	if(SpectrumConj) SpectrumConj->Initialize(sizeof(float) * 2, (WaveSize + 1) * (WaveSize + 1), EPixelFormat::PF_G32R32F, BUF_Static);
+	if(HeightBuffer) HeightBuffer->Initialize(sizeof(float) * 2, WaveSize, WaveSize * 2, EPixelFormat::PF_G32R32F);
+	if(SlopeBuffer) SlopeBuffer->Initialize(sizeof(float) * 4, WaveSize, WaveSize * 2, EPixelFormat::PF_A32B32G32R32F);
+	if(DisplacementBuffer) DisplacementBuffer->Initialize(sizeof(float) * 4, WaveSize, WaveSize * 2, EPixelFormat::PF_A32B32G32R32F);
 	//FUnorderedAccessViewRHIRef TempTextureUAV = RHICreateUnorderedAccessView(TempTexture);
 
 	ComputeRandomTable(WaveSize + 1, RandomTable);

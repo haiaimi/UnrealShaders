@@ -561,11 +561,11 @@ static void PrepareFFT_RenderThread(
 	int32 WaveSize,
 	float GridLength,
 	FRHIShaderResourceView*  DispersionTableSRV,
-	FRWBuffer& Spectrum,
-	FRWBuffer& SpectrumConj,
-	FTextureRWBuffer2D& HeightBuffer, 
-	FTextureRWBuffer2D& SlopeBuffer, 
-	FTextureRWBuffer2D& DisplacementBuffer
+	FRWBuffer* Spectrum,
+	FRWBuffer* SpectrumConj,
+	FTextureRWBuffer2D* HeightBuffer, 
+	FTextureRWBuffer2D* SlopeBuffer, 
+	FTextureRWBuffer2D* DisplacementBuffer
 )
 {
 	check(IsInRenderingThread());
@@ -574,7 +574,7 @@ static void PrepareFFT_RenderThread(
 	TShaderMapRef<FPrepareFFTCS> PrepareFFTShader(GetGlobalShaderMap(FeatureLevel));
 
 	RHICmdList.SetComputeShader(PrepareFFTShader->GetComputeShader());
-	PrepareFFTShader->SetParameters(RHICmdList, TimeSeconds, WaveSize, GridLength, DispersionTableSRV, Spectrum.SRV, SpectrumConj.SRV, HeightBuffer.UAV, SlopeBuffer.UAV, DisplacementBuffer.UAV);
+	PrepareFFTShader->SetParameters(RHICmdList, TimeSeconds, WaveSize, GridLength, DispersionTableSRV, Spectrum->SRV, SpectrumConj->SRV, HeightBuffer->UAV, SlopeBuffer->UAV, DisplacementBuffer->UAV);
 	DispatchComputeShader(RHICmdList, *PrepareFFTShader, FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), 1); 
 	PrepareFFTShader->UnbindUAV(RHICmdList);
 	RHICmdList.EndComputePass();
@@ -587,9 +587,9 @@ static void EvaluateWavesFFT_RenderThread(
 	int32 WaveSize,
 	int32 StartIndex,
 	FRHIShaderResourceView*  ButterflyLookupTableSRV,
-	FTextureRWBuffer2D& HeightBuffer,
-	FTextureRWBuffer2D& SlopeBuffer,
-	FTextureRWBuffer2D& DisplacementBuffer)
+	FTextureRWBuffer2D* HeightBuffer,
+	FTextureRWBuffer2D* SlopeBuffer,
+	FTextureRWBuffer2D* DisplacementBuffer)
 {
 	check(IsInRenderingThread());
 
@@ -603,7 +603,7 @@ static void EvaluateWavesFFT_RenderThread(
 	for (int32 i = 0; i < Passes; ++i)
 	{
 		RHICmdList.SetComputeShader(WaveFFTCS1->GetComputeShader());
-		WaveFFTCS1->SetParameters(RHICmdList, TimeSeconds, WaveSize, i, ButterflyLookupTableSRV, HeightBuffer.UAV, SlopeBuffer.UAV, DisplacementBuffer.UAV);
+		WaveFFTCS1->SetParameters(RHICmdList, TimeSeconds, WaveSize, i, ButterflyLookupTableSRV, HeightBuffer->UAV, SlopeBuffer->UAV, DisplacementBuffer->UAV);
 		DispatchComputeShader(RHICmdList, *WaveFFTCS1, FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), 1);
 		WaveFFTCS1->UnbindUAV(RHICmdList);
 	}
@@ -611,7 +611,7 @@ static void EvaluateWavesFFT_RenderThread(
 	for (int32 i = 0; i < Passes; ++i)
 	{
 		RHICmdList.SetComputeShader(WaveFFTCS2->GetComputeShader());
-		WaveFFTCS2->SetParameters(RHICmdList, TimeSeconds, WaveSize, i, ButterflyLookupTableSRV, HeightBuffer.UAV, SlopeBuffer.UAV, DisplacementBuffer.UAV);
+		WaveFFTCS2->SetParameters(RHICmdList, TimeSeconds, WaveSize, i, ButterflyLookupTableSRV, HeightBuffer->UAV, SlopeBuffer->UAV, DisplacementBuffer->UAV);
 		DispatchComputeShader(RHICmdList, *WaveFFTCS2, FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), FMath::DivideAndRoundUp(WaveSize, WAVE_GROUP_THREAD_COUNTS), 1);
 		WaveFFTCS2->UnbindUAV(RHICmdList);
 	}
@@ -625,9 +625,9 @@ static void ComputePosAndNormal_RenderThread(
 	FTextureRenderTargetResource* OutputNormalRenderTargetResource,
 	int32 InWaveSize,
 	float InGridLength,
-	FTextureRWBuffer2D& HeightBuffer,
-	FTextureRWBuffer2D& SlopeBuffer,
-	FTextureRWBuffer2D& DisplacementBuffer
+	FTextureRWBuffer2D* HeightBuffer,
+	FTextureRWBuffer2D* SlopeBuffer,
+	FTextureRWBuffer2D* DisplacementBuffer
 )
 {
 	check(IsInRenderingThread());
@@ -658,7 +658,7 @@ static void ComputePosAndNormal_RenderThread(
 		GraphicPSPoint.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ComputePosAndNormalPS);
 		SetGraphicsPipelineState(RHICmdList, GraphicPSPoint);
 
-		ComputePosAndNormalPS->SetParameters(RHICmdList, InWaveSize, InGridLength, HeightBuffer.Buffer, SlopeBuffer.Buffer, DisplacementBuffer.Buffer);
+		ComputePosAndNormalPS->SetParameters(RHICmdList, InWaveSize, InGridLength, HeightBuffer->Buffer, SlopeBuffer->Buffer, DisplacementBuffer->Buffer);
 
 		FUVertexInput Vertices[4];
 		Vertices[0].Position.Set(-1.0f, 1.0f, 0, 1.0f);
@@ -709,7 +709,7 @@ void AFFTWaveSimulator::ComputeSpectrum()
 		ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
 
 		CreateResources();
-		ComputePhillipsSpecturm_RenderThread(RHICmdList, FeatureLevel, WaveSize, PatchLength, WaveAmplitude, WindSpeed, RandomTableSRV, Spectrum.UAV, SpectrumConj.UAV);
+		ComputePhillipsSpecturm_RenderThread(RHICmdList, FeatureLevel, WaveSize, PatchLength, WaveAmplitude, WindSpeed, RandomTableSRV, Spectrum->UAV, SpectrumConj->UAV);
 	});
 }
 
