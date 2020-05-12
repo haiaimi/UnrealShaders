@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 
 class UStaticMesh;
-class UTexture;
+class UTexture2D;
 
 /**
  * Make Distance Field for a primitive, more in MeshDistanceFieldUtilities.cpp
@@ -20,7 +20,7 @@ public:
 	/**
 	 * Generate distance field data by using embree, we can also use kd tree
 	 */
-	void GenerateDistanceFieldTexture(UStaticMesh* GenerateStaticMesh, FIntVector DistanceFieldDimension, UTexture* TargetTex);
+	void GenerateDistanceFieldTexture(UStaticMesh* GenerateStaticMesh, FIntVector DistanceFieldDimension, UTexture2D* TargetTex);
 
 	~FGenerateDistanceFieldTexture();
 };
