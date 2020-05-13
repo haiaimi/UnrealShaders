@@ -9,6 +9,7 @@
 
 #include <embree2/rtcore.h>
 #include <embree2/rtcore_ray.h>
+#include "AssetRegistryModule.h"
 
 static void GenerateHemisphereSamples(int32 NumThetaSteps, int32 NumPhiSteps, FRandomStream& RandomStream, TArray<FVector4>& Samples)
 {
@@ -36,7 +37,7 @@ static void GenerateHemisphereSamples(int32 NumThetaSteps, int32 NumPhiSteps, FR
 	}
 }
 
-FGenerateDistanceFieldTexture::FGenerateDistanceFieldTexture()
+UGenerateDistanceFieldTexture::UGenerateDistanceFieldTexture()
 {
 }
 
@@ -78,7 +79,7 @@ void EmbreeFilterFunc(void* UserPtr, RTCRay& InRay)
 }
 
 
-void FGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* GenerateStaticMesh, FIntVector DistanceFieldDimension, UTexture2D* TargetTex)
+void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* GenerateStaticMesh, FIntVector DistanceFieldDimension)
 {
 	if (!GenerateStaticMesh)return;
 
@@ -91,6 +92,7 @@ void FGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* Ge
 	TArray<FVector4> SampleDirections;
 	const int32 NumThetaSteps = FMath::TruncToInt(FMath::Sqrt(NumVoxelDistanceSamples / (2.0f * (float)PI)));
 	const int32 NumPhiSteps = FMath::TruncToInt(NumThetaSteps * (float)PI);
+	SampleDirections.Reserve(2 * NumThetaSteps * NumPhiSteps);
 	FRandomStream RandomStream(0);
 	// Compute the upper samples
 	GenerateHemisphereSamples(NumThetaSteps, NumPhiSteps, RandomStream, SampleDirections);
@@ -218,6 +220,7 @@ void FGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* Ge
 	rtcUnmapBuffer(EmbreeScene, GeomID, RTC_VERTEX_BUFFER);
 	rtcUnmapBuffer(EmbreeScene, GeomID, RTC_INDEX_BUFFER);
 
+	rtcCommit(EmbreeScene);
 	RTCError ReturnError = rtcDeviceGetError(EmbreeDevice);
 	if (ReturnError != RTC_NO_ERROR)
 	{
@@ -230,8 +233,7 @@ void FGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* Ge
 
 	// Distance Field volume always larger than bounding box
 	TArray<FVector4> DistanceFieldData;
-	DistanceFieldData.Empty(DistanceFieldDimension.X * DistanceFieldDimension.Y);
-
+	DistanceFieldData.AddZeroed(DistanceFieldDimension.X * DistanceFieldDimension.Y);
 	const float VolumeScale = 1.3f;
 	FBox MeshBox(Bounds.GetBox());
 	FBox DistanceFieldVolumeBox = FBox(MeshBox.GetCenter() - VolumeScale * MeshBox.GetExtent(), MeshBox.GetCenter() + VolumeScale * MeshBox.GetExtent());
@@ -245,7 +247,7 @@ void FGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* Ge
 		{
 			for (int32 XIndex = 0; XIndex < DistanceFieldDimension.X; XIndex++)
 			{
-				const FVector VoxelPosition = FVector(XIndex + .5f, YIndex + .5f, i + .5f) * DistanceFieldVoxelSize + Bounds.GetBox().Min;
+				const FVector VoxelPosition = FVector(XIndex + 0.5f, i + 0.5f, DistanceFieldDimension.Y - YIndex + 0.5f) * DistanceFieldVoxelSize + Bounds.GetBox().Min;
 				const int32 Index = (i * DistanceFieldDimension.Y * DistanceFieldDimension.X + YIndex * DistanceFieldDimension.X + XIndex);
 
 				float MinDistance = DistanceFieldVolumeMaxDistance;
@@ -306,23 +308,74 @@ void FGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* Ge
 				const float FinalVolumeSpaceDistance = FMath::Min(MinDistance, DistanceFieldVolumeMaxDistance) / DistanceFieldVolumeBox.GetExtent().GetMax();
 				const int32 CurIndex = YIndex * DistanceFieldDimension.X + XIndex;
 				float* Data = nullptr;
-				if (DistanceFieldData.Num() <= CurIndex)
-				{
-					auto& CurValue = DistanceFieldData.AddZeroed_GetRef();
-					Data = reinterpret_cast<float*>(&CurValue);
-				}
-				else
 				{
 					Data = reinterpret_cast<float*>(DistanceFieldData.GetData() + CurIndex);
 				}
-				*(Data + i) = FinalVolumeSpaceDistance;
+				*(Data + 1) = FinalVolumeSpaceDistance;
+				// #TODO
+				*(Data + 0) = 1.f;
 			}
 		}
 	}
 
-	//TargetTex->UpdateTextureRegions(0)
+	rtcDeleteScene(EmbreeScene);
+	rtcDeleteDevice(EmbreeDevice);
+
+	FString TextureName = TEXT("Tex_ShadowFakery_1");
+	FString PackageName = TEXT("/Game/ShadowFakeryTextures/");
+	PackageName += TextureName;
+	UPackage* Package = CreatePackage(NULL, *PackageName);
+	Package->FullyLoad();
+
+	UTexture2D* TargetTex = NewObject<UTexture2D>(Package, *TextureName, RF_Public | RF_Standalone | RF_MarkAsRootSet);
+	TargetTex->AddToRoot();				// This line prevents garbage collection of the texture
+	TargetTex->PlatformData = new FTexturePlatformData();	// Then we initialize the PlatformData
+	TargetTex->PlatformData->SizeX = DistanceFieldDimension.X;
+	TargetTex->PlatformData->SizeY = DistanceFieldDimension.Y;
+	TargetTex->PlatformData->SetNumSlices(1);
+	TargetTex->PlatformData->PixelFormat = EPixelFormat::PF_A32B32G32R32F;
+
+	int32 SizeX = TargetTex->GetSizeX();
+	int32 SizeY = TargetTex->GetSizeY();
+	/*if (DistanceFieldDimension.X <= SizeX && DistanceFieldDimension.Y <= SizeY)
+	{
+		FUpdateTextureRegion2D UpdateRegion(0, 0, 0, 0, DistanceFieldDimension.X, DistanceFieldDimension.Y);
+		TargetTex->UpdateTextureRegions(0, 1, &UpdateRegion, DistanceFieldDimension.X * sizeof(FVector4), sizeof(FVector4), (uint8*)DistanceFieldData.GetData());
+	}*/
+
+	/*TArray<float> DistanceFieldDataHalf;
+	DistanceFieldDataHalf.Reserve(DistanceFieldDimension.X* DistanceFieldDimension.Y * 4);
+	for (int32 j = 0; j < DistanceFieldDimension.Y; ++j)
+		for (int32 i = 0; i < DistanceFieldDimension.X; ++i)
+		{
+			DistanceFieldDataHalf.Add(1.f);
+			DistanceFieldDataHalf.Add(0);
+			DistanceFieldDataHalf.Add(0);
+			DistanceFieldDataHalf.Add(1.f);
+		}
+
+	for (auto& Iter : DistanceFieldData)
+		Iter = FVector4(1.f, 1.f, 1.f, 1.f);*/
+
+	FTexture2DMipMap* Mip = new(TargetTex->PlatformData->Mips) FTexture2DMipMap();
+	Mip->SizeX = DistanceFieldDimension.X;
+	Mip->SizeY = DistanceFieldDimension.Y;
+
+	// Lock the texture so it can be modified
+	Mip->BulkData.Lock(LOCK_READ_WRITE);
+	uint8* TextureData = (uint8*)Mip->BulkData.Realloc(DistanceFieldDimension.X * DistanceFieldDimension.Y * 4 * sizeof(float));
+	FMemory::Memcpy(TextureData, DistanceFieldData.GetData(), sizeof(float) * DistanceFieldDimension.X * DistanceFieldDimension.Y * 4);
+	Mip->BulkData.Unlock();
+
+
+	TargetTex->UpdateResource();
+	Package->MarkPackageDirty();
+	FAssetRegistryModule::AssetCreated(TargetTex);
+
+	FString PackageFileName = FPackageName::LongPackageNameToFilename(PackageName, FPackageName::GetAssetPackageExtension());
+	bool bSaved = UPackage::SavePackage(Package, TargetTex, EObjectFlags::RF_Public | EObjectFlags::RF_Standalone, *PackageFileName, GError, nullptr, true, true, SAVE_NoError);
 }
 
-FGenerateDistanceFieldTexture::~FGenerateDistanceFieldTexture()
-{
-}
+//UGenerateDistanceFieldTexture::~UGenerateDistanceFieldTexture()
+//{
+//}

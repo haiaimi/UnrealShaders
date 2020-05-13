@@ -3,6 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
+#include "GenerateDistanceFieldTexture.generated.h"
 
 class UStaticMesh;
 class UTexture2D;
@@ -10,17 +12,20 @@ class UTexture2D;
 /**
  * Make Distance Field for a primitive, more in MeshDistanceFieldUtilities.cpp
  */
-class SHADOWFAKERY_API FGenerateDistanceFieldTexture
+UCLASS()
+class SHADOWFAKERY_API UGenerateDistanceFieldTexture : public UBlueprintFunctionLibrary
 {
+	GENERATED_BODY()
 public:
-	FGenerateDistanceFieldTexture();
+	UGenerateDistanceFieldTexture();
 
 	//FGenerateDistanceFieldTexture(UStaticMesh* GenerateStaticMesh);
 
 	/**
 	 * Generate distance field data by using embree, we can also use kd tree
 	 */
-	void GenerateDistanceFieldTexture(UStaticMesh* GenerateStaticMesh, FIntVector DistanceFieldDimension, UTexture2D* TargetTex);
+	UFUNCTION(BlueprintCallable)
+	static void GenerateDistanceFieldTexture(UStaticMesh* GenerateStaticMesh, FIntVector DistanceFieldDimension);
 
-	~FGenerateDistanceFieldTexture();
+	//~UGenerateDistanceFieldTexture();
 };
