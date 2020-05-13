@@ -1,5 +1,6 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
-
+using System;
+using System.IO;
 using UnrealBuildTool;
 
 public class ShadowFakery : ModuleRules
@@ -24,9 +25,10 @@ public class ShadowFakery : ModuleRules
         if (Target.Platform == UnrealTargetPlatform.Win64)
         {
             string SDKDir = Target.UEThirdPartySourceDirectory + "IntelEmbree/Embree270/Win64/";
+            string LibraryPath = Path.Combine(ModuleDirectory, "../ThirdParty/");
 
             PublicIncludePaths.Add(SDKDir + "include");
-            PublicAdditionalLibraries.Add(SDKDir + "lib/embree.lib");
+            PublicAdditionalLibraries.Add(LibraryPath + "Embree/lib/embree.lib");
             RuntimeDependencies.Add("$(EngineDir)/Binaries/Win64/embree.dll");
             RuntimeDependencies.Add("$(EngineDir)/Binaries/Win64/tbb.dll", Target.UEThirdPartySourceDirectory + "IntelEmbree/Embree2140/Win64/lib/tbb.dll"); // Take latest version to avoid overwriting the editor's copy
             RuntimeDependencies.Add("$(EngineDir)/Binaries/Win64/tbbmalloc.dll", Target.UEThirdPartySourceDirectory + "IntelEmbree/Embree2140/Win64/lib/tbbmalloc.dll");
