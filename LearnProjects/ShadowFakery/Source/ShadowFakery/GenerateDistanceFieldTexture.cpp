@@ -79,7 +79,7 @@ void EmbreeFilterFunc(void* UserPtr, RTCRay& InRay)
 }
 
 
-void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* GenerateStaticMesh, FIntVector DistanceFieldDimension)
+void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* GenerateStaticMesh, FIntVector DistanceFieldDimension, float MakeDFRadius)
 {
 	if (!GenerateStaticMesh)return;
 
@@ -327,7 +327,9 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* Ge
 			}
 		}
 	}
-	float MaxRadius = 32;
+	TArray<FVector4> FinalData;
+	FinalData.Reserve(DistanceFieldDimension.Y * DistanceFieldDimension.X);
+	const float MaxRadius = MakeDFRadius;
 
 	for (int32 YIndex = 0; YIndex < DistanceFieldDimension.Y; ++YIndex)
 	{
@@ -343,9 +345,9 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* Ge
 					FVector2D Offset(i, j);
 					if (Offset.Size() > MinDist)
 						continue;
-					if (i + XIndex < 0 || i + XIndex >= DistanceFieldDimension.X)
+					if ((i + XIndex) < 0 || (i + XIndex) >= DistanceFieldDimension.X)
 						continue;
-					if (j + YIndex < 0 || j + YIndex >= DistanceFieldDimension.Y)
+					if ((j + YIndex) < 0 || (j + YIndex) >= DistanceFieldDimension.Y)
 						continue;
 
 					int32 CurIndex = (YIndex + j) * DistanceFieldDimension.X + (XIndex + i);
@@ -356,9 +358,9 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* Ge
 					}
 				}
 			}
-			float Result = (MinDist - 0.5f) / (MaxRadius - 0.5f);
+			float Result = (MinDist) / (MaxRadius);
 			Result *= (StartSample == 0.f) ? -1.f : 1.f;
-			DistanceFieldData[StartIndex].X = (Result + 1.f) * 0.5f;
+			FinalData.Add(FVector4((Result + 1.f) * 0.5f, 0.f, 0.f, 0.f));
 		}
 	}
 
@@ -408,7 +410,7 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* Ge
 	// Lock the texture so it can be modified
 	Mip->BulkData.Lock(LOCK_READ_WRITE);
 	uint8* TextureData = (uint8*)Mip->BulkData.Realloc(DistanceFieldDimension.X * DistanceFieldDimension.Y * 4 * sizeof(float));
-	FMemory::Memcpy(TextureData, DistanceFieldData.GetData(), sizeof(float) * DistanceFieldDimension.X * DistanceFieldDimension.Y * 4);
+	FMemory::Memcpy(TextureData, FinalData.GetData(), sizeof(float) * DistanceFieldDimension.X * DistanceFieldDimension.Y * 4);
 	Mip->BulkData.Unlock();
 
 

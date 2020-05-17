@@ -25,7 +25,7 @@ public:
 	 * Generate distance field data by using embree, we can also use kd tree
 	 */
 	UFUNCTION(BlueprintCallable)
-	static void GenerateDistanceFieldTexture(UStaticMesh* GenerateStaticMesh, FIntVector DistanceFieldDimension);
+	static void GenerateDistanceFieldTexture(UStaticMesh* GenerateStaticMesh, FIntVector DistanceFieldDimension, float MakeDFRadius = 16.f);
 
 	//~UGenerateDistanceFieldTexture();
 };
