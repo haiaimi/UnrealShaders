@@ -238,16 +238,24 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* Ge
 	FBox MeshBox(Bounds.GetBox());
 	FBox DistanceFieldVolumeBox = FBox(MeshBox.GetCenter() - VolumeScale * MeshBox.GetExtent(), MeshBox.GetCenter() + VolumeScale * MeshBox.GetExtent());
 	const float DistanceFieldVolumeMaxDistance = DistanceFieldVolumeBox.GetExtent().Size();
-	const FVector DistanceFieldVoxelSize(DistanceFieldVolumeBox.GetSize() / FVector(DistanceFieldDimension.X, DistanceFieldDimension.Y, DistanceFieldDimension.Z));
+	const FVector DistanceFieldVoxelSize(DistanceFieldVolumeBox.GetSize() / FVector(DistanceFieldDimension.X, DistanceFieldDimension.Z, DistanceFieldDimension.Y));
 	const float VoxelDiameterSqr = DistanceFieldVoxelSize.Size();
+	const FVector DistanceFieldVolumeExtent = DistanceFieldVolumeBox.GetExtent();
+	const FVector StartPos[4] = { DistanceFieldVolumeBox.Min + FVector(0.f, 2 * DistanceFieldVolumeExtent.Y, 0.f),
+							DistanceFieldVolumeBox.Min + FVector(2 * DistanceFieldVolumeExtent.X, 2 * DistanceFieldVolumeExtent.Y, 0.f),
+							DistanceFieldVolumeBox.Min + FVector(2 * DistanceFieldVolumeExtent.X, 0.f, 0.f),
+							DistanceFieldVolumeBox.Min + FVector(0.f, 0.f, 0.f) };
+	const FVector HoriAddDir[4] = { FVector(1.f, 0.f, 0.f), FVector(0.f, -1.f, 0.f), FVector(-1.f, 0.f, 0.f), FVector(0.f, 1.f, 0.f) };
 
 	for (int32 i = 0; i < 1; ++i)
 	{
+		const int32 XSign = (i % 2) == 0 ? ((i / 2 == 0) ? 1 : -1) : 0;
+		const int32 YSign = (i % 2) ? ((i / 2) ? 1 : -1) : 0;
 		for (int32 YIndex = 0; YIndex < DistanceFieldDimension.Y; YIndex++)
 		{
 			for (int32 XIndex = 0; XIndex < DistanceFieldDimension.X; XIndex++)
 			{
-				const FVector VoxelPosition = FVector(XIndex + 0.5f, i + 0.5f, DistanceFieldDimension.Y - YIndex + 0.5f) * DistanceFieldVoxelSize + Bounds.GetBox().Min;
+				const FVector VoxelPosition = FVector(XSign * XIndex, YSign * YIndex, DistanceFieldDimension.Y - YIndex) * DistanceFieldVoxelSize + StartPos[i];
 				const int32 Index = (i * DistanceFieldDimension.Y * DistanceFieldDimension.X + YIndex * DistanceFieldDimension.X + XIndex);
 
 				float MinDistance = DistanceFieldVolumeMaxDistance;
@@ -255,11 +263,13 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* Ge
 				int32 HitBack = 0;
 
 				// Begin detect
-				for (int32 SampleIndex = 0; SampleIndex < SampleDirections.Num(); ++SampleIndex)
-				{
-					const FVector UnitRayDir = SampleDirections[SampleIndex];
+				//for (int32 SampleIndex = 0; SampleIndex < SampleDirections.Num(); ++SampleIndex)
+				
+					//const FVector UnitRayDir = SampleDirections[SampleIndex];
+					const FVector UnitRayDir = HoriAddDir[(i + 1) % 4];
 					const FVector EndPosition = VoxelPosition + UnitRayDir * DistanceFieldVolumeMaxDistance;
 
+					float FinalVolumeSpaceDistance = 1.f;
 					// If cur ray don't intersect with volume, skip
 					if (FMath::LineBoxIntersection(DistanceFieldVolumeBox, VoxelPosition, EndPosition, UnitRayDir))
 					{
@@ -277,44 +287,78 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* Ge
 
 						rtcIntersect(EmbreeScene, EmbreeRay);
 
+						
 						if (EmbreeRay.geomID != -1 && EmbreeRay.primID != -1)
 						{
-							Hit++;
-							const FVector GeoNormal = FVector(EmbreeRay.Ng[0], EmbreeRay.Ng[1], EmbreeRay.Ng[2]).GetSafeNormal();
+							FinalVolumeSpaceDistance = 0.f;
+							//Hit++;
+							//const FVector GeoNormal = FVector(EmbreeRay.Ng[0], EmbreeRay.Ng[1], EmbreeRay.Ng[2]).GetSafeNormal();
 
-							if (FVector::DotProduct(UnitRayDir, GeoNormal) > 0  // check weather the ray is in backface
-								&& EmbreeRay.ElementIndex == 0)
-							{
-								HitBack++;
-							}
+							//if (FVector::DotProduct(UnitRayDir, GeoNormal) > 0  // check weather the ray is in backface
+							//	&& EmbreeRay.ElementIndex == 0)
+							//{
+							//	HitBack++;
+							//}
 
-							const float CurrentDistance = DistanceFieldVolumeMaxDistance * EmbreeRay.tfar;
-							if (CurrentDistance < MinDistance)
-							{
-								MinDistance = CurrentDistance;
-							}
+							//const float CurrentDistance = DistanceFieldVolumeMaxDistance * EmbreeRay.tfar;
+							//if (CurrentDistance < MinDistance)
+							//{
+							//	MinDistance = CurrentDistance;
+							//}
 						}
 					}
-				}
-				const float UnsignedDistance = MinDistance;
-				// If more than 50% ray is in backface, the distance should < 0
-				MinDistance *= (Hit == 0 || HitBack < SampleDirections.Num() * 0.5f) ? 1 : -1;
+				
+				//const float UnsignedDistance = MinDistance;
+				//// If more than 50% ray is in backface, the distance should < 0
+				//MinDistance *= (Hit == 0 || HitBack < SampleDirections.Num() * 0.5f) ? 1 : -1;
 
-				if (FMath::Square(UnsignedDistance) < VoxelDiameterSqr && HitBack > .95f * Hit)
-				{
-					MinDistance = -UnsignedDistance;
-				}
+				//if (FMath::Square(UnsignedDistance) < VoxelDiameterSqr && HitBack > .95f * Hit)
+				//{
+				//	MinDistance = -UnsignedDistance;
+				//}
 
-				const float FinalVolumeSpaceDistance = FMath::Min(MinDistance, DistanceFieldVolumeMaxDistance) / DistanceFieldVolumeBox.GetExtent().GetMax();
+				//const float FinalVolumeSpaceDistance = FMath::Min(MinDistance, DistanceFieldVolumeMaxDistance) / DistanceFieldVolumeBox.GetExtent().GetMax();
 				const int32 CurIndex = YIndex * DistanceFieldDimension.X + XIndex;
 				float* Data = nullptr;
 				{
 					Data = reinterpret_cast<float*>(DistanceFieldData.GetData() + CurIndex);
 				}
-				*(Data + 1) = FinalVolumeSpaceDistance;
-				// #TODO
-				*(Data + 0) = 1.f;
+				*(Data + i) = FinalVolumeSpaceDistance;
 			}
+		}
+	}
+	float MaxRadius = 32;
+
+	for (int32 YIndex = 0; YIndex < DistanceFieldDimension.Y; ++YIndex)
+	{
+		for (int32 XIndex = 0; XIndex < DistanceFieldDimension.X; ++XIndex)
+		{
+			int32 StartIndex = YIndex * DistanceFieldDimension.X + XIndex;
+			float MinDist = MaxRadius;
+			float StartSample = DistanceFieldData[StartIndex].X;
+			for (int32 i = -MaxRadius; i < MaxRadius; ++i)
+			{
+				for (int32 j = -MaxRadius; j < MaxRadius; ++j)
+				{
+					FVector2D Offset(i, j);
+					if (Offset.Size() > MinDist)
+						continue;
+					if (i + XIndex < 0 || i + XIndex >= DistanceFieldDimension.X)
+						continue;
+					if (j + YIndex < 0 || j + YIndex >= DistanceFieldDimension.Y)
+						continue;
+
+					int32 CurIndex = (YIndex + j) * DistanceFieldDimension.X + (XIndex + i);
+					float CurSample = DistanceFieldData[CurIndex].X;
+					if (CurSample != StartSample)
+					{
+						MinDist = FMath::Min(MinDist, Offset.Size());
+					}
+				}
+			}
+			float Result = (MinDist - 0.5f) / (MaxRadius - 0.5f);
+			Result *= (StartSample == 0.f) ? -1.f : 1.f;
+			DistanceFieldData[StartIndex].X = (Result + 1.f) * 0.5f;
 		}
 	}
 
