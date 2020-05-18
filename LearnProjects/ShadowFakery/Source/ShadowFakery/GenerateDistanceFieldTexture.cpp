@@ -10,6 +10,7 @@
 #include <embree2/rtcore.h>
 #include <embree2/rtcore_ray.h>
 #include "AssetRegistryModule.h"
+#include "DrawDebugHelpers.h"
 
 static void GenerateHemisphereSamples(int32 NumThetaSteps, int32 NumPhiSteps, FRandomStream& RandomStream, TArray<FVector4>& Samples)
 {
@@ -79,7 +80,7 @@ void EmbreeFilterFunc(void* UserPtr, RTCRay& InRay)
 }
 
 
-void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* GenerateStaticMesh, FIntVector DistanceFieldDimension, float MakeDFRadius)
+void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* WorldContextObject, UStaticMesh* GenerateStaticMesh, int32 DistanceFieldSize, float StartDegree, float MakeDFRadius)
 {
 	if (!GenerateStaticMesh)return;
 
@@ -233,45 +234,63 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* Ge
 
 	// Distance Field volume always larger than bounding box
 	TArray<FVector4> DistanceFieldData;
-	DistanceFieldData.AddZeroed(DistanceFieldDimension.X * DistanceFieldDimension.Y);
-	const float VolumeScale = 1.3f;
+	DistanceFieldData.AddZeroed(DistanceFieldSize * DistanceFieldSize);
+	const float VolumeScale = 1.1f;
+
 	FBox MeshBox(Bounds.GetBox());
-	FBox DistanceFieldVolumeBox = FBox(MeshBox.GetCenter() - VolumeScale * MeshBox.GetExtent(), MeshBox.GetCenter() + VolumeScale * MeshBox.GetExtent());
-	const float DistanceFieldVolumeMaxDistance = DistanceFieldVolumeBox.GetExtent().Size();
-	const FVector DistanceFieldVoxelSize(DistanceFieldVolumeBox.GetSize() / FVector(DistanceFieldDimension.X, DistanceFieldDimension.Z, DistanceFieldDimension.Y));
+	const FVector MeshBoxExtent = MeshBox.GetExtent();
+	const float DFVoulmeRadius = FMath::Max(MeshBoxExtent.GetMax(), FMath::Sqrt(MeshBoxExtent.X * MeshBoxExtent.X + MeshBoxExtent.Y * MeshBoxExtent.Y));
+	
+	const FBox DistanceFieldVolumeBox = FBox(MeshBox.GetCenter() - VolumeScale * FVector(DFVoulmeRadius), MeshBox.GetCenter() +  VolumeScale * FVector(DFVoulmeRadius));
+	const float DistanceFieldVolumeMaxDistance = 2 * DistanceFieldVolumeBox.GetExtent().Size();
+	const FVector DistanceFieldVoxelSize(DistanceFieldVolumeBox.GetSize() / DistanceFieldSize);
 	const float VoxelDiameterSqr = DistanceFieldVoxelSize.Size();
-	const FVector DistanceFieldVolumeExtent = DistanceFieldVolumeBox.GetExtent();
+
+
+
+	/*const FVector DistanceFieldVolumeExtent = DistanceFieldVolumeBox.GetExtent();
 	const FVector StartPos[4] = { DistanceFieldVolumeBox.Min + FVector(0.f, 2 * DistanceFieldVolumeExtent.Y, 0.f),
 							DistanceFieldVolumeBox.Min + FVector(2 * DistanceFieldVolumeExtent.X, 2 * DistanceFieldVolumeExtent.Y, 0.f),
 							DistanceFieldVolumeBox.Min + FVector(2 * DistanceFieldVolumeExtent.X, 0.f, 0.f),
 							DistanceFieldVolumeBox.Min + FVector(0.f, 0.f, 0.f) };
-	const FVector HoriAddDir[4] = { FVector(1.f, 0.f, 0.f), FVector(0.f, -1.f, 0.f), FVector(-1.f, 0.f, 0.f), FVector(0.f, 1.f, 0.f) };
+	const FVector HoriAddDir[4] = { FVector(1.f, 0.f, 0.f), FVector(0.f, -1.f, 0.f), FVector(-1.f, 0.f, 0.f), FVector(0.f, 1.f, 0.f) };*/
+	float StartRadian = FMath::DegreesToRadians(StartDegree);
+	float StartPitchDegree = 0.f;
 
-	for (int32 i = 0; i < 1; ++i)
+	static const float PitchStepDegree = 30.f;
+	FVector LookDir = FVector(FMath::Cos(FMath::DegreesToRadians(StartPitchDegree)) * FMath::Cos(StartRadian), FMath::Cos(FMath::DegreesToRadians(StartPitchDegree)) * FMath::Sin(StartRadian), FMath::Sin(FMath::DegreesToRadians(StartPitchDegree))).GetSafeNormal();
+	const FVector LookLeft = FVector::CrossProduct(FVector::UpVector, LookDir).GetSafeNormal();
+
+	for (int32 i = 0; i < 4; ++i)
 	{
-		const int32 XSign = (i % 2) == 0 ? ((i / 2 == 0) ? 1 : -1) : 0;
-		const int32 YSign = (i % 2) ? ((i / 2) ? 1 : -1) : 0;
-		for (int32 YIndex = 0; YIndex < DistanceFieldDimension.Y; YIndex++)
+		LookDir = FVector(FMath::Cos(FMath::DegreesToRadians(StartPitchDegree)) * FMath::Cos(StartRadian), FMath::Cos(FMath::DegreesToRadians(StartPitchDegree)) * FMath::Sin(StartRadian), FMath::Sin(FMath::DegreesToRadians(StartPitchDegree))).GetSafeNormal();
+		const FVector LookUp = FVector::CrossProduct(LookDir, LookLeft).GetSafeNormal();
+		const FVector Min = DistanceFieldVolumeBox.GetCenter() + LookDir * DFVoulmeRadius + LookLeft * DFVoulmeRadius - LookUp * DFVoulmeRadius;
+		StartPitchDegree += PitchStepDegree;
+		
+		for (int32 YIndex = 0; YIndex < DistanceFieldSize; YIndex++)
 		{
-			for (int32 XIndex = 0; XIndex < DistanceFieldDimension.X; XIndex++)
+			for (int32 XIndex = 0; XIndex < DistanceFieldSize; XIndex++)
 			{
-				const FVector VoxelPosition = FVector(XSign * XIndex, YSign * YIndex, DistanceFieldDimension.Y - YIndex) * DistanceFieldVoxelSize + StartPos[i];
-				const int32 Index = (i * DistanceFieldDimension.Y * DistanceFieldDimension.X + YIndex * DistanceFieldDimension.X + XIndex);
+				const FVector VoxelPosition = -LookLeft * XIndex * DistanceFieldVoxelSize.X + LookUp * (DistanceFieldSize - YIndex) * DistanceFieldVoxelSize.Y + Min;
 
 				float MinDistance = DistanceFieldVolumeMaxDistance;
 				int32 Hit = 0;
 				int32 HitBack = 0;
 
+				/*if (i == 1)
+					DrawDebugLine(WorldContextObject->GetWorld(), VoxelPosition, VoxelPosition + LookDir * -DistanceFieldVolumeMaxDistance, FColor::Red, true, 100.f);*/
+
 				// Begin detect
 				//for (int32 SampleIndex = 0; SampleIndex < SampleDirections.Num(); ++SampleIndex)
 				
 					//const FVector UnitRayDir = SampleDirections[SampleIndex];
-					const FVector UnitRayDir = HoriAddDir[(i + 1) % 4];
+					const FVector UnitRayDir = -LookDir;
 					const FVector EndPosition = VoxelPosition + UnitRayDir * DistanceFieldVolumeMaxDistance;
 
 					float FinalVolumeSpaceDistance = 1.f;
 					// If cur ray don't intersect with volume, skip
-					if (FMath::LineBoxIntersection(DistanceFieldVolumeBox, VoxelPosition, EndPosition, UnitRayDir))
+					//if (FMath::LineBoxIntersection(DistanceFieldVolumeBox, VoxelPosition, EndPosition, UnitRayDir))
 					{
 						FEmbreeRay EmbreeRay;
 
@@ -318,7 +337,7 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* Ge
 				//}
 
 				//const float FinalVolumeSpaceDistance = FMath::Min(MinDistance, DistanceFieldVolumeMaxDistance) / DistanceFieldVolumeBox.GetExtent().GetMax();
-				const int32 CurIndex = YIndex * DistanceFieldDimension.X + XIndex;
+				const int32 CurIndex = YIndex * DistanceFieldSize + XIndex;
 				float* Data = nullptr;
 				{
 					Data = reinterpret_cast<float*>(DistanceFieldData.GetData() + CurIndex);
@@ -328,39 +347,47 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* Ge
 		}
 	}
 	TArray<FVector4> FinalData;
-	FinalData.Reserve(DistanceFieldDimension.Y * DistanceFieldDimension.X);
+	FinalData.Reserve(DistanceFieldSize * DistanceFieldSize);
 	const float MaxRadius = MakeDFRadius;
-
-	for (int32 YIndex = 0; YIndex < DistanceFieldDimension.Y; ++YIndex)
+	const FVector4 VecMaxRadius(MakeDFRadius, MakeDFRadius, MakeDFRadius, MakeDFRadius);
+	for (int32 YIndex = 0; YIndex < DistanceFieldSize; ++YIndex)
 	{
-		for (int32 XIndex = 0; XIndex < DistanceFieldDimension.X; ++XIndex)
+		for (int32 XIndex = 0; XIndex < DistanceFieldSize; ++XIndex)
 		{
-			int32 StartIndex = YIndex * DistanceFieldDimension.X + XIndex;
-			float MinDist = MaxRadius;
-			float StartSample = DistanceFieldData[StartIndex].X;
+			int32 StartIndex = YIndex * DistanceFieldSize + XIndex;
+			FVector4 MinDist(MaxRadius, MaxRadius, MaxRadius, MaxRadius);
+			FVector4 StartSample = DistanceFieldData[StartIndex];
+			float* StartSamplePtr = reinterpret_cast<float*>(&StartSample);
+			float* MinDistPtr = reinterpret_cast<float*>(&MinDist);
 			for (int32 i = -MaxRadius; i < MaxRadius; ++i)
 			{
 				for (int32 j = -MaxRadius; j < MaxRadius; ++j)
 				{
-					FVector2D Offset(i, j);
-					if (Offset.Size() > MinDist)
+					float CurLength = FMath::Sqrt(i * i + j * j);
+					if ((i + XIndex) < 0 || (i + XIndex) >= DistanceFieldSize)
 						continue;
-					if ((i + XIndex) < 0 || (i + XIndex) >= DistanceFieldDimension.X)
-						continue;
-					if ((j + YIndex) < 0 || (j + YIndex) >= DistanceFieldDimension.Y)
+					if ((j + YIndex) < 0 || (j + YIndex) >= DistanceFieldSize)
 						continue;
 
-					int32 CurIndex = (YIndex + j) * DistanceFieldDimension.X + (XIndex + i);
-					float CurSample = DistanceFieldData[CurIndex].X;
-					if (CurSample != StartSample)
+					int32 CurIndex = (YIndex + j) * DistanceFieldSize + (XIndex + i);
+					FVector4 CurSample = DistanceFieldData[CurIndex];
+					float* CurSamplePtr = reinterpret_cast<float*>(&CurSample);
+					
+					for (int32 Field = 0; Field < 4; ++Field)
 					{
-						MinDist = FMath::Min(MinDist, Offset.Size());
+						if (*(StartSamplePtr + Field) != *(CurSamplePtr + Field))
+						{
+							*(MinDistPtr + Field) = FMath::Min(*(MinDistPtr + Field), CurLength);
+						}
 					}
 				}
 			}
-			float Result = (MinDist) / (MaxRadius);
-			Result *= (StartSample == 0.f) ? -1.f : 1.f;
-			FinalData.Add(FVector4((Result + 1.f) * 0.5f, 0.f, 0.f, 0.f));
+			MinDist /= VecMaxRadius;
+			for (int32 Field = 0; Field < 4; ++Field)
+			{
+				*(MinDistPtr + Field) *= (*(StartSamplePtr + Field) == 0.f) ? -1.f : 1.f;
+			}
+			FinalData.Add(FVector4(1.f, 1.f, 1.f, 1.f) - (MinDist + FVector4(1.f, 1.f, 1.f, 1.f)) * 0.5f);
 		}
 	}
 
@@ -376,8 +403,8 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* Ge
 	UTexture2D* TargetTex = NewObject<UTexture2D>(Package, *TextureName, RF_Public | RF_Standalone | RF_MarkAsRootSet);
 	TargetTex->AddToRoot();				// This line prevents garbage collection of the texture
 	TargetTex->PlatformData = new FTexturePlatformData();	// Then we initialize the PlatformData
-	TargetTex->PlatformData->SizeX = DistanceFieldDimension.X;
-	TargetTex->PlatformData->SizeY = DistanceFieldDimension.Y;
+	TargetTex->PlatformData->SizeX = DistanceFieldSize;
+	TargetTex->PlatformData->SizeY = DistanceFieldSize;
 	TargetTex->PlatformData->SetNumSlices(1);
 	TargetTex->PlatformData->PixelFormat = EPixelFormat::PF_A32B32G32R32F;
 
@@ -404,13 +431,13 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(UStaticMesh* Ge
 		Iter = FVector4(1.f, 1.f, 1.f, 1.f);*/
 
 	FTexture2DMipMap* Mip = new(TargetTex->PlatformData->Mips) FTexture2DMipMap();
-	Mip->SizeX = DistanceFieldDimension.X;
-	Mip->SizeY = DistanceFieldDimension.Y;
+	Mip->SizeX = DistanceFieldSize;
+	Mip->SizeY = DistanceFieldSize;
 
 	// Lock the texture so it can be modified
 	Mip->BulkData.Lock(LOCK_READ_WRITE);
-	uint8* TextureData = (uint8*)Mip->BulkData.Realloc(DistanceFieldDimension.X * DistanceFieldDimension.Y * 4 * sizeof(float));
-	FMemory::Memcpy(TextureData, FinalData.GetData(), sizeof(float) * DistanceFieldDimension.X * DistanceFieldDimension.Y * 4);
+	uint8* TextureData = (uint8*)Mip->BulkData.Realloc(DistanceFieldSize * DistanceFieldSize * 4 * sizeof(float));
+	FMemory::Memcpy(TextureData, FinalData.GetData(), sizeof(float) * DistanceFieldSize * DistanceFieldSize * 4);
 	Mip->BulkData.Unlock();
 
 
