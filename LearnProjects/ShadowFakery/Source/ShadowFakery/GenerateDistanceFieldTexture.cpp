@@ -407,6 +407,8 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 	TargetTex->PlatformData->SizeY = DistanceFieldSize;
 	TargetTex->PlatformData->SetNumSlices(1);
 	TargetTex->PlatformData->PixelFormat = EPixelFormat::PF_A32B32G32R32F;
+	TargetTex->AddressX = TextureAddress::TA_Clamp;
+	TargetTex->AddressY = TextureAddress::TA_Clamp;
 
 	int32 SizeX = TargetTex->GetSizeX();
 	int32 SizeY = TargetTex->GetSizeY();
