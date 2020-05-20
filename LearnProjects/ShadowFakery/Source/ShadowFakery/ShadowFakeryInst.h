@@ -19,11 +19,29 @@ protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
+#if WITH_EDITOR
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)override;
+#endif
+
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
+	virtual bool ShouldTickIfViewportsOnly()const override
+	{
+		return true;
+	}
+
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	class UStaticMeshComponent* ShadowMeshCompent;
+
+	UPROPERTY(EditAnywhere)
+	FName SunYawParam;
+
+	UPROPERTY(EditAnywhere)
+	FName SunDirectionParam;
+
+private:
+	class ADirectionalLight* SceneLight;
 };
