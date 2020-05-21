@@ -235,17 +235,17 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 	// Distance Field volume always larger than bounding box
 	TArray<FVector4> DistanceFieldData;
 	DistanceFieldData.AddZeroed(DistanceFieldSize * DistanceFieldSize);
-	const float VolumeScale = 1.1f;
+	const float VolumeScale = 1.2f;
 
 	FBox MeshBox(Bounds.GetBox());
 	const FVector MeshBoxExtent = MeshBox.GetExtent();
-	const float DFVoulmeRadius = FMath::Max(MeshBoxExtent.GetMax(), FMath::Sqrt(MeshBoxExtent.X * MeshBoxExtent.X + MeshBoxExtent.Y * MeshBoxExtent.Y));
+	const float DFVoulmeRadius = FMath::Max(MeshBoxExtent.GetMax() * 1.7f, MeshBoxExtent.Size()) * VolumeScale;
 	
-	const FBox DistanceFieldVolumeBox = FBox(MeshBox.GetCenter() - VolumeScale * FVector(DFVoulmeRadius), MeshBox.GetCenter() +  VolumeScale * FVector(DFVoulmeRadius));
+	const FBox DistanceFieldVolumeBox = FBox(MeshBox.GetCenter() - FVector(DFVoulmeRadius * 1.7f / 3.f) , MeshBox.GetCenter() + FVector(DFVoulmeRadius * 1.7f / 3.f));
 	const float DistanceFieldVolumeMaxDistance = 2 * DistanceFieldVolumeBox.GetExtent().Size();
 	const FVector DistanceFieldVoxelSize(DistanceFieldVolumeBox.GetSize() / DistanceFieldSize);
 	const float VoxelDiameterSqr = DistanceFieldVoxelSize.Size();
-
+	const float DFVoulmeWidth = DistanceFieldVolumeBox.GetSize().X / 2.f;
 
 
 	/*const FVector DistanceFieldVolumeExtent = DistanceFieldVolumeBox.GetExtent();
@@ -265,7 +265,8 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 	{
 		LookDir = FVector(FMath::Cos(FMath::DegreesToRadians(StartPitchDegree)) * FMath::Cos(StartRadian), FMath::Cos(FMath::DegreesToRadians(StartPitchDegree)) * FMath::Sin(StartRadian), FMath::Sin(FMath::DegreesToRadians(StartPitchDegree))).GetSafeNormal();
 		const FVector LookUp = FVector::CrossProduct(LookDir, LookLeft).GetSafeNormal();
-		const FVector Min = DistanceFieldVolumeBox.GetCenter() + LookDir * DFVoulmeRadius + LookLeft * DFVoulmeRadius - LookUp * DFVoulmeRadius;
+		
+		const FVector Min = DistanceFieldVolumeBox.GetCenter() + LookDir * DFVoulmeWidth + LookLeft * DFVoulmeWidth - LookUp * DFVoulmeWidth;
 		StartPitchDegree += PitchStepDegree;
 		
 		for (int32 YIndex = 0; YIndex < DistanceFieldSize; YIndex++)
@@ -278,8 +279,8 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 				int32 Hit = 0;
 				int32 HitBack = 0;
 
-				/*if (i == 1)
-					DrawDebugLine(WorldContextObject->GetWorld(), VoxelPosition, VoxelPosition + LookDir * -DistanceFieldVolumeMaxDistance, FColor::Red, true, 100.f);*/
+				if (i == 0)
+					DrawDebugLine(WorldContextObject->GetWorld(), VoxelPosition, VoxelPosition + LookDir * -DistanceFieldVolumeMaxDistance, FColor::Red, true, 100.f);
 
 				// Begin detect
 				//for (int32 SampleIndex = 0; SampleIndex < SampleDirections.Num(); ++SampleIndex)

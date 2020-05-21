@@ -34,7 +34,13 @@ public:
 
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
+	class UStaticMeshComponent* ObjectMeshCompent;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	class UStaticMeshComponent* ShadowMeshCompent;
+
+	UPROPERTY(EditAnywhere)
+	float ShadowMaskCutOffset;
 
 	UPROPERTY(EditAnywhere)
 	FName SunYawParam;
@@ -44,4 +50,6 @@ public:
 
 private:
 	class ADirectionalLight* SceneLight;
+
+	FVector MaskCutDir;
 };

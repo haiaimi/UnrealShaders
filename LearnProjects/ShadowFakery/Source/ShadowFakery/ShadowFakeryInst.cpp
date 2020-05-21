@@ -14,9 +14,13 @@ AShadowFakeryInst::AShadowFakeryInst()
 	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.bStartWithTickEnabled = true;
 
+	ObjectMeshCompent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Object"));
 	ShadowMeshCompent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Shadow"));
+	RootComponent = ObjectMeshCompent;
 	SceneLight = nullptr;
-
+	ShadowMaskCutOffset = 90.f;
+	const float OffsetRadian = FMath::DegreesToRadians(ShadowMaskCutOffset);
+	MaskCutDir = FVector(FMath::Cos(OffsetRadian), FMath::Sin(OffsetRadian), 0.f);
 	SunYawParam = TEXT("SunYaw");
 	SunDirectionParam = TEXT("SunForwardDirection");
 }
@@ -53,17 +57,22 @@ void AShadowFakeryInst::Tick(float DeltaTime)
 
 	if (SceneLight && MaterialInst)
 	{
+		const FVector CutDirWS = GetActorTransform().TransformVectorNoScale(MaskCutDir);
+		const FVector UpDirWS = GetActorUpVector();
+		const FVector RightDir = FVector::CrossProduct(CutDirWS, UpDirWS);
+		
 		FRotator Rotation = SceneLight->GetActorRotation();
+		const FVector LightDir = Rotation.Vector();
+		float SunYaw = (90.f - FMath::RadiansToDegrees(FMath::Acos(FVector::DotProduct(-LightDir, UpDirWS)))) * FMath::Sign(FVector::DotProduct(-LightDir, CutDirWS));
 
-		float SunYaw = -Rotation.Pitch;
 		if (FMath::IsNearlyZero(FMath::Abs(SunYaw) - 90.f))
 			SunYaw = FMath::Sign(SunYaw) * 89.000f;
 
-		Rotation.Normalize();
-		Rotation.Pitch = -SunYaw;
-		const FVector LightDir = Rotation.Vector();
+		UE_LOG(LogTemp, Log, TEXT("Current Sun Yaw: %4.4f"), SunYaw);
+		
 		MaterialInst->SetScalarParameterValue(SunYawParam, SunYaw);
-		MaterialInst->SetVectorParameterValue(SunDirectionParam, FLinearColor(LightDir) * -FMath::Loge(1.f - FMath::Cos(FMath::DegreesToRadians(SunYaw))));
+		//MaterialInst->SetVectorParameterValue(SunDirectionParam, FLinearColor(LightDir.GetSafeNormal2D()) * FMath::Abs(FMath::Tan(FMath::DegreesToRadians(90.f - FMath::Abs(SunYaw)))));
+		MaterialInst->SetVectorParameterValue(SunDirectionParam, FLinearColor(LightDir.GetSafeNormal2D()) * (1.f - FMath::Abs(SunYaw) / 90.f) * 5.f);
 	}
 }
 
