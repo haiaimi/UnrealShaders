@@ -279,8 +279,8 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 				int32 Hit = 0;
 				int32 HitBack = 0;
 
-				if (i == 0)
-					DrawDebugLine(WorldContextObject->GetWorld(), VoxelPosition, VoxelPosition + LookDir * -DistanceFieldVolumeMaxDistance, FColor::Red, true, 100.f);
+				/*if (i == 0)
+					DrawDebugLine(WorldContextObject->GetWorld(), VoxelPosition, VoxelPosition + LookDir * -DistanceFieldVolumeMaxDistance, FColor::Red, true, 100.f);*/
 
 				// Begin detect
 				//for (int32 SampleIndex = 0; SampleIndex < SampleDirections.Num(); ++SampleIndex)
