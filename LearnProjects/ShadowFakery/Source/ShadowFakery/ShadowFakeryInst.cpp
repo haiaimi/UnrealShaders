@@ -17,6 +17,7 @@ AShadowFakeryInst::AShadowFakeryInst()
 	ObjectMeshCompent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Object"));
 	ShadowMeshCompent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Shadow"));
 	RootComponent = ObjectMeshCompent;
+	ShadowMeshCompent->SetupAttachment(RootComponent);
 	SceneLight = nullptr;
 	ShadowMaskCutOffset = 90.f;
 	const float OffsetRadian = FMath::DegreesToRadians(ShadowMaskCutOffset);
@@ -63,7 +64,7 @@ void AShadowFakeryInst::Tick(float DeltaTime)
 		
 		FRotator Rotation = SceneLight->GetActorRotation();
 		const FVector LightDir = Rotation.Vector();
-		float SunYaw = (90.f - FMath::RadiansToDegrees(FMath::Acos(FVector::DotProduct(-LightDir, UpDirWS)))) * FMath::Sign(FVector::DotProduct(-LightDir, CutDirWS));
+		float SunYaw = (90.f - FMath::Clamp(FMath::RadiansToDegrees(FMath::Acos(FVector::DotProduct(-LightDir, UpDirWS))), 0.f, 90.f)) * FMath::Sign(FVector::DotProduct(-LightDir, CutDirWS));
 
 		if (FMath::IsNearlyZero(FMath::Abs(SunYaw) - 90.f))
 			SunYaw = FMath::Sign(SunYaw) * 89.000f;

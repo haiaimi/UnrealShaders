@@ -235,7 +235,7 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 	// Distance Field volume always larger than bounding box
 	TArray<FVector4> DistanceFieldData;
 	DistanceFieldData.AddZeroed(DistanceFieldSize * DistanceFieldSize);
-	const float VolumeScale = 1.2f;
+	const float VolumeScale = 1.05f;
 
 	FBox MeshBox(Bounds.GetBox());
 	const FVector MeshBoxExtent = MeshBox.GetExtent();

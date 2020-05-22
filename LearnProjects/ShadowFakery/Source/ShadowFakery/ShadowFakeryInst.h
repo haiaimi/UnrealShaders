@@ -41,7 +41,7 @@ public:
 
 	UPROPERTY(EditAnywhere)
 	float ShadowMaskCutOffset;
-
+	 
 	UPROPERTY(EditAnywhere)
 	FName SunYawParam;
 
