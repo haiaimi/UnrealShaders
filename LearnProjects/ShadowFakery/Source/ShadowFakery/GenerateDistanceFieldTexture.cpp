@@ -452,6 +452,3 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 	bool bSaved = UPackage::SavePackage(Package, TargetTex, EObjectFlags::RF_Public | EObjectFlags::RF_Standalone, *PackageFileName, GError, nullptr, true, true, SAVE_NoError);
 }
 
-//UGenerateDistanceFieldTexture::~UGenerateDistanceFieldTexture()
-//{
-//}

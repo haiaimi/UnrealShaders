@@ -20,8 +20,6 @@ AShadowFakeryInst::AShadowFakeryInst()
 	ShadowMeshCompent->SetupAttachment(RootComponent);
 	SceneLight = nullptr;
 	ShadowMaskCutOffset = 90.f;
-	const float OffsetRadian = FMath::DegreesToRadians(ShadowMaskCutOffset);
-	MaskCutDir = FVector(FMath::Cos(OffsetRadian), FMath::Sin(OffsetRadian), 0.f);
 	SunYawParam = TEXT("SunYaw");
 	SunDirectionParam = TEXT("SunForwardDirection");
 }
@@ -58,6 +56,8 @@ void AShadowFakeryInst::Tick(float DeltaTime)
 
 	if (SceneLight && MaterialInst)
 	{
+		const float OffsetRadian = FMath::DegreesToRadians(ShadowMaskCutOffset);
+		MaskCutDir = FVector(FMath::Cos(OffsetRadian), FMath::Sin(OffsetRadian), 0.f);
 		const FVector CutDirWS = GetActorTransform().TransformVectorNoScale(MaskCutDir);
 		const FVector UpDirWS = GetActorUpVector();
 		const FVector RightDir = FVector::CrossProduct(CutDirWS, UpDirWS);
