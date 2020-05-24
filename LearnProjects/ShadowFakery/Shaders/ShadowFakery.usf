@@ -1,0 +1,35 @@
+
+float4x4 ViewProjMatrix;
+
+struct FVertexInput
+{
+	float3 VertexPosition : ATTRIBUTE0;
+	
+	// #TODO following is world matrix
+	float4 WorldMatrixRow_0 : ATTRIBUTE1;
+	float4 WorldMatrixRow_1 : ATTRIBUTE2;
+	float4 WorldMatrixRow_2 : ATTRIBUTE3;
+	float4 WorldMatrixRow_3 : ATTRIBUTE4;
+	//float4x4 WorldMatrix : ATTRIBUTE1;
+	
+	float4 InstanceColor : ATTRIBUTE5;
+};
+
+void GenerateMeshMaskShaderVS(
+	in FVertexInput Input,
+	out float4 OutPosition : SV_Position,
+	out float4 OutColor : COLOR
+)
+{
+	float4x4 WorldViewProjMarix = mul(float4x4(Input.WorldMatrixRow_0, Input.WorldMatrixRow_1, Input.WorldMatrixRow_2, Input.WorldMatrixRow_3), ViewProjMatrix);
+	OutPosition = mul(float4(Input.VertexPosition, 1.f), WorldViewProjMarix);
+	OutPosition /= OutPosition.w;
+}
+
+void GenerateMeshMaskShaderPS(
+	in float4 InColor : COLOR,
+	out float4 OutColor : SV_Target0
+)
+{
+	OutColor = InColor;
+}

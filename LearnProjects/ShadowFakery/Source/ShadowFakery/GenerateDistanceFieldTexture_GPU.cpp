@@ -40,15 +40,17 @@ public:
 		Elements.Add(FVertexElement(0, 0, EVertexElementType::VET_Float3, 0, Stride));
 		uint32 Offset = 0;
 		Stride = sizeof(FDrawMaskInstance);
-		Elements.Add(FVertexElement(1, Offset, EVertexElementType::VET_Float4, Stride, sizeof(FVector4), true));
+		//For instance world matrix
+		Elements.Add(FVertexElement(1, Offset, EVertexElementType::VET_Float4, 1, Stride, true));
 		Offset += sizeof(FVector4);
-		Elements.Add(FVertexElement(1, Offset, EVertexElementType::VET_Float4, Stride, sizeof(FVector4), true));
+		Elements.Add(FVertexElement(1, Offset, EVertexElementType::VET_Float4, 2, Stride, true));
 		Offset += sizeof(FVector4);
-		Elements.Add(FVertexElement(1, Offset, EVertexElementType::VET_Float4, Stride, sizeof(FVector4), true));
+		Elements.Add(FVertexElement(1, Offset, EVertexElementType::VET_Float4, 3, Stride, true));
 		Offset += sizeof(FVector4);
-		Elements.Add(FVertexElement(1, Offset, EVertexElementType::VET_Float4, Stride, sizeof(FVector4), true));
+		Elements.Add(FVertexElement(1, Offset, EVertexElementType::VET_Float4, 4, Stride, true));
 		Offset += sizeof(FVector4);
-		Elements.Add(FVertexElement(1, Offset, EVertexElementType::VET_Float4, Stride, sizeof(FVector4), true));    //For instance color
+
+		Elements.Add(FVertexElement(1, Offset, EVertexElementType::VET_Float4, 5, Stride, true));    //For instance color
 		VertexDeclarationRHI = RHICreateVertexDeclaration(Elements);
 	}
 
@@ -156,8 +158,8 @@ private:
 	FShaderParameter ViewProjMatrix;
 };
 
-IMPLEMENT_SHADER_TYPE(, FGenerateMeshMaskShaderVS, TEXT("/Plugins/Shaders/Private/FFTWave.usf"), TEXT("GenerateMeshMaskShaderVS"), SF_Vertex)
-IMPLEMENT_SHADER_TYPE(, FGenerateMeshMaskShaderPS, TEXT("/Plugins/Shaders/Private/FFTWave.usf"), TEXT("GenerateMeshMaskShaderPS"), SF_Pixel)
+IMPLEMENT_SHADER_TYPE(, FGenerateMeshMaskShaderVS, TEXT("/Shaders/Private/ShadowFakery.usf"), TEXT("GenerateMeshMaskShaderVS"), SF_Vertex)
+IMPLEMENT_SHADER_TYPE(, FGenerateMeshMaskShaderPS, TEXT("/Shaders/Private/ShadowFakery.usf"), TEXT("GenerateMeshMaskShaderPS"), SF_Pixel)
 
 void GenerateMeshMaskTexture(FRHICommandList& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, class UStaticMesh* StaticMesh, float StartDegree, uint32 TextureSize)
 {
@@ -177,9 +179,18 @@ void GenerateMeshMaskTexture(FRHICommandList& RHICmdList, ERHIFeatureLevel::Type
 	//ModelInstance.SetNum(4);
 	ModelInstance.Emplace(FMatrix::Identity, FVector4(0.f, 0.f, 0.f, 1.f));
 	float BoundSize;
-	FOrthoMatrix OrthoProjMatrix(BoundSize, BoundSize, 1.f, 1.f);
-	FMatrix ViewMatrix;
-	FVector ViewOrigin;
+	FOrthoMatrix OrthoProjMatrix(BoundSize, BoundSize, 1.f, 0.f);
+	FMatrix ViewRotationMatrix = FInverseRotationMatrix(FRotator(0.f, 180.f, 0.f));
+	ViewRotationMatrix = ViewRotationMatrix * FMatrix(
+		FPlane(0, 0, 1, 0),
+		FPlane(1, 0, 0, 0),
+		FPlane(0, 1, 0, 0),
+		FPlane(0, 0, 0, 1));
+
+	FVector ViewOrigin(10000.f, 0.f, 0.f);
+	const FMatrix ViewMatrix = FTranslationMatrix(-ViewOrigin) * ViewRotationMatrix;
+	const FMatrix ViewProjMatrix = ViewMatrix * OrthoProjMatrix;
+
 	FRHIResourceCreateInfo CreateInfo;
 	FVertexBufferRHIRef MeshModelInstancedVB = RHICreateVertexBuffer(ModelInstance.Num()* sizeof(FDrawMaskInstance), BUF_Static | BUF_ShaderResource, CreateInfo);
 	void* MeshModelInstancedData = RHILockVertexBuffer(MeshModelInstancedVB, 0, ModelInstance.Num() * sizeof(FDrawMaskInstance), RLM_WriteOnly);
@@ -205,7 +216,7 @@ void GenerateMeshMaskTexture(FRHICommandList& RHICmdList, ERHIFeatureLevel::Type
 	FGraphicsPipelineStateInitializer GraphicPSPoint;
 	RHICmdList.ApplyCachedRenderTargets(GraphicPSPoint);
 	GraphicPSPoint.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
-	GraphicPSPoint.BlendState = TStaticBlendState<>::GetRHI();
+	GraphicPSPoint.BlendState = TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_One, BF_One>::GetRHI();
 	GraphicPSPoint.RasterizerState = TStaticRasterizerState<>::GetRHI();
 	GraphicPSPoint.PrimitiveType = PT_TriangleList;
 	GraphicPSPoint.BoundShaderState.VertexDeclarationRHI = VertexDeclaration.VertexDeclarationRHI;
