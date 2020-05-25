@@ -16,6 +16,4 @@ public:
 	~FGenerateDistanceFieldTexture_GPU();
 };
 
-
-
-static void GenerateMeshMaskTexture(FRHICommandList& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, class UStaticMesh* StaticMesh, float StartDegree, uint32 TextureSize);
+//static void GenerateMeshMaskTexture(FRHICommandList& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, class UStaticMesh* StaticMesh, float StartDegree, uint32 TextureSize);

@@ -17,19 +17,42 @@ struct FVertexInput
 
 void GenerateMeshMaskShaderVS(
 	in FVertexInput Input,
-	out float4 OutPosition : SV_Position,
-	out float4 OutColor : COLOR
+	out sample float4 OutColor : COLOR0,
+	out sample float4 OutPosition : SV_Position
 )
 {
 	float4x4 WorldViewProjMarix = mul(float4x4(Input.WorldMatrixRow_0, Input.WorldMatrixRow_1, Input.WorldMatrixRow_2, Input.WorldMatrixRow_3), ViewProjMatrix);
 	OutPosition = mul(float4(Input.VertexPosition, 1.f), WorldViewProjMarix);
 	OutPosition /= OutPosition.w;
+	OutColor = Input.InstanceColor;
 }
 
 void GenerateMeshMaskShaderPS(
-	in float4 InColor : COLOR,
-	out float4 OutColor : SV_Target0
+	in sample float4 InColor : COLOR0,
+	out sample float4 OutColor : SV_Target
 )
 {
 	OutColor = InColor;
+}
+
+void GenerateDistanceFieldShaderVS(
+	in float4 InPosition : ATTRIBUTE0,
+	in float2 UV : ATTRIBUTE1,
+	out float2 OutUV : TEXCOORD0,
+	out float4 OutPosition : SV_Position
+)
+{
+	OutPosition = InPosition;
+	OutUV = UV;
+}
+
+Texture2D<float4> MaskTexture;
+SamplerState TextureSampler;
+
+void GenerateDistanceFieldShaderPS(
+	in float2 OutUV : TEXCOORD0,
+	out float4 OutColor : SV_Target
+)
+{
+	
 }

@@ -11,6 +11,10 @@
 #include <embree2/rtcore_ray.h>
 #include "AssetRegistryModule.h"
 #include "DrawDebugHelpers.h"
+#include "Engine/Engine.h"
+#include "GenerateDistanceFieldTexture_GPU.h"
+
+extern void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, class UStaticMesh* StaticMesh, float StartDegree, uint32 TextureSize);
 
 static void GenerateHemisphereSamples(int32 NumThetaSteps, int32 NumPhiSteps, FRandomStream& RandomStream, TArray<FVector4>& Samples)
 {
@@ -80,14 +84,24 @@ void EmbreeFilterFunc(void* UserPtr, RTCRay& InRay)
 }
 
 
-void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* WorldContextObject, UStaticMesh* GenerateStaticMesh, int32 DistanceFieldSize, float StartDegree, float MakeDFRadius)
+void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* WorldContextObject, UStaticMesh* GenerateStaticMesh, int32 DistanceFieldSize, float StartDegree, float MakeDFRadius, bool bUseGPU)
 {
 	if (!GenerateStaticMesh)return;
+	
+	if (bUseGPU)
+	{
+		GEngine->PreRenderDelegate.AddLambda([GenerateStaticMesh, StartDegree, DistanceFieldSize]() {
+			FRHICommandListImmediate& RHICmdList = GetImmediateCommandList_ForRenderCommand();
+			GenerateMeshMaskTexture(RHICmdList, ERHIFeatureLevel::SM5, GenerateStaticMesh, StartDegree, DistanceFieldSize);
+		});
+		return;
+	}
 
 	const FStaticMeshLODResources& LODModel = GenerateStaticMesh->RenderData->LODResources[0];
 	const FBoxSphereBounds& Bounds = GenerateStaticMesh->RenderData->Bounds;
 	const FPositionVertexBuffer& PositionVertexBuffer = LODModel.VertexBuffers.PositionVertexBuffer;
 	FIndexArrayView Indices = LODModel.IndexBuffer.GetArrayView();
+	
 
 	const int32 NumVoxelDistanceSamples = 1200;
 	TArray<FVector4> SampleDirections;
