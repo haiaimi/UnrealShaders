@@ -1,3 +1,4 @@
+#include "/Engine/Private/Common.ush"
 
 float4x4 ViewProjMatrix;
 
@@ -46,13 +47,54 @@ void GenerateDistanceFieldShaderVS(
 	OutUV = UV;
 }
 
+uint CurLevel;
+float2 DistanceFieldDimension;
 Texture2D<float4> MaskTexture;
 SamplerState TextureSampler;
 
+float GetMinDistance(float ComparedDist, float CurDist, float PixelData)
+{
+	return (PixelData != 0.f && CurDist < ComparedDist) ? CurDist : ComparedDist;
+}
+
+// We use jump floating generate distancefield
+float4 FastStepJF(float2 UV, float Level)
+{
+	uint2 TextureSize2D;
+	MaskTexture.GetDimensions(TextureSize2D.x, TextureSize2D.y);
+	float TextureSize = max(TextureSize2D.x, TextureSize2D.y);
+	float MaxLevel = round(log2(TextureSize) + 0.5f);
+	
+	Level = clamp(Level - 1, 0, MaxLevel);
+	float StepWidth = floor(exp2(MaxLevel - Level));
+	float4 BestDistance = 9999.f;
+	
+	UNROLL
+	for (int y = -1; y <= 1; ++y)
+	{
+		UNROLL
+		for (int x = -1; x <= 1; ++x)
+		{
+			if(x!=0 && y!=0)
+			{
+				float2 SampleCoord = UV + float2(x, y) * StepWidth / TextureSize;
+				float4 SampleData = MaskTexture.SampleLevel(TextureSampler, SampleCoord, 0);
+				float Distance = length(SampleCoord - UV);
+				BestDistance.x = GetMinDistance(BestDistance.x, Distance, SampleData.x);
+				BestDistance.y = GetMinDistance(BestDistance.y, Distance, SampleData.y);
+				BestDistance.z = GetMinDistance(BestDistance.z, Distance, SampleData.z);
+				BestDistance.w = GetMinDistance(BestDistance.w, Distance, SampleData.w);
+			}
+			
+		}
+	}
+	return BestDistance * TextureSize.x / 16.f;
+}
+
 void GenerateDistanceFieldShaderPS(
-	in float2 OutUV : TEXCOORD0,
+	in float2 InUV : TEXCOORD0,
 	out float4 OutColor : SV_Target
 )
 {
-	
+	OutColor = FastStepJF(InUV, CurLevel);
 }

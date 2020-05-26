@@ -25,6 +25,8 @@ FGenerateDistanceFieldTexture_GPU::~FGenerateDistanceFieldTexture_GPU()
 {
 }
 
+void GenerateDistanceFieldTexture(FRHICommandList& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, uint32 TextureSize, FTextureRHIRef ResultRT, FTextureRHIRef MaskTexture, const FVector2D& DFDimension, uint32 CurLevel);
+
 struct FDrawMaskInstance
 {
 	FDrawMaskInstance(const FMatrix& InWorld, const FVector4& InColor):
@@ -108,19 +110,18 @@ static void DrawIndexedPrimitiveUP_Custom(
 	const uint32 NumIndices = GetVertexCountForPrimitiveCount(NumPrimitives, PrimitiveType);
 
 	FRHIResourceCreateInfo CreateInfo;
-	FVertexBufferRHIRef VertexBufferRHI = RHICreateVertexBuffer(VertexDataStride * NumVertices, BUF_Volatile, CreateInfo);        //Buf类型是改动类型，没帧写入，所以声明为BUF_Volatile
-	void* VoidPtr = RHILockVertexBuffer(VertexBufferRHI, 0, VertexDataStride * NumVertices, RLM_WriteOnly);        //lock顶点缓冲buffer，并且只能写入
-	FPlatformMemory::Memcpy(VoidPtr, VertexData, VertexDataStride * NumVertices);       //传入顶点数据
-	RHIUnlockVertexBuffer(VertexBufferRHI);    //unlock顶点缓冲
+	FVertexBufferRHIRef VertexBufferRHI = RHICreateVertexBuffer(VertexDataStride * NumVertices, BUF_Volatile, CreateInfo);
+	void* VoidPtr = RHILockVertexBuffer(VertexBufferRHI, 0, VertexDataStride * NumVertices, RLM_WriteOnly);
+	FPlatformMemory::Memcpy(VoidPtr, VertexData, VertexDataStride * NumVertices);
+	RHIUnlockVertexBuffer(VertexBufferRHI);
 
-	//同上创建一个索引缓冲
 	FIndexBufferRHIRef IndexBufferRHI = RHICreateIndexBuffer(IndexDataStride, IndexDataStride * NumIndices, BUF_Volatile, CreateInfo);
 	void* VoidPtr2 = RHILockIndexBuffer(IndexBufferRHI, 0, IndexDataStride * NumIndices, RLM_WriteOnly);
 	FPlatformMemory::Memcpy(VoidPtr2, IndexData, IndexDataStride * NumIndices);
 	RHIUnlockIndexBuffer(IndexBufferRHI);
 
-	RHICmdList.SetStreamSource(0, VertexBufferRHI, 0);     //针对不同的图形接口设置顶点缓冲
-	RHICmdList.DrawIndexedPrimitive(IndexBufferRHI, MinVertexIndex, 0, NumVertices, 0, NumPrimitives, 1);        //绘制图元
+	RHICmdList.SetStreamSource(0, VertexBufferRHI, 0);
+	RHICmdList.DrawIndexedPrimitive(IndexBufferRHI, MinVertexIndex, 0, NumVertices, 0, NumPrimitives, 1);
 
 	IndexBufferRHI.SafeRelease();
 	VertexBufferRHI.SafeRelease();
@@ -237,7 +238,7 @@ public:
 	FGenerateDistanceFieldShaderVS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
 		FGlobalShader(Initializer)
 	{
-		ViewProjMatrix.Bind(Initializer.ParameterMap, TEXT("ViewProjMatrix"));
+		
 	}
 
 	static bool ShouldCache(EShaderPlatform Platform)
@@ -256,24 +257,18 @@ public:
 	}
 
 	void SetParameters(
-		FRHICommandList& RHICmdList,
-		const FMatrix& ViewProjMat
+		FRHICommandList& RHICmdList
 	)
 	{
-		SetShaderValue(RHICmdList, GetVertexShader(), ViewProjMatrix, ViewProjMat);
 	}
 
 	virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-
-		Ar << ViewProjMatrix;
-
 		return bShaderHasOutdatedParameters;
 	}
 
 private:
-	FShaderParameter ViewProjMatrix;
 };
 
 class FGenerateDistanceFieldShaderPS : public FGlobalShader
@@ -286,7 +281,10 @@ public:
 	FGenerateDistanceFieldShaderPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
 		FGlobalShader(Initializer)
 	{
-
+		CurLevel.Bind(Initializer.ParameterMap, TEXT("CurLevel"));
+		DistanceFieldDimension.Bind(Initializer.ParameterMap, TEXT("DistanceFieldDimension"));
+		MaskTexture.Bind(Initializer.ParameterMap, TEXT("MaskTexture"));
+		TextureSampler.Bind(Initializer.ParameterMap, TEXT("TextureSampler"));
 	}
 
 	static bool ShouldCache(EShaderPlatform Platform)
@@ -306,10 +304,12 @@ public:
 
 	void SetParameters(
 		FRHICommandList& RHICmdList,
-		const FIntPoint& DFDimension,
+		uint32 InLevel,
+		const FVector2D& DFDimension,
 		FRHITexture* InTexture 
 	)
 	{
+		SetShaderValue(RHICmdList, GetPixelShader(), CurLevel, InLevel);
 		SetShaderValue(RHICmdList, GetPixelShader(), DistanceFieldDimension, DFDimension);
 		SetTextureParameter(RHICmdList, GetPixelShader(), MaskTexture, TextureSampler, TStaticSamplerState<SF_AnisotropicLinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InTexture);
 	}
@@ -326,6 +326,7 @@ public:
 	}
 
 private:
+	FShaderParameter CurLevel;
 	FShaderParameter DistanceFieldDimension;
 	FShaderResourceParameter MaskTexture;
 	FShaderResourceParameter TextureSampler;
@@ -402,8 +403,8 @@ void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLe
 	RHICmdList.SetViewport(0.f, 0.f, 0.f, TextureSize, TextureSize, 1.f);
 	
 	TRefCountPtr<IPooledRenderTarget> MaskRT;
-	FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(TextureSize, TextureSize), PF_A32B32G32R32F, FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource, false, 5));
-	Desc.NumSamples = 4;
+	FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(TextureSize, TextureSize), PF_A32B32G32R32F, FClearValueBinding::Transparent, TexCreate_GenerateMipCapable, TexCreate_RenderTargetable | TexCreate_ShaderResource, false));
+	//Desc.NumSamples = 4;  //can not open mipmap and multisample simultaneously
 	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, MaskRT, TEXT("MaskRT"));
 	
 	FRHITexture* ColorRTs[1] = { MaskRT->GetRenderTargetItem().TargetableTexture };
@@ -429,22 +430,30 @@ void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLe
 	RHICmdList.CopyToResolveTarget(MaskRT->GetRenderTargetItem().TargetableTexture, MaskRT->GetRenderTargetItem().ShaderResourceTexture, FResolveRect(0, 0, TextureSize, TextureSize));
 	MaskRT->GetRenderTargetItem().TargetableTexture;
 	FGenerateMips::Execute(RHICmdList, MaskRT->GetRenderTargetItem().TargetableTexture);
-
-	// Generate DistanceField Texture
-	FIntPoint DFSize(16, 16);
-	TRefCountPtr<IPooledRenderTarget> DistanceFieldRT;
-	FPooledRenderTargetDesc DFDesc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(TextureSize, TextureSize), PF_A32B32G32R32F, FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable, false));
-	GRenderTargetPool.FindFreeElement(RHICmdList, DFDesc, DistanceFieldRT, TEXT("DistanceFieldRT"));
-	//GenerateDistanceFieldTexture(RHICmdList, FeatureLevel, TextureSize, DistanceFieldRT->GetRenderTargetItem().TargetableTexture, MaskRT->GetRenderTargetItem().TargetableTexture, DFSize);
-
+	//RHICmdList.GenerateMips(MaskRT->GetRenderTargetItem().TargetableTexture);
 	VertexBuffer.SafeRelease();
 	IndexBuffer.SafeRelease();
 	MeshModelInstancedVB.SafeRelease();
 
 	RHICmdList.EndRenderPass();
+
+	// Generate DistanceField Texture
+	FVector2D DFSize(16, 16);
+	TRefCountPtr<IPooledRenderTarget> DistanceFieldRT;
+	FPooledRenderTargetDesc DFDesc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(TextureSize, TextureSize), PF_A32B32G32R32F, FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable, false));
+	GRenderTargetPool.FindFreeElement(RHICmdList, DFDesc, DistanceFieldRT, TEXT("DistanceFieldRT"));
+	uint32 MaxLevel = FMath::RoundToInt(FMath::Log2(TextureSize));
+
+	FTextureRHIRef CurRenderTarget = DistanceFieldRT->GetRenderTargetItem().TargetableTexture;
+	FTextureRHIRef CurMaskTexture = MaskRT->GetRenderTargetItem().TargetableTexture;
+	for (uint32 i = 1; i <= MaxLevel; ++i)
+	{
+		GenerateDistanceFieldTexture(RHICmdList, FeatureLevel, TextureSize, CurRenderTarget, CurMaskTexture, DFSize, i);
+		Swap(CurRenderTarget, CurMaskTexture);
+	}
 }
 
-void GenerateDistanceFieldTexture(FRHICommandList& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, uint32 TextureSize, FTextureRHIRef ResultRT, FTextureRHIRef MaskTexture, const FIntPoint& DFDimension)
+void GenerateDistanceFieldTexture(FRHICommandList& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, uint32 TextureSize, FTextureRHIRef ResultRT, FTextureRHIRef MaskTexture, const FVector2D& DFDimension, uint32 CurLevel)
 {
 	RHICmdList.SetViewport(0, 0, 0.0f, TextureSize, TextureSize, 1.0f);
 
@@ -469,23 +478,22 @@ void GenerateDistanceFieldTexture(FRHICommandList& RHICmdList, ERHIFeatureLevel:
 	GraphicPSPoint.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 	SetGraphicsPipelineState(RHICmdList, GraphicPSPoint);
 
-	PixelShader->SetParameters(RHICmdList, DFDimension, MaskTexture);
-
 	FVertexInput Vertices[4];
 	Vertices[0].Position.Set(-1.0f, 1.0f, 0, 1.0f);
 	Vertices[1].Position.Set(1.0f, 1.0f, 0, 1.0f);
 	Vertices[2].Position.Set(-1.0f, -1.0f, 0, 1.0f);
 	Vertices[3].Position.Set(1.0f, -1.0f, 0, 1.0f);
-	Vertices[0].UV = FVector2D(0.0f, 1.0f);
-	Vertices[1].UV = FVector2D(1.0f, 1.0f);
-	Vertices[2].UV = FVector2D(0.0f, 0.0f);
-	Vertices[3].UV = FVector2D(1.0f, 0.0f);
+	Vertices[0].UV = FVector2D(0.0f, 0.0f);
+	Vertices[1].UV = FVector2D(1.0f, 0.0f);
+	Vertices[2].UV = FVector2D(0.0f, 1.0f);
+	Vertices[3].UV = FVector2D(1.0f, 1.0f);
 	static const uint16 Indices[6] =
 	{
 		0, 1, 2,
 		2, 1, 3
 	};
-
+	
+	PixelShader->SetParameters(RHICmdList, CurLevel, DFDimension, MaskTexture);
 	DrawIndexedPrimitiveUP_Custom(RHICmdList, PT_TriangleList, 0, UE_ARRAY_COUNT(Vertices), 2, Indices, sizeof(Indices[0]), Vertices, sizeof(Vertices[0]));
 
 	RHICmdList.EndRenderPass();
