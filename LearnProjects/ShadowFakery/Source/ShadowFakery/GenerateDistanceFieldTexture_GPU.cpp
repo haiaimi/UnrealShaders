@@ -311,7 +311,7 @@ public:
 	{
 		SetShaderValue(RHICmdList, GetPixelShader(), CurLevel, InLevel);
 		SetShaderValue(RHICmdList, GetPixelShader(), DistanceFieldDimension, DFDimension);
-		SetTextureParameter(RHICmdList, GetPixelShader(), MaskTexture, TextureSampler, TStaticSamplerState<SF_AnisotropicLinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InTexture);
+		SetTextureParameter(RHICmdList, GetPixelShader(), MaskTexture, TextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InTexture);
 	}
 
 	virtual bool Serialize(FArchive& Ar) override
@@ -437,7 +437,6 @@ void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLe
 
 	RHICmdList.EndRenderPass();
 
-	// Generate DistanceField Texture
 	FVector2D DFSize(16, 16);
 	TRefCountPtr<IPooledRenderTarget> DistanceFieldRT;
 	FPooledRenderTargetDesc DFDesc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(TextureSize, TextureSize), PF_A32B32G32R32F, FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable, false));
@@ -446,6 +445,11 @@ void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLe
 
 	FTextureRHIRef CurRenderTarget = DistanceFieldRT->GetRenderTargetItem().TargetableTexture;
 	FTextureRHIRef CurMaskTexture = MaskRT->GetRenderTargetItem().TargetableTexture;
+	FRHICopyTextureInfo CopyInfo;
+	RHICmdList.CopyTexture(CurMaskTexture, CurRenderTarget, CopyInfo);
+
+	// Generate DistanceField Texture
+	
 	for (uint32 i = 1; i <= MaxLevel; ++i)
 	{
 		GenerateDistanceFieldTexture(RHICmdList, FeatureLevel, TextureSize, CurRenderTarget, CurMaskTexture, DFSize, i);
