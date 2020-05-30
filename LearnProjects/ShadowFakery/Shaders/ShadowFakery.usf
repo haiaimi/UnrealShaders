@@ -1,6 +1,7 @@
 #include "/Engine/Private/Common.ush"
 
 float4x4 ViewProjMatrix;
+float TextureSize1;
 
 struct FVertexInput
 {
@@ -12,31 +13,37 @@ struct FVertexInput
 	float4 WorldMatrixRow_2 : ATTRIBUTE3;
 	float4 WorldMatrixRow_3 : ATTRIBUTE4;
 	//float4x4 WorldMatrix : ATTRIBUTE1;
-	
-	float4 InstanceColor : ATTRIBUTE5;
+	uint InstanceID : SV_InstanceID;
 };
 
 void GenerateMeshMaskShaderVS(
 	in FVertexInput Input,
-	out sample float4 OutColor : COLOR0,
-	out sample float4 OutPosition : SV_Position
+	out float4 OutPosition : SV_Position,
+	out uint InstanceIndex : SV_InstanceID
 )
 {
 	float4x4 WorldViewProjMarix = mul(float4x4(Input.WorldMatrixRow_0, Input.WorldMatrixRow_1, Input.WorldMatrixRow_2, Input.WorldMatrixRow_3), ViewProjMatrix);
 	OutPosition = mul(float4(Input.VertexPosition, 1.f), WorldViewProjMarix);
 	OutPosition /= OutPosition.w;
-	OutColor = Input.InstanceColor;
+	InstanceIndex = Input.InstanceID;
 }
 
 void GenerateMeshMaskShaderPS(
-	in sample float4 InColor : COLOR0,
-	out sample float4 OutColor : SV_Target
+	in float4 PixelCoord : SV_Position,
+	in uint InstanceIndex : SV_InstanceID,
+	out float4 OutColor0 : SV_Target0,
+	out float4 OutColor1 : SV_Target1
 )
 {
-	OutColor = InColor;
+	float2 PixelUV = (PixelCoord.xy - 0.5f) / TextureSize1; // 0.5 is the offset in ps
+	float4 GroupRegion[2] = { float4(1.f, 1.f, 0.f, 0.f), float4(0.f, 0.f, 1.f, 1.f) };
+	uint Group = InstanceIndex / 2;
+	uint IDInGroup = InstanceIndex % 2;
+	OutColor0 = (1 - Group) * GroupRegion[IDInGroup] * float4(PixelUV, PixelUV);
+	OutColor1 = Group * GroupRegion[IDInGroup] * float4(PixelUV, PixelUV);
 }
 
-void GenerateDistanceFieldShaderVS(
+void GeneralShaderVS(
 	in float4 InPosition : ATTRIBUTE0,
 	in float2 UV : ATTRIBUTE1,
 	out float2 OutUV : TEXCOORD0,
@@ -49,27 +56,58 @@ void GenerateDistanceFieldShaderVS(
 
 uint CurLevel;
 float2 DistanceFieldDimension;
-Texture2D<float4> MaskTexture;
+Texture2D<float4> MaskTexture0;
+Texture2D<float4> MaskTexture1;
 SamplerState TextureSampler;
 
 float GetMinDistance(float ComparedDist, float CurDist, float PixelData)
 {
-	if (PixelData >= 1.f)
-		
-	return (PixelData != 0.f && CurDist < ComparedDist) ? CurDist : ComparedDist;
+	float Result = 0.f;
+	if (PixelData >= 1.f && CurDist == 0.f)
+		Result = 1.f;
+	if(PixelData == 0.f)
+		Result = ComparedDist;
+	if(CurDist < ComparedDist && PixelData != 0.f)
+		Result = CurDist;
+	
+	return Result;
 }
 
-// We use jump floating generate distancefield
-float4 FastStepJF(float2 UV, float Level)
+float GetBestCoordUV(float ComparedDist, float CurDist, float2 CurUV, float2 UV, out float2 OutUV)
+{
+	BRANCH
+	if ((CurDist < ComparedDist) && (CurUV.x != 0.f || CurUV.y != 0.f))
+	{
+		OutUV = CurUV;
+		return CurDist;
+	}
+	OutUV = UV;
+	return ComparedDist;
+}
+
+
+// We use jump flood generate distancefield
+void FastStepJF(float2 UV, float Level, out float4 Target0, out float4 Target1)
 {
 	uint2 TextureSize2D;
-	MaskTexture.GetDimensions(TextureSize2D.x, TextureSize2D.y);
-	float TextureSize = max(TextureSize2D.x, TextureSize2D.y);
-	float MaxLevel = round(log2(TextureSize)); 
+	MaskTexture0.GetDimensions(TextureSize2D.x, TextureSize2D.y);
+	float TextureSize = max(TextureSize2D.x, TextureSize2D.y);;
+	float MaxLevel = floor(log2(TextureSize));
 	
 	Level = clamp(Level - 1, 0, MaxLevel);
 	float StepWidth = floor(exp2(MaxLevel - Level));
+	
+	//For Debug
+	//Target0 = float4(MaxLevel, TextureSize, Level, (StepWidth / TextureSize));
+	//Target1 = float4(MaxLevel, TextureSize, Level, (StepWidth / TextureSize));
+	//return;
+	
 	float4 BestDistance = 1.f;
+	
+	float2 BestCoord0 = 0.f;
+	float2 BestCoord1 = 0.f;
+	float2 BestCoord2 = 0.f;
+	float2 BestCoord3 = 0.f;
 	
 	UNROLL
 	for (int y = -1; y <= 1; ++y)
@@ -77,26 +115,33 @@ float4 FastStepJF(float2 UV, float Level)
 		UNROLL
 		for (int x = -1; x <= 1; ++x)
 		{
-			float2 SampleCoord = clamp(UV + float2(x, y) * StepWidth / TextureSize, float2(0.f, 0.f), float2(1.f, 1.f));
-			float4 SampleData = MaskTexture.SampleLevel(TextureSampler, SampleCoord, 0);
+			float2 SampleCoord = UV + float2(x, y) * (StepWidth / TextureSize);
+			float4 Data0 = MaskTexture0.Sample(TextureSampler, SampleCoord);
+			float4 Data1 = MaskTexture1.Sample(TextureSampler, SampleCoord);
+			float2 Channel0 = Data0.xy;
+			float2 Channel1 = Data0.zw;
+			float2 Channel2 = Data1.xy;
+			float2 Channel3 = Data1.zw;
 			float Distance = length(SampleCoord - UV);
-			BestDistance.x = GetMinDistance(BestDistance.x, Distance, SampleData.x);
-			BestDistance.y = GetMinDistance(BestDistance.y, Distance, SampleData.y);
-			BestDistance.z = GetMinDistance(BestDistance.z, Distance, SampleData.z);
-			BestDistance.w = GetMinDistance(BestDistance.w, Distance, SampleData.w);
+			
+			BestDistance.x = GetBestCoordUV(BestDistance.x, Distance, Channel0, BestCoord0, BestCoord0);
+			BestDistance.y = GetBestCoordUV(BestDistance.y, Distance, Channel1, BestCoord1, BestCoord1);
+			BestDistance.z = GetBestCoordUV(BestDistance.z, Distance, Channel2, BestCoord2, BestCoord2);
+			BestDistance.w = GetBestCoordUV(BestDistance.w, Distance, Channel3, BestCoord3, BestCoord3);
 		}
 	}
-	if (BestDistance == 1.f)
-		return -1.f;
-	if(BestDistance == 0.f)
-		return 1.f;
-	return  BestDistance / 0.1f;
+	//Target0 = BestDistance;
+	//Target1 = float4(MaxLevel, TextureSize, Level, (StepWidth / TextureSize));
+	//return;
+	Target0 = float4(BestCoord0, BestCoord1);
+	Target1 = float4(BestCoord2, BestCoord3);
 }
 
 void GenerateDistanceFieldShaderPS(
 	in float2 InUV : TEXCOORD0,
-	out float4 OutColor : SV_Target
+	out float4 OutColor0 : SV_Target0,
+	out float4 OutColor1 : SV_Target1
 )
 {
-	OutColor = FastStepJF(InUV, CurLevel);
+	FastStepJF(InUV, CurLevel, OutColor0, OutColor1);
 }

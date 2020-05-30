@@ -13,8 +13,10 @@
 #include "DrawDebugHelpers.h"
 #include "Engine/Engine.h"
 #include "GenerateDistanceFieldTexture_GPU.h"
+#include "Engine/TextureRenderTarget.h"
+#include "RenderingThread.h"
 
-extern void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, class UStaticMesh* StaticMesh, float StartDegree, uint32 TextureSize);
+extern void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, class UStaticMesh* StaticMesh, class UTextureRenderTarget* OutputRenderTarget, float StartDegree, uint32 TextureSize);
 
 static void GenerateHemisphereSamples(int32 NumThetaSteps, int32 NumPhiSteps, FRandomStream& RandomStream, TArray<FVector4>& Samples)
 {
@@ -84,15 +86,19 @@ void EmbreeFilterFunc(void* UserPtr, RTCRay& InRay)
 }
 
 
-void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* WorldContextObject, UStaticMesh* GenerateStaticMesh, int32 DistanceFieldSize, float StartDegree, float MakeDFRadius, bool bUseGPU)
+void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* WorldContextObject, UStaticMesh* GenerateStaticMesh, class UTextureRenderTarget* OutputRenderTarget, int32 DistanceFieldSize, float StartDegree, float MakeDFRadius, bool bUseGPU)
 {
 	if (!GenerateStaticMesh)return;
 	
 	if (bUseGPU)
 	{
-		GEngine->PreRenderDelegate.AddLambda([GenerateStaticMesh, StartDegree, DistanceFieldSize]() {
+		/*ENQUEUE_RENDER_COMMAND(CaptureCommand)([GenerateStaticMesh, StartDegree, DistanceFieldSize, OutputRenderTarget](FRHICommandListImmediate& RHICmdList)
+		{
+			GenerateMeshMaskTexture(RHICmdList, ERHIFeatureLevel::SM5, GenerateStaticMesh, OutputRenderTarget, StartDegree, DistanceFieldSize);
+		});*/
+		GEngine->PreRenderDelegate.AddLambda([GenerateStaticMesh, StartDegree, DistanceFieldSize, OutputRenderTarget]() {
 			FRHICommandListImmediate& RHICmdList = GetImmediateCommandList_ForRenderCommand();
-			GenerateMeshMaskTexture(RHICmdList, ERHIFeatureLevel::SM5, GenerateStaticMesh, StartDegree, DistanceFieldSize);
+			GenerateMeshMaskTexture(RHICmdList, ERHIFeatureLevel::SM5, GenerateStaticMesh, OutputRenderTarget, StartDegree, DistanceFieldSize);
 		});
 		return;
 	}
