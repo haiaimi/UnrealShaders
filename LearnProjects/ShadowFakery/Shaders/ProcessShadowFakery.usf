@@ -1,0 +1,50 @@
+#include "/Engine/Private/Common.ush"
+
+Texture2D<float4> MaskTexture0;
+Texture2D<float4> MaskTexture1;
+SamplerState TextureSampler;
+
+void RevertToDistanceFieldShaderPS(
+	in float2 InUV : TEXCOORD0,
+	out float4 OutColor0 : SV_Target0)
+{
+	float4 Data0 = MaskTexture0.Sample(TextureSampler, InUV);
+	float4 Data1 = MaskTexture1.Sample(TextureSampler, InUV);
+	float2 Channel0 = Data0.xy;
+	float2 Channel1 = Data0.zw;
+	float2 Channel2 = Data1.xy;
+	float2 Channel3 = Data1.zw;
+	
+	float2 Scale = float2(1.f, 1.f);
+	OutColor0 = float4(clamp(length((Channel0 - InUV) * Scale) / 0.1f, 0.f, 1.f),
+						clamp(length((Channel1 - InUV) * Scale) / 0.1f, 0.f, 1.f),
+						clamp(length((Channel2 - InUV) * Scale) / 0.1f, 0.f, 1.f),
+						clamp(length((Channel3 - InUV) * Scale) / 0.1f, 0.f, 1.f));
+}
+
+Texture2D<float4> UnsignedDistanceField;
+
+void ReconstructDistanceFieldShaderPS(
+	in float2 InUV : TEXCOORD0,
+	out float4 OutColor0 : SV_Target0,
+	out float4 OutColor1 : SV_Target1)
+{
+	float4 DFData = UnsignedDistanceField.Sample(TextureSampler, InUV);
+	OutColor0 = float4(sign(saturate(DFData.x - 0.02f)) * InUV, sign(saturate(DFData.y - 0.02f)) * InUV);
+	OutColor1 = float4(sign(saturate(DFData.z - 0.02f)) * InUV, sign(saturate(DFData.w - 0.02f)) * InUV);
+}
+
+Texture2D<float4> SignedDistanceField;
+
+void MergeToFinalSignedDistanceField(
+	in float2 InUV : TEXCOORD0,
+	out float4 OutColor : SV_Target)
+{
+	//float4 UnsignedSampele = UnsignedDistanceField.Sample(TextureSampler, InUV);
+	//float4 SignedSampele = SignedDistanceField.Sample(TextureSampler, InUV);
+	//OutColor = UnsignedSampele + float4(SignedSampele.x > 0.02f ? 1 - SignedSampele.x : SignedSampele.x,
+										//SignedSampele.y > 0.02f ? 1 - SignedSampele.y : SignedSampele.y,
+										//SignedSampele.z > 0.02f ? 1 - SignedSampele.z : SignedSampele.z,
+										//SignedSampele.w > 0.02f ? 1 - SignedSampele.w : SignedSampele.w);
+	OutColor = 1.f - 0.5f * (UnsignedDistanceField.Sample(TextureSampler, InUV) + (-SignedDistanceField.Sample(TextureSampler, InUV)) + 1.f);
+}

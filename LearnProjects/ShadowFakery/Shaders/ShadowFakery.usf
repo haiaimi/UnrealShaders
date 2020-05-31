@@ -60,26 +60,14 @@ Texture2D<float4> MaskTexture0;
 Texture2D<float4> MaskTexture1;
 SamplerState TextureSampler;
 
-float GetMinDistance(float ComparedDist, float CurDist, float PixelData)
+float GetBestCoordUV(float ComparedDist, float2 CurUV, float2 SampledUV, float2 UV, out float2 OutUV)
 {
-	float Result = 0.f;
-	if (PixelData >= 1.f && CurDist == 0.f)
-		Result = 1.f;
-	if(PixelData == 0.f)
-		Result = ComparedDist;
-	if(CurDist < ComparedDist && PixelData != 0.f)
-		Result = CurDist;
-	
-	return Result;
-}
-
-float GetBestCoordUV(float ComparedDist, float CurDist, float2 CurUV, float2 UV, out float2 OutUV)
-{
+	float Distance = length(SampledUV - CurUV);
 	BRANCH
-	if ((CurDist < ComparedDist) && (CurUV.x != 0.f || CurUV.y != 0.f))
+	if ((Distance < ComparedDist) && (SampledUV.x != 0.f || SampledUV.y != 0.f))
 	{
-		OutUV = CurUV;
-		return CurDist;
+		OutUV = SampledUV;
+		return Distance;
 	}
 	OutUV = UV;
 	return ComparedDist;
@@ -92,15 +80,10 @@ void FastStepJF(float2 UV, float Level, out float4 Target0, out float4 Target1)
 	uint2 TextureSize2D;
 	MaskTexture0.GetDimensions(TextureSize2D.x, TextureSize2D.y);
 	float TextureSize = max(TextureSize2D.x, TextureSize2D.y);;
-	float MaxLevel = floor(log2(TextureSize));
+	float MaxLevel = floor(log2(TextureSize) + 0.5f);
 	
 	Level = clamp(Level - 1, 0, MaxLevel);
-	float StepWidth = floor(exp2(MaxLevel - Level));
-	
-	//For Debug
-	//Target0 = float4(MaxLevel, TextureSize, Level, (StepWidth / TextureSize));
-	//Target1 = float4(MaxLevel, TextureSize, Level, (StepWidth / TextureSize));
-	//return;
+	float StepWidth = floor(exp2(MaxLevel - Level) + 0.5f);
 	
 	float4 BestDistance = 1.f;
 	
@@ -122,17 +105,13 @@ void FastStepJF(float2 UV, float Level, out float4 Target0, out float4 Target1)
 			float2 Channel1 = Data0.zw;
 			float2 Channel2 = Data1.xy;
 			float2 Channel3 = Data1.zw;
-			float Distance = length(SampleCoord - UV);
 			
-			BestDistance.x = GetBestCoordUV(BestDistance.x, Distance, Channel0, BestCoord0, BestCoord0);
-			BestDistance.y = GetBestCoordUV(BestDistance.y, Distance, Channel1, BestCoord1, BestCoord1);
-			BestDistance.z = GetBestCoordUV(BestDistance.z, Distance, Channel2, BestCoord2, BestCoord2);
-			BestDistance.w = GetBestCoordUV(BestDistance.w, Distance, Channel3, BestCoord3, BestCoord3);
+			BestDistance.x = GetBestCoordUV(BestDistance.x, UV, Channel0, BestCoord0, BestCoord0);
+			BestDistance.y = GetBestCoordUV(BestDistance.y, UV, Channel1, BestCoord1, BestCoord1);
+			BestDistance.z = GetBestCoordUV(BestDistance.z, UV, Channel2, BestCoord2, BestCoord2);
+			BestDistance.w = GetBestCoordUV(BestDistance.w, UV, Channel3, BestCoord3, BestCoord3);
 		}
 	}
-	//Target0 = BestDistance;
-	//Target1 = float4(MaxLevel, TextureSize, Level, (StepWidth / TextureSize));
-	//return;
 	Target0 = float4(BestCoord0, BestCoord1);
 	Target1 = float4(BestCoord2, BestCoord3);
 }
@@ -144,4 +123,6 @@ void GenerateDistanceFieldShaderPS(
 )
 {
 	FastStepJF(InUV, CurLevel, OutColor0, OutColor1);
+
 }
+
