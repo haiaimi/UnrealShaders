@@ -74,3 +74,4 @@ Plugins/*/Intermediate/*
 DerivedDataCache/*
 
 !Source/ThirdParty/Embree/lib/*
+!Plugins/ShadowFakery/Source/ThirdParty/Embree/lib/*

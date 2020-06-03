@@ -96,3 +96,7 @@ int32 PermutationCountToCompile = 0;
 template<typename A, typename B>	struct TIsSame			{ enum { Value = false	}; };
 template<typename T>				struct TIsSame<T, T>	{ enum { Value = true	}; };
 ```
+
+
+## 注意事项
+1. 编写自定义Shader时一定要对每个ShaderParameter进行序列化，这些参数是放在ConstBuffer中，序列化后才能和绑定的参数对应上，不进行序列化可能会导致对应的参数传不进去。

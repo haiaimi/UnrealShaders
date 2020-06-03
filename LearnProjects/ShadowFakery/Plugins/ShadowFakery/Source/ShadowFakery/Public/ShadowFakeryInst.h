@@ -32,12 +32,17 @@ public:
 		return true;
 	}
 
+	UFUNCTION(BlueprintCallable)
+	void GenerateShadowDistanceField();
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	class UStaticMeshComponent* ObjectMeshCompent;
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
-	class UStaticMeshComponent* ShadowMeshCompent;
+	class UShadowFakeryStaticMeshComponent* ShadowMeshCompent;
+
+	UPROPERTY(EditAnywhere, Category = "GenerateShadowDistanceField")
+	int32 ShadowDistanceFieldSize;
 
 	UPROPERTY(EditAnywhere)
 	float ShadowMaskCutOffset;

@@ -16,7 +16,7 @@
 #include "Engine/TextureRenderTarget.h"
 #include "RenderingThread.h"
 
-extern void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, class UStaticMesh* StaticMesh, class UTextureRenderTarget* OutputRenderTarget, float StartDegree, uint32 TextureSize);
+extern void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, class UStaticMesh* StaticMesh, FRHITexture*& MergedDistanceFieldRT, class UTextureRenderTarget* OutputRenderTarget, float StartDegree, uint32 TextureSize);
 
 static void GenerateHemisphereSamples(int32 NumThetaSteps, int32 NumPhiSteps, FRandomStream& RandomStream, TArray<FVector4>& Samples)
 {
@@ -85,21 +85,92 @@ void EmbreeFilterFunc(void* UserPtr, RTCRay& InRay)
 	EmbreeRay.ElementIndex = Desc.ElementIndex;
 }
 
+FDelegateHandle GShadowFakeryDelegateHandle;
 
 void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* WorldContextObject, UStaticMesh* GenerateStaticMesh, class UTextureRenderTarget* OutputRenderTarget, int32 DistanceFieldSize, float StartDegree, float MakeDFRadius, bool bUseGPU)
 {
 	if (!GenerateStaticMesh)return;
 	
+	float SizeExpo = FMath::Log2(DistanceFieldSize);
+	if (FMath::Frac(SizeExpo) != 0.f)
+		DistanceFieldSize = FMath::RoundToInt(FMath::Exp2(FMath::RoundToFloat(SizeExpo + 0.5f)));
+
 	if (bUseGPU)
 	{
-		/*ENQUEUE_RENDER_COMMAND(CaptureCommand)([GenerateStaticMesh, StartDegree, DistanceFieldSize, OutputRenderTarget](FRHICommandListImmediate& RHICmdList)
+		FRHITexture* MergedDistanceFieldRT = nullptr;
+		ENQUEUE_RENDER_COMMAND(CaptureCommand)([GenerateStaticMesh, StartDegree, DistanceFieldSize, &MergedDistanceFieldRT, OutputRenderTarget](FRHICommandListImmediate& RHICmdList)
 		{
-			GenerateMeshMaskTexture(RHICmdList, ERHIFeatureLevel::SM5, GenerateStaticMesh, OutputRenderTarget, StartDegree, DistanceFieldSize);
-		});*/
-		GEngine->PreRenderDelegate.AddLambda([GenerateStaticMesh, StartDegree, DistanceFieldSize, OutputRenderTarget]() {
-			FRHICommandListImmediate& RHICmdList = GetImmediateCommandList_ForRenderCommand();
-			GenerateMeshMaskTexture(RHICmdList, ERHIFeatureLevel::SM5, GenerateStaticMesh, OutputRenderTarget, StartDegree, DistanceFieldSize);
+			GenerateMeshMaskTexture(RHICmdList, ERHIFeatureLevel::SM5, GenerateStaticMesh, MergedDistanceFieldRT, OutputRenderTarget, StartDegree, DistanceFieldSize);
 		});
+		/*GEngine->PreRenderDelegate.Remove(GShadowFakeryDelegateHandle);
+		GShadowFakeryDelegateHandle = GEngine->PreRenderDelegate.AddLambda([GenerateStaticMesh, StartDegree, DistanceFieldSize, &MergedDistanceFieldRT, OutputRenderTarget]() {
+			FRHICommandListImmediate& RHICmdList = GetImmediateCommandList_ForRenderCommand();
+			GenerateMeshMaskTexture(RHICmdList, ERHIFeatureLevel::SM5, GenerateStaticMesh, MergedDistanceFieldRT, OutputRenderTarget, StartDegree, DistanceFieldSize);
+		});
+		return;*/
+		// We need to run all renderthread command to save texture
+		FlushRenderingCommands();
+		FString TextureName = TEXT("Tex_ShadowFakery_2");
+		FString PackageName = TEXT("/Game/ShadowFakeryTextures/");
+		PackageName += TextureName;
+		UPackage* Package = CreatePackage(NULL, *PackageName);
+		Package->FullyLoad();
+
+		UTexture2D* TargetTex = NewObject<UTexture2D>(Package, *TextureName, RF_Public | RF_Standalone | RF_MarkAsRootSet);
+		TargetTex->AddToRoot();				// This line prevents garbage collection of the texture
+		TargetTex->PlatformData = new FTexturePlatformData();	// Then we initialize the PlatformData
+		TargetTex->PlatformData->SizeX = DistanceFieldSize;
+		TargetTex->PlatformData->SizeY = DistanceFieldSize;
+		TargetTex->PlatformData->SetNumSlices(1);
+		TargetTex->PlatformData->PixelFormat = EPixelFormat::PF_B8G8R8A8;
+		TargetTex->AddressX = TextureAddress::TA_Clamp;
+		TargetTex->AddressY = TextureAddress::TA_Clamp;
+		TargetTex->CompressionQuality = ETextureCompressionQuality::TCQ_Medium;
+		TargetTex->CompressionSettings = TC_VectorDisplacementmap;
+
+		int32 Index = TargetTex->PlatformData->Mips.Add(new FTexture2DMipMap());
+		FTexture2DMipMap* Mip = &TargetTex->PlatformData->Mips[Index];
+		Mip->SizeX = DistanceFieldSize;
+		Mip->SizeY = DistanceFieldSize;
+
+		uint32 DestStride = 0;
+		FRHITexture2D* MergedTexture2D = static_cast<FRHITexture2D*>(MergedDistanceFieldRT);
+		TArray<uint8> PixelData;
+		uint32 RowDataSize = DistanceFieldSize * 4 * sizeof(uint8);
+		//PixelData.Reserve(DistanceFieldSize * RowDataSize);
+		PixelData.SetNumZeroed(DistanceFieldSize * RowDataSize);
+		uint8* Texture2DData = (uint8*)RHILockTexture2D(MergedTexture2D, 0, RLM_ReadOnly, DestStride, false);
+
+		if (DestStride == RowDataSize)
+		{
+			FMemory::Memcpy(PixelData.GetData(), Texture2DData, PixelData.Num());
+		}
+		else
+		{
+			uint8* TempData = PixelData.GetData();
+			for (int32 i = 0; i < DistanceFieldSize; ++i)
+			{
+				FMemory::Memcpy(TempData, Texture2DData, RowDataSize);
+				TempData += RowDataSize;
+				Texture2DData += DestStride;
+			}
+		}
+
+		RHIUnlockTexture2D(MergedTexture2D, 0, false);
+
+		// Lock the texture so it can be modified
+		Mip->BulkData.Lock(LOCK_READ_WRITE);
+		uint8* TextureData = (uint8*)Mip->BulkData.Realloc(DistanceFieldSize * DistanceFieldSize * 4 * sizeof(uint8));
+		FMemory::Memcpy(TextureData, PixelData.GetData(), PixelData.Num());
+		Mip->BulkData.Unlock();
+
+		TargetTex->Source.Init(DistanceFieldSize, DistanceFieldSize, 1, 1, ETextureSourceFormat::TSF_BGRA8, PixelData.GetData());
+		TargetTex->UpdateResource();
+		Package->MarkPackageDirty();
+		FAssetRegistryModule::AssetCreated(TargetTex);
+
+		FString PackageFileName = FPackageName::LongPackageNameToFilename(PackageName, FPackageName::GetAssetPackageExtension());
+		bool bSaved = UPackage::SavePackage(Package, TargetTex, EObjectFlags::RF_Public | EObjectFlags::RF_Standalone, *PackageFileName, GError, nullptr, true, true, SAVE_NoError);
 		return;
 	}
 
@@ -427,7 +498,7 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 	TargetTex->PlatformData->SizeX = DistanceFieldSize;
 	TargetTex->PlatformData->SizeY = DistanceFieldSize;
 	TargetTex->PlatformData->SetNumSlices(1);
-	TargetTex->PlatformData->PixelFormat = EPixelFormat::PF_A32B32G32R32F;
+	TargetTex->PlatformData->PixelFormat = EPixelFormat::PF_B8G8R8A8;
 	TargetTex->AddressX = TextureAddress::TA_Clamp;
 	TargetTex->AddressY = TextureAddress::TA_Clamp;
 
@@ -453,7 +524,8 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 	for (auto& Iter : DistanceFieldData)
 		Iter = FVector4(1.f, 1.f, 1.f, 1.f);*/
 
-	FTexture2DMipMap* Mip = new(TargetTex->PlatformData->Mips) FTexture2DMipMap();
+	int32 Index = TargetTex->PlatformData->Mips.Add(new FTexture2DMipMap());
+	FTexture2DMipMap* Mip = &TargetTex->PlatformData->Mips[Index];
 	Mip->SizeX = DistanceFieldSize;
 	Mip->SizeY = DistanceFieldSize;
 
@@ -463,7 +535,7 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 	FMemory::Memcpy(TextureData, FinalData.GetData(), sizeof(float) * DistanceFieldSize * DistanceFieldSize * 4);
 	Mip->BulkData.Unlock();
 
-
+	TargetTex->Source.Init(DistanceFieldSize, DistanceFieldSize, 1, 1, ETextureSourceFormat::TSF_RGBA8);
 	TargetTex->UpdateResource();
 	Package->MarkPackageDirty();
 	FAssetRegistryModule::AssetCreated(TargetTex);

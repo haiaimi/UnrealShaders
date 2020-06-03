@@ -6,6 +6,8 @@
 #include "EngineUtils.h"
 #include "Engine/DirectionalLight.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "GenerateDistanceFieldTexture.h"
+#include "ShadowFakeryStaticMeshComponent.h"
 
 // Sets default values
 AShadowFakeryInst::AShadowFakeryInst()
@@ -15,9 +17,10 @@ AShadowFakeryInst::AShadowFakeryInst()
 	PrimaryActorTick.bStartWithTickEnabled = true;
 
 	ObjectMeshCompent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Object"));
-	ShadowMeshCompent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Shadow"));
+	ShadowMeshCompent = CreateDefaultSubobject<UShadowFakeryStaticMeshComponent>(TEXT("Shadow"));
 	RootComponent = ObjectMeshCompent;
 	ShadowMeshCompent->SetupAttachment(RootComponent);
+	ShadowDistanceFieldSize = 512;
 	SceneLight = nullptr;
 	ShadowMaskCutOffset = 90.f;
 	SunYawParam = TEXT("SunYaw");
@@ -69,11 +72,20 @@ void AShadowFakeryInst::Tick(float DeltaTime)
 		if (FMath::IsNearlyZero(FMath::Abs(SunYaw) - 90.f))
 			SunYaw = FMath::Sign(SunYaw) * 89.000f;
 
-		UE_LOG(LogTemp, Log, TEXT("Current Sun Yaw: %4.4f"), SunYaw);
+		//UE_LOG(LogTemp, Log, TEXT("Current Sun Yaw: %4.4f"), SunYaw);
 		
+		const FVector LightSize = LightDir.GetSafeNormal2D() * FMath::Abs(FMath::Tan(FMath::DegreesToRadians(90.f - FMath::Abs(SunYaw))));
+		ShadowMeshCompent->UpdateShadowState(LightSize, 1500, 1500);
+
 		MaterialInst->SetScalarParameterValue(SunYawParam, SunYaw);
 		MaterialInst->SetVectorParameterValue(SunDirectionParam, FLinearColor(LightDir.GetSafeNormal2D()) * FMath::Abs(FMath::Tan(FMath::DegreesToRadians(90.f - FMath::Abs(SunYaw)))));
 		//MaterialInst->SetVectorParameterValue(SunDirectionParam, FLinearColor(LightDir.GetSafeNormal2D()) * (1.f - FMath::Abs(SunYaw) / 90.f) * 5.f);
 	}
+}
+
+void AShadowFakeryInst::GenerateShadowDistanceField()
+{
+	if (ObjectMeshCompent)
+		UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(this, ObjectMeshCompent->GetStaticMesh(), nullptr, ShadowDistanceFieldSize, ShadowMaskCutOffset, 16.f, true);
 }
 

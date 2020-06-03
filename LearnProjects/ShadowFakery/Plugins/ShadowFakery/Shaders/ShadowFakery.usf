@@ -123,6 +123,5 @@ void GenerateDistanceFieldShaderPS(
 )
 {
 	FastStepJF(InUV, CurLevel, OutColor0, OutColor1);
-
 }
 
