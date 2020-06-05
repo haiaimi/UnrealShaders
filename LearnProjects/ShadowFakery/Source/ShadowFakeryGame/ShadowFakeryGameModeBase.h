@@ -10,7 +10,7 @@
  * 
  */
 UCLASS()
-class SHADOWFAKERY_API AShadowFakeryGameModeBase : public AGameModeBase
+class SHADOWFAKERYGAME_API AShadowFakeryGameModeBase : public AGameModeBase
 {
 	GENERATED_BODY()
 	

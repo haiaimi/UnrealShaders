@@ -3,12 +3,12 @@
 using UnrealBuildTool;
 using System.Collections.Generic;
 
-public class ShadowFakeryEditorTarget : TargetRules
+public class ShadowFakeryGameEditorTarget : TargetRules
 {
-	public ShadowFakeryEditorTarget( TargetInfo Target) : base(Target)
+	public ShadowFakeryGameEditorTarget( TargetInfo Target) : base(Target)
 	{
 		Type = TargetType.Editor;
 		DefaultBuildSettings = BuildSettingsVersion.V2;
-		ExtraModuleNames.AddRange( new string[] { "ShadowFakery" } );
+		ExtraModuleNames.AddRange( new string[] { "ShadowFakeryGame" } );
 	}
 }

@@ -6,7 +6,7 @@
 #include "Modules/ModuleInterface.h"
 
 
-class FShadowFakeryModule : public IModuleInterface
+class FShadowFakeryGameModule : public IModuleInterface
 {
 public:
 

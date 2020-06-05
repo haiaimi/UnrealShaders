@@ -6,6 +6,8 @@
 #include "GlobalShader.h"
 #include "ShaderParameterUtils.h"
 
+#define GENERATE_TEXTURE_DF 0
+
 /**
  * 
  */

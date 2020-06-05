@@ -20,6 +20,8 @@ static TAutoConsoleVariable<float> CVarMaskVolumeScale(
 	TEXT(""),
 	ECVF_Default);
 
+
+
 FGenerateDistanceFieldTexture_GPU::FGenerateDistanceFieldTexture_GPU()
 {
 }
@@ -30,6 +32,7 @@ FGenerateDistanceFieldTexture_GPU::~FGenerateDistanceFieldTexture_GPU()
 
 void GenerateDistanceFieldTexture(FRHICommandList& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, uint32 TextureSize, FRHITexture* ResultRTs[], FRHITexture* MaskTextures[], const FVector2D& DFDimension, uint32 CurLevel);
 
+#if GENERATE_TEXTURE_DF
 struct FDrawMaskInstance
 {
 	FDrawMaskInstance(const FMatrix& InWorld):
@@ -569,12 +572,13 @@ private:
 };
 
 IMPLEMENT_SHADER_TYPE(, FMergeDistanceFieldShaderPS, TEXT("/Plugins/Shaders/ProcessShadowFakery.usf"), TEXT("MergeToFinalSignedDistanceField"), SF_Pixel)
-
+#endif
 
 void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, class UStaticMesh* StaticMesh, FRHITexture*& MergedDistanceFieldTexture, class UTextureRenderTarget* OutputRenderTarget, float StartDegree, uint32 TextureSize)
 {
 	check(IsInRenderingThread());
 	
+#if GENERATE_TEXTURE_DF
 	if (!StaticMesh)return;
 
 	FStaticMeshLODResources& LODModel = StaticMesh->RenderData->LODResources[0];
@@ -739,4 +743,5 @@ void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLe
 	FRHICopyTextureInfo CopyInfo;
 	if (OutputRenderTarget)
 		RHICmdList.CopyTexture(MergedDistanceFieldRT->GetRenderTargetItem().TargetableTexture, OutputRenderTarget->GetRenderTargetResource()->TextureRHI, CopyInfo);
+#endif
 }

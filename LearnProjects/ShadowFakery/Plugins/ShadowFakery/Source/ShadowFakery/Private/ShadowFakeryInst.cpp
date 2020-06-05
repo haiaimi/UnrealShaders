@@ -8,6 +8,19 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "GenerateDistanceFieldTexture.h"
 #include "ShadowFakeryStaticMeshComponent.h"
+#include "InstancedFoliageActor.h"
+#include "ShadowFakeryFoliageSMComponent.h"
+
+float GSunYaw = 0.f;
+FVector GLightDirWithSize;
+FName GSunYawName = TEXT("SunYaw");
+FName GSunDirectionName = TEXT("SunForwardDirection");
+
+static TAutoConsoleVariable<bool> CVarUseShadowFakery(
+	TEXT("r.UseShadowFakery"),
+	true,
+	TEXT("b"),
+	ECVF_Default);
 
 // Sets default values
 AShadowFakeryInst::AShadowFakeryInst()
@@ -17,14 +30,16 @@ AShadowFakeryInst::AShadowFakeryInst()
 	PrimaryActorTick.bStartWithTickEnabled = true;
 
 	ObjectMeshCompent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Object"));
-	ShadowMeshCompent = CreateDefaultSubobject<UShadowFakeryStaticMeshComponent>(TEXT("Shadow"));
+	//ShadowMeshCompent = CreateDefaultSubobject<UShadowFakeryStaticMeshComponent>(TEXT("Shadow"));
 	RootComponent = ObjectMeshCompent;
-	ShadowMeshCompent->SetupAttachment(RootComponent);
+	//ShadowMeshCompent->SetupAttachment(RootComponent);
 	ShadowDistanceFieldSize = 512;
 	SceneLight = nullptr;
 	ShadowMaskCutOffset = 90.f;
 	SunYawParam = TEXT("SunYaw");
 	SunDirectionParam = TEXT("SunForwardDirection");
+	bHasInit = false;
+	bSwitchShadowFakery = false;
 }
 
 // Called when the game starts or when spawned
@@ -46,7 +61,45 @@ void AShadowFakeryInst::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	UMaterialInstanceDynamic* MaterialInst = ShadowMeshCompent->CreateDynamicMaterialInstance(0);
+	AInstancedFoliageActor* FoliageActor = AInstancedFoliageActor::GetInstancedFoliageActorForCurrentLevel(GetWorld(), true);
+	TUniqueObj<FFoliageInfo>* CurFoliageInfo = FoliageActor->FoliageInfos.Find(CurFoliageType);
+
+	if (CurFoliageInfo && !bHasInit && ShadowMeshCompentType)
+	{
+		FBox Box(FVector(-25200.f, -25200.f, 0.f), FVector(25200.f, 25200.f, 10000.f));
+		TArray<FTransform> OutTransforms;
+		FoliageActor->GetOverlappingBoxTransforms(CurFoliageType, Box, OutTransforms);
+		for (auto& Iter : OutTransforms)
+		{
+			UShadowFakeryStaticMeshComponent* ShadowFakeryStaticMesh = NewObject<UShadowFakeryStaticMeshComponent>(this, ShadowMeshCompentType);
+			ShadowFakeryStaticMesh->RegisterComponent();
+			ShadowFakeryStaticMesh->SetWorldLocationAndRotation(Iter.GetLocation() + FVector::UpVector * 20.f, Iter.GetRotation());
+			AllShadowStaticMesh.Add(ShadowFakeryStaticMesh);
+		}
+		bHasInit = true;
+	}
+
+	UShadowFakeryFoliageSMComponent* CurFoliage = FoliageActor->FindComponentByClass<UShadowFakeryFoliageSMComponent>();
+	if (CurFoliage && bSwitchShadowFakery != CVarUseShadowFakery.GetValueOnGameThread())
+	{
+		if (!CVarUseShadowFakery.GetValueOnGameThread())
+		{
+			CurFoliage->CastShadow = true;
+			CurFoliage->MarkRenderStateDirty();
+			CurFoliage->bCastDynamicShadow = true;
+		}
+		else
+		{
+			CurFoliage->CastShadow = false;
+			CurFoliage->MarkRenderStateDirty();
+			CurFoliage->bCastDynamicShadow = false;
+		}
+		bSwitchShadowFakery = CVarUseShadowFakery.GetValueOnGameThread();
+		for (auto Iter : AllShadowStaticMesh)
+			Iter->SetVisibility(bSwitchShadowFakery);
+	}
+
+	//UMaterialInstanceDynamic* MaterialInst = ShadowMeshCompent->CreateDynamicMaterialInstance(0);
 
 	if (!SceneLight)
 	{
@@ -57,7 +110,7 @@ void AShadowFakeryInst::Tick(float DeltaTime)
 		}
 	}
 
-	if (SceneLight && MaterialInst)
+	if (SceneLight/* && MaterialInst*/)
 	{
 		const float OffsetRadian = FMath::DegreesToRadians(ShadowMaskCutOffset);
 		MaskCutDir = FVector(FMath::Cos(OffsetRadian), FMath::Sin(OffsetRadian), 0.f);
@@ -75,10 +128,12 @@ void AShadowFakeryInst::Tick(float DeltaTime)
 		//UE_LOG(LogTemp, Log, TEXT("Current Sun Yaw: %4.4f"), SunYaw);
 		
 		const FVector LightSize = LightDir.GetSafeNormal2D() * FMath::Abs(FMath::Tan(FMath::DegreesToRadians(90.f - FMath::Abs(SunYaw))));
-		ShadowMeshCompent->UpdateShadowState(LightSize, 1500, 1500);
+		//ShadowMeshCompent->UpdateShadowState(LightSize, 1500, 1500);
 
-		MaterialInst->SetScalarParameterValue(SunYawParam, SunYaw);
-		MaterialInst->SetVectorParameterValue(SunDirectionParam, FLinearColor(LightDir.GetSafeNormal2D()) * FMath::Abs(FMath::Tan(FMath::DegreesToRadians(90.f - FMath::Abs(SunYaw)))));
+		GSunYaw = SunYaw;
+		GLightDirWithSize = LightSize;
+		/*MaterialInst->SetScalarParameterValue(SunYawParam, SunYaw);
+		MaterialInst->SetVectorParameterValue(SunDirectionParam, FLinearColor(LightDir.GetSafeNormal2D()) * FMath::Abs(1.f / FMath::Tan(FMath::DegreesToRadians(FMath::Abs(SunYaw)))));*/
 		//MaterialInst->SetVectorParameterValue(SunDirectionParam, FLinearColor(LightDir.GetSafeNormal2D()) * (1.f - FMath::Abs(SunYaw) / 90.f) * 5.f);
 	}
 }

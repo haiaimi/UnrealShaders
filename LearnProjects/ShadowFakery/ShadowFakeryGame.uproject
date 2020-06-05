@@ -5,11 +5,12 @@
 	"Description": "",
 	"Modules": [
 		{
-			"Name": "ShadowFakery",
+			"Name": "ShadowFakeryGame",
 			"Type": "Runtime",
-			"LoadingPhase": "PostConfigInit",
+			"LoadingPhase": "Default",
 			"AdditionalDependencies": [
-				"Engine"
+				"Engine",
+				"Foliage"
 			]
 		}
 	],

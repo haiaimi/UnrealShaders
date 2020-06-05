@@ -3,6 +3,17 @@
 
 #include "ShadowFakeryStaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
+#include "Materials/MaterialInstanceDynamic.h"
+
+extern float GSunYaw;
+extern FVector GLightDirWithSize;
+extern FName GSunYawName;
+extern FName GSunDirectionName;
+
+UShadowFakeryStaticMeshComponent::UShadowFakeryStaticMeshComponent()
+{
+	PrimaryComponentTick.bCanEverTick = true;
+}
 
 FBoxSphereBounds UShadowFakeryStaticMeshComponent::CalcBounds(const FTransform& LocalToWorld) const
 {
@@ -30,7 +41,7 @@ FBoxSphereBounds UShadowFakeryStaticMeshComponent::CalcBounds(const FTransform& 
 		//NewBounds.TransformBy(LocalToWorld);
 		CurBounds.BoxExtent = FVector(10000.f);
 		CurBounds.SphereRadius = CurShadowWidth;
-		UE_LOG(LogTemp, Log, TEXT("Bound Size: %4.4f"), CurBounds.BoxExtent.X);
+		//UE_LOG(LogTemp, Log, TEXT("Bound Size: %4.4f"), CurBounds.BoxExtent.X);
 
 		return CurBounds;
 	}
@@ -46,4 +57,16 @@ void UShadowFakeryStaticMeshComponent::UpdateShadowState(const FVector& NewLight
 	CurShadowLength = ShadowLength;
 	CurShadowWidth = ShadowWidth;
 	UpdateBounds();
+}
+
+void UShadowFakeryStaticMeshComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	UMaterialInstanceDynamic* MaterialInst = CreateDynamicMaterialInstance(0);
+	if (MaterialInst)
+	{
+		MaterialInst->SetScalarParameterValue(GSunYawName, GSunYaw);
+		MaterialInst->SetVectorParameterValue(GSunDirectionName, FLinearColor(GLightDirWithSize));
+	}
 }

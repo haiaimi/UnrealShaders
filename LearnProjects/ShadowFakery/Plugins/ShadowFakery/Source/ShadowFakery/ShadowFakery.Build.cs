@@ -10,7 +10,7 @@ public class ShadowFakery : ModuleRules
         bLegacyPublicIncludePaths = true;
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-        PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "RenderCore", "RHI", "Projects" });
+        PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "RenderCore", "RHI", "Projects", "Foliage" });
 
         PrivateDependencyModuleNames.AddRange(new string[] { });
 

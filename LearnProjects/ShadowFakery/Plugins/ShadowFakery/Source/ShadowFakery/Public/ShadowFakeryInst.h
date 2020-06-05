@@ -38,8 +38,11 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	class UStaticMeshComponent* ObjectMeshCompent;
 	
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
-	class UShadowFakeryStaticMeshComponent* ShadowMeshCompent;
+	UPROPERTY(EditAnywhere)
+	TSubclassOf<class UShadowFakeryStaticMeshComponent> ShadowMeshCompentType;
+
+	UPROPERTY(EditAnywhere)
+	class UFoliageType* CurFoliageType;
 
 	UPROPERTY(EditAnywhere, Category = "GenerateShadowDistanceField")
 	int32 ShadowDistanceFieldSize;
@@ -57,4 +60,10 @@ private:
 	class ADirectionalLight* SceneLight;
 
 	FVector MaskCutDir;
+
+	TArray<UShadowFakeryStaticMeshComponent*> AllShadowStaticMesh;
+
+	bool bHasInit;
+
+	bool bSwitchShadowFakery;
 };

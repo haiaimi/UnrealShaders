@@ -15,10 +15,14 @@ class SHADOWFAKERY_API UShadowFakeryStaticMeshComponent : public UStaticMeshComp
 	GENERATED_BODY()
 
 public:
+	UShadowFakeryStaticMeshComponent();
+
 	/**We need to use custom bounds to prevent it from being culled*/
 	virtual FBoxSphereBounds CalcBounds(const FTransform& LocalToWorld) const override;
 
 	void UpdateShadowState(const FVector& NewLightDir, float ShadowLength, float ShadowWidth);
+
+	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction)override;
 
 private:
 	FVector LightDir;

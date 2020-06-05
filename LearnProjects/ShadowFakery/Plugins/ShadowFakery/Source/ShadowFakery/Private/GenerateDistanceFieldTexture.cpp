@@ -6,13 +6,17 @@
 #include "StaticMeshResources.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/Texture2D.h"
+#include "GenerateDistanceFieldTexture_GPU.h"
 
+#if GENERATE_TEXTURE_DF
 #include <embree2/rtcore.h>
 #include <embree2/rtcore_ray.h>
+#endif
+
 #include "AssetRegistryModule.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/Engine.h"
-#include "GenerateDistanceFieldTexture_GPU.h"
+
 #include "Engine/TextureRenderTarget.h"
 #include "RenderingThread.h"
 
@@ -48,6 +52,7 @@ UGenerateDistanceFieldTexture::UGenerateDistanceFieldTexture()
 {
 }
 
+#if GENERATE_TEXTURE_DF
 struct FEmbreeTriangleDesc
 {
 	int16 ElementIndex;
@@ -84,6 +89,7 @@ void EmbreeFilterFunc(void* UserPtr, RTCRay& InRay)
 
 	EmbreeRay.ElementIndex = Desc.ElementIndex;
 }
+#endif
 
 FDelegateHandle GShadowFakeryDelegateHandle;
 
@@ -95,6 +101,7 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 	if (FMath::Frac(SizeExpo) != 0.f)
 		DistanceFieldSize = FMath::RoundToInt(FMath::Exp2(FMath::RoundToFloat(SizeExpo + 0.5f)));
 
+#if GENERATE_TEXTURE_DF
 	if (bUseGPU)
 	{
 		FRHITexture* MergedDistanceFieldRT = nullptr;
@@ -542,5 +549,6 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 
 	FString PackageFileName = FPackageName::LongPackageNameToFilename(PackageName, FPackageName::GetAssetPackageExtension());
 	bool bSaved = UPackage::SavePackage(Package, TargetTex, EObjectFlags::RF_Public | EObjectFlags::RF_Standalone, *PackageFileName, GError, nullptr, true, true, SAVE_NoError);
+#endif
 }
 
