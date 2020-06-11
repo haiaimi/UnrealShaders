@@ -3,14 +3,14 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Components/StaticMeshComponent.h"
+#include "Components/InstancedStaticMeshComponent.h"
 #include "ShadowFakeryStaticMeshComponent.generated.h"
 
 /**
  *	Static mesh used for shadow fakery 
  */
 UCLASS(Blueprintable, ClassGroup=(Rendering, Common))
-class SHADOWFAKERY_API UShadowFakeryStaticMeshComponent : public UStaticMeshComponent
+class SHADOWFAKERY_API UShadowFakeryStaticMeshComponent : public UInstancedStaticMeshComponent
 {
 	GENERATED_BODY()
 

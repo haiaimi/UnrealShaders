@@ -23,6 +23,8 @@ protected:
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)override;
 #endif
 
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason)override;
+
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
@@ -62,6 +64,8 @@ private:
 	FVector MaskCutDir;
 
 	TArray<UShadowFakeryStaticMeshComponent*> AllShadowStaticMesh;
+
+	UShadowFakeryStaticMeshComponent* ShadowFakeryStaticMesh;
 
 	bool bHasInit;
 

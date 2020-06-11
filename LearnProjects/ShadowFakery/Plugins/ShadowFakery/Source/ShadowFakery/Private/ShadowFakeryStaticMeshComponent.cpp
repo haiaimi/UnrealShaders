@@ -63,10 +63,10 @@ void UShadowFakeryStaticMeshComponent::TickComponent(float DeltaTime, enum ELeve
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	UMaterialInstanceDynamic* MaterialInst = CreateDynamicMaterialInstance(0);
+	/*UMaterialInstanceDynamic* MaterialInst = CreateDynamicMaterialInstance(0);
 	if (MaterialInst)
 	{
 		MaterialInst->SetScalarParameterValue(GSunYawName, GSunYaw);
 		MaterialInst->SetVectorParameterValue(GSunDirectionName, FLinearColor(GLightDirWithSize));
-	}
+	}*/
 }

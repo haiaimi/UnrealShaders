@@ -47,6 +47,7 @@ void AShadowFakeryInst::BeginPlay()
 {
 	Super::BeginPlay();
 	
+	
 }
 
 #if WITH_EDITOR
@@ -54,7 +55,16 @@ void AShadowFakeryInst::PostEditChangeProperty(FPropertyChangedEvent& PropertyCh
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 }
+
 #endif
+
+void AShadowFakeryInst::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (EndPlayReason == EEndPlayReason::EndPlayInEditor && ShadowFakeryStaticMesh)
+	{
+		ShadowFakeryStaticMesh->ClearInstances();
+	}
+}
 
 // Called every frame
 void AShadowFakeryInst::Tick(float DeltaTime)
@@ -69,12 +79,17 @@ void AShadowFakeryInst::Tick(float DeltaTime)
 		FBox Box(FVector(-25200.f, -25200.f, 0.f), FVector(25200.f, 25200.f, 10000.f));
 		TArray<FTransform> OutTransforms;
 		FoliageActor->GetOverlappingBoxTransforms(CurFoliageType, Box, OutTransforms);
+		ShadowFakeryStaticMesh = NewObject<UShadowFakeryStaticMeshComponent>(this, ShadowMeshCompentType);
+		ShadowFakeryStaticMesh->RegisterComponent();
+		ShadowFakeryStaticMesh->SetWorldLocationAndRotation(FVector::ZeroVector, FRotator::ZeroRotator);
+
 		for (auto& Iter : OutTransforms)
 		{
-			UShadowFakeryStaticMeshComponent* ShadowFakeryStaticMesh = NewObject<UShadowFakeryStaticMeshComponent>(this, ShadowMeshCompentType);
+			ShadowFakeryStaticMesh->AddInstance_ShadowFakery(FTransform( Iter.GetRotation(), Iter.GetLocation() + FVector::UpVector * 20.f), FVector4(3.f, 0, 45.f, 1500.f));
+			/*UShadowFakeryStaticMeshComponent* ShadowFakeryStaticMesh = NewObject<UShadowFakeryStaticMeshComponent>(this, ShadowMeshCompentType);
 			ShadowFakeryStaticMesh->RegisterComponent();
 			ShadowFakeryStaticMesh->SetWorldLocationAndRotation(Iter.GetLocation() + FVector::UpVector * 20.f, Iter.GetRotation());
-			AllShadowStaticMesh.Add(ShadowFakeryStaticMesh);
+			AllShadowStaticMesh.Add(ShadowFakeryStaticMesh);*/
 		}
 		bHasInit = true;
 	}
@@ -95,8 +110,7 @@ void AShadowFakeryInst::Tick(float DeltaTime)
 			CurFoliage->bCastDynamicShadow = false;
 		}
 		bSwitchShadowFakery = CVarUseShadowFakery.GetValueOnGameThread();
-		for (auto Iter : AllShadowStaticMesh)
-			Iter->SetVisibility(bSwitchShadowFakery);
+		ShadowFakeryStaticMesh->SetVisibility(bSwitchShadowFakery);
 	}
 
 	//UMaterialInstanceDynamic* MaterialInst = ShadowMeshCompent->CreateDynamicMaterialInstance(0);
@@ -132,6 +146,12 @@ void AShadowFakeryInst::Tick(float DeltaTime)
 
 		GSunYaw = SunYaw;
 		GLightDirWithSize = LightSize;
+
+		if (ShadowFakeryStaticMesh)
+		{
+			ShadowFakeryStaticMesh->BatchUpdateInstancesShadowFakeryParam(0, ShadowFakeryStaticMesh->GetInstanceCount(), FVector4(LightSize.X, LightSize.Y, SunYaw, 2000.f), false, true);
+		}
+			
 		/*MaterialInst->SetScalarParameterValue(SunYawParam, SunYaw);
 		MaterialInst->SetVectorParameterValue(SunDirectionParam, FLinearColor(LightDir.GetSafeNormal2D()) * FMath::Abs(1.f / FMath::Tan(FMath::DegreesToRadians(FMath::Abs(SunYaw)))));*/
 		//MaterialInst->SetVectorParameterValue(SunDirectionParam, FLinearColor(LightDir.GetSafeNormal2D()) * (1.f - FMath::Abs(SunYaw) / 90.f) * 5.f);
