@@ -198,7 +198,9 @@ struct FVertexFactoryInterpolantsVSToPS
 	// x = per-instance random, y = per-instance fade out amount, z = hide/show flag, w dither fade cutoff
 	float4  PerInstanceParams : COLOR1;
 	//#Change by wh, 2019/6/10 
-	float4 ShadowFakeryParams : COLOR2;
+	#if CUSTOM_INSTANCEDATA_NUM
+		float4 ShadowFakeryParams[CUSTOM_INSTANCEDATA_NUM] : COLOR2;
+	#endif
 	//end
 #endif
 

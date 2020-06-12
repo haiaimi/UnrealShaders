@@ -24,6 +24,8 @@ struct FStaticLightingPrimitiveInfo;
 
 DECLARE_STATS_GROUP(TEXT("Foliage"), STATGROUP_Foliage, STATCAT_Advanced);
 
+#define MAX_CUSTOM_INSTANCEDATA_NUM 4
+
 class FStaticLightingTextureMapping_InstancedStaticMesh;
 class FInstancedLightMap2D;
 class FInstancedShadowMap2D;
@@ -83,19 +85,16 @@ struct FInstancedStaticMeshInstanceData
 
 	UPROPERTY(EditAnywhere, Category=Instances)
 	FMatrix Transform;
-
-	UPROPERTY(EditAnywhere, Category = Instances)
-	FVector4 ShadowFakeryParam;
+	
+	FVector4 ShadowFakeryParam[MAX_CUSTOM_INSTANCEDATA_NUM];
 
 	FInstancedStaticMeshInstanceData()
-		: Transform(FMatrix::Identity),
-		ShadowFakeryParam(ForceInitToZero)
+		: Transform(FMatrix::Identity)
 	{
 	}
 
 	FInstancedStaticMeshInstanceData(const FMatrix& InTransform, const FVector4& ShadowFakeryParam)
-		: Transform(InTransform),
-		ShadowFakeryParam(ShadowFakeryParam)
+		: Transform(InTransform)
 	{
 	}
 
@@ -103,7 +102,12 @@ struct FInstancedStaticMeshInstanceData
 	{
 		// @warning BulkSerialize: FInstancedStaticMeshInstanceData is serialized as memory dump
 		// See TArray::BulkSerialize for detailed description of implied limitations.
-		Ar << InstanceData.Transform << InstanceData.ShadowFakeryParam;
+		Ar << InstanceData.Transform;
+		for (int32 i = 0; i < MAX_CUSTOM_INSTANCEDATA_NUM; ++i)
+		{
+			Ar << InstanceData.ShadowFakeryParam[i];
+		}
+
 		return Ar;
 	}
 };
@@ -163,7 +167,7 @@ class ENGINE_API UInstancedStaticMeshComponent : public UStaticMeshComponent
 
 	//#Change by wh, 2019/6/10 
 	UFUNCTION(BlueprintCallable, Category = "Components|InstancedStaticMesh")
-	virtual int32 AddInstance_ShadowFakery(const FTransform& InstanceTransform, const FVector4& ShadowFakeryParam);
+	virtual int32 AddInstance_ShadowFakery(const FTransform& InstanceTransform, const TArray<FVector4>& ShadowFakeryParam);
 	//end
 
 	/** Add an instance to this component. Transform is given in world space. */
@@ -203,7 +207,7 @@ class ENGINE_API UInstancedStaticMeshComponent : public UStaticMeshComponent
 
 	//#Change by wh, 2019/6/10 
 	UFUNCTION(BlueprintCallable, Category = "Components|InstancedStaticMesh")
-	virtual bool UpdateInstanceShadowFakeryParam(int32 InstanceIndex, const FVector4& NewIShadowFakeryParam, bool bMarkRenderStateDirty = false);
+	virtual bool UpdateInstanceShadowFakeryParam(int32 InstanceIndex, const TArray<FVector4>& NewIShadowFakeryParam, bool bMarkRenderStateDirty = false);
 	//end
 
     /**
@@ -235,7 +239,7 @@ class ENGINE_API UInstancedStaticMeshComponent : public UStaticMeshComponent
 	
 	//#Change by wh, 2019/6/10 
 	UFUNCTION(BlueprintCallable, Category = "Components|InstancedStaticMesh")
-	virtual bool BatchUpdateInstancesShadowFakeryParam(int32 StartInstanceIndex, int32 NumInstances, const FVector4& ShadowFakeryParam, bool bWorldSpace = false, bool bMarkRenderStateDirty = false, bool bTeleport = false);
+	virtual bool BatchUpdateInstancesShadowFakeryParam(int32 StartInstanceIndex, int32 NumInstances, const TArray<FVector4>& NewIShadowFakeryParam, bool bWorldSpace = false, bool bMarkRenderStateDirty = false, bool bTeleport = false);
 	//end
 
 	/** Remove the instance specified. Returns True on success. Note that this will leave the array in order, but may shrink it. */
@@ -267,6 +271,11 @@ class ENGINE_API UInstancedStaticMeshComponent : public UStaticMeshComponent
 	virtual void PostLoad() override;
 	virtual void OnComponentCreated() override;
 
+public:
+	//#Change by wh, 2020/6/12 
+	UPROPERTY(EditAnywhere, Category = CustomInstance, meta = (ClampMin = "0"))
+	int32 CustomInstanceDataNum;
+	//end
 public:
 	/** Render data will be initialized on PostLoad or on demand. Released on the rendering thread. */
 	TSharedPtr<FPerInstanceRenderData, ESPMode::ThreadSafe> PerInstanceRenderData;
@@ -356,7 +365,7 @@ private:
 	void SetupNewInstanceData(FInstancedStaticMeshInstanceData& InOutNewInstanceData, int32 InInstanceIndex, const FTransform& InInstanceTransform);
 
 	//#Change by wh, 2019/6/10 
-	void SetupNewInstanceData_ShadowFakery(FInstancedStaticMeshInstanceData& InOutNewInstanceData, int32 InInstanceIndex, const FTransform& InInstanceTransform, const FVector4& ShadowFakeryParam);
+	void SetupNewInstanceData_ShadowFakery(FInstancedStaticMeshInstanceData& InOutNewInstanceData, int32 InInstanceIndex, const FTransform& InInstanceTransform, const TArray<FVector4>& NewIShadowFakeryParam);
 	//end
 
 	/** Update instance body with a new transform */
@@ -376,7 +385,7 @@ protected:
 	int32 AddInstanceInternal(int32 InstanceIndex, FInstancedStaticMeshInstanceData* InNewInstanceData, const FTransform& InstanceTransform);
 
 	//#Change by wh, 2019/6/10 
-	int32 AddInstanceInternal_ShadowFakery(int32 InstanceIndex, FInstancedStaticMeshInstanceData* InNewInstanceData, const FTransform& InstanceTransform, const FVector4& ShadowFakeryParam);
+	int32 AddInstanceInternal_ShadowFakery(int32 InstanceIndex, FInstancedStaticMeshInstanceData* InNewInstanceData, const FTransform& InstanceTransform, const TArray<FVector4>& ShadowFakeryParam);
 	//end
 
 	/** Internal version of RemoveInstance */	
@@ -400,9 +409,11 @@ protected:
 	
 	void CreateHitProxyData(TArray<TRefCountPtr<HHitProxy>>& HitProxies);
 
+	//#Change by wh, 2020/6/12 
     /** Build instance buffer for rendering from current component data. */
-	void BuildRenderData(FStaticMeshInstanceData& OutData, TArray<TRefCountPtr<HHitProxy>>& OutHitProxies);
-	
+	void BuildRenderData(FStaticMeshInstanceData* OutData, TArray<TRefCountPtr<HHitProxy>>& OutHitProxies);
+	//end
+
     /** Serialize instance buffer that is used for rendering. Only for cooked content */
 	void SerializeRenderData(FArchive& Ar);
 	

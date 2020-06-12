@@ -14,6 +14,10 @@
 
 #include "/Engine/Generated/UniformBuffers/PrecomputedLightingBuffer.ush"
 
+#ifndef CUSTOM_INSTANCEDATA_NUM
+	#define CUSTOM_INSTANCEDATA_NUM 0
+#endif
+
 #if USE_INSTANCING
 	#ifndef USE_DITHERED_LOD_TRANSITION_FOR_INSTANCED
 		#error "USE_DITHERED_LOD_TRANSITION_FOR_INSTANCED should have been defined"
@@ -91,7 +95,9 @@ float4 SplineParams[10];
 	Buffer<float4> VertexFetch_InstanceTransformBuffer;
 	Buffer<float4> VertexFetch_InstanceLightmapBuffer;
 	//#Change by wh, 2019/6/10 
-	Buffer<float4> VertexFetch_InstanceShadowFakeryBuffer;
+	#if CUSTOM_INSTANCEDATA_NUM
+		Buffer<float4> VertexFetch_InstanceShadowFakeryBuffer;
+	#endif
 	//end
 
 	#if USE_INSTANCING && USE_INSTANCING_BONEMAP
@@ -160,7 +166,9 @@ struct FVertexFactoryInput
 	half4 InstanceTransform3 : ATTRIBUTE11; // hitproxy.b in .w
 	float4 InstanceLightmapAndShadowMapUVBias : ATTRIBUTE12; 
 	//#Change by wh, 2019/6/10 
-	float4 ShadowFakeryParams : ATTRIBUTE13;
+	#if CUSTOM_INSTANCEDATA_NUM
+		float4 ShadowFakeryParams[CUSTOM_INSTANCEDATA_NUM] : ATTRIBUTE13;
+	#endif
 	//end
 #endif //USE_INSTANCING && !USE_INSTANCING_EMULATED
 
@@ -328,7 +336,9 @@ struct FVertexFactoryIntermediates
 	// x = per-instance random, y = per-instance fade out amount, z = hide/show flag, w dither fade cutoff
 	float4 PerInstanceParams;
 	//#Change by wh, 2019/6/10 
-	float4 ShadowFakeryParams;
+	#if CUSTOM_INSTANCEDATA_NUM
+		float4 ShadowFakeryParams[CUSTOM_INSTANCEDATA_NUM];
+	#endif
 	//end
 #endif	// USE_INSTANCING
 	uint PrimitiveId;
@@ -515,7 +525,11 @@ FMaterialPixelParameters GetMaterialPixelParameters(FVertexFactoryInterpolantsVS
 #if USE_INSTANCING
 	Result.PerInstanceParams = Interpolants.PerInstanceParams;
 	//#Change by wh, 2019/6/10 
-	Result.ShadowFakeryParams = Interpolants.ShadowFakeryParams;
+	#if CUSTOM_INSTANCEDATA_NUM
+	UNROLL
+	for(int i = 0; i < CUSTOM_INSTANCEDATA_NUM; ++i)
+		Result.ShadowFakeryParams[i] = Interpolants.ShadowFakeryParams[i];
+	#endif
 	//end
 #endif
 
@@ -567,7 +581,10 @@ FMaterialVertexParameters GetMaterialVertexParameters(FVertexFactoryInput Input,
 	Result.PerInstanceParams = Intermediates.PerInstanceParams;
 	
 	//#Change by wh, 2019/6/10 
-	Result.ShadowFakeryParams = Intermediates.ShadowFakeryParams;
+	#if CUSTOM_INSTANCEDATA_NUM
+		for(int i = 0; i < CUSTOM_INSTANCEDATA_NUM; ++i)
+			Result.ShadowFakeryParams[i] = Interpolants.ShadowFakeryParams[i];
+	#endif
 	//end
 
 	#if USE_INSTANCING_BONEMAP
@@ -827,7 +844,10 @@ FVertexFactoryIntermediates GetVertexFactoryIntermediates(FVertexFactoryInput In
 	Intermediates.InstanceOrigin = VertexFetch_InstanceOriginBuffer[(InstanceId + InstanceOffset)];
 	Intermediates.InstanceLightmapAndShadowMapUVBias = VertexFetch_InstanceLightmapBuffer[(InstanceId + InstanceOffset)];
 	//#Change by wh, 2019/6/10 
-	Intermediates.ShadowFakeryParams = VertexFetch_InstanceShadowFakeryBuffer[(InstanceId + InstanceOffset)];
+	#if CUSTOM_INSTANCEDATA_NUM
+	for(int i = 0; i < CUSTOM_INSTANCEDATA_NUM; ++i)
+		Intermediates.ShadowFakeryParams[i] = VertexFetch_InstanceShadowFakeryBuffer[(InstanceId * CUSTOM_INSTANCEDATA_NUM + i + InstanceOffset)];
+	#endif
 	//end
 #elif !USE_INSTANCING_EMULATED && MANUAL_VERTEX_FETCH && USE_INSTANCING_BONEMAP
 	uint InstanceIndex = VertexFetch_InstanceBoneMapBuffer[LocalVF.VertexFetch_Parameters[VF_VertexOffset] + Input.VertexId];
@@ -837,7 +857,10 @@ FVertexFactoryIntermediates GetVertexFactoryIntermediates(FVertexFactoryInput In
 	Intermediates.InstanceOrigin = VertexFetch_InstanceTransformBuffer[4 * InstanceIndex + 3];	
 	//#Change by wh, 2019/6/10 
 	// Only set a zero value, more can see GeometryCollectionRendering.cpp, if we want to add shadowfakery to this VertexFactory, it always uesd in VelocityPass
-	Intermediates.ShadowFakeryParams = 0.f;
+	#if CUSTOM_INSTANCEDATA_NUM
+		for(int i = 0; i < CUSTOM_INSTANCEDATA_NUM; ++i)
+			Intermediates.ShadowFakeryParams[i] = 0.f;
+	#endif
 	//end
 	
 	Intermediates.InstancePrevTransform1 = VertexFetch_InstancePrevTransformBuffer[4 * InstanceIndex + 0];
@@ -853,7 +876,10 @@ FVertexFactoryIntermediates GetVertexFactoryIntermediates(FVertexFactoryInput In
 	Intermediates.InstanceOrigin = Input.InstanceOrigin;
 	Intermediates.InstanceLightmapAndShadowMapUVBias = Input.InstanceLightmapAndShadowMapUVBias;
 	//#Change by wh, 2019/6/10 
-	Intermediates.ShadowFakeryParams = Input.ShadowFakeryParams;
+	#if CUSTOM_INSTANCEDATA_NUM
+		for(int i = 0; i < CUSTOM_INSTANCEDATA_NUM; ++i)
+			Intermediates.ShadowFakeryParams[i] = Input.ShadowFakeryParams[i];
+	#endif
 	//end
 #endif
 
@@ -1013,7 +1039,10 @@ FVertexFactoryInterpolantsVSToPS VertexFactoryGetInterpolantsVSToPS(FVertexFacto
 #if USE_INSTANCING
 	Interpolants.PerInstanceParams = Intermediates.PerInstanceParams;
 	//#Change by wh, 2019/6/10 
-	Interpolants.ShadowFakeryParams = Intermediates.ShadowFakeryParams;
+	#if CUSTOM_INSTANCEDATA_NUM
+		for(int i = 0; i < CUSTOM_INSTANCEDATA_NUM; ++i)
+			Interpolants.ShadowFakeryParams[i] = Intermediates.ShadowFakeryParams[i];
+	#endif
 	//end
 #endif
 

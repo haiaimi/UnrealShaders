@@ -38,6 +38,7 @@ extern TAutoConsoleVariable<float> CVarRandomLODRange;
 extern TAutoConsoleVariable<int32> CVarMinLOD;
 
 
+
 // This must match the maximum a user could specify in the material (see 
 // FHLSLMaterialTranslator::TextureCoordinate), otherwise the material will attempt 
 // to look up a texture coordinate we didn't provide an element for.
@@ -62,7 +63,9 @@ public:
 	 * Initializes the buffer with the component's data.
 	 * @param Other - instance data, this call assumes the memory, so this will be empty after the call
 	 */
-	ENGINE_API void InitFromPreallocatedData(FStaticMeshInstanceData& Other);
+	//#Change by wh, 2020/6/12 
+	ENGINE_API void InitFromPreallocatedData(FStaticMeshInstanceData* Other);
+	//end
 	ENGINE_API void UpdateFromCommandBuffer_Concurrent(FInstanceUpdateCmdBuffer& CmdBuffer);
 
 	/**
@@ -190,12 +193,14 @@ struct FInstancedStaticMeshDataType
 	bool bInitialized = false;
 };
 
+//#Change by wh, 2020/6/12 
 /**
  * A vertex factory for instanced static meshes
  */
 struct FInstancedStaticMeshVertexFactory : public FLocalVertexFactory
 {
 	DECLARE_VERTEX_FACTORY_TYPE(FInstancedStaticMeshVertexFactory);
+	
 public:
 	FInstancedStaticMeshVertexFactory(ERHIFeatureLevel::Type InFeatureLevel)
 		: FLocalVertexFactory(InFeatureLevel, "FInstancedStaticMeshVertexFactory")
@@ -222,7 +227,7 @@ public:
 		{
 			OutEnvironment.SetDefine(TEXT("MANUAL_VERTEX_FETCH"), TEXT("1"));
 		}
-
+		
 		OutEnvironment.SetDefine(TEXT("USE_INSTANCING"),TEXT("1"));
 		if (IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5))
 		{
@@ -311,6 +316,29 @@ private:
 	FDataType Data;
 };
 
+template<uint32 CustomDataNum = 1>
+class FInstancedStaticMeshVertexFactory_CustomData : public FInstancedStaticMeshVertexFactory
+{
+	DECLARE_VERTEX_FACTORY_TYPE(FInstancedStaticMeshVertexFactory_CustomData);
+
+	static_assert(CustomDataNum <= MAX_CUSTOM_INSTANCEDATA_NUM, "OUT OF MAX CUSTOM INSTANCE DATA NUM");
+public:
+	FInstancedStaticMeshVertexFactory_CustomData(ERHIFeatureLevel::Type InFeatureLevel)
+		: FInstancedStaticMeshVertexFactory(InFeatureLevel, "FInstancedStaticMeshVertexFactory" + FString::FormatAsNumber(CustomDataNum))
+	{
+	}
+	static void ModifyCompilationEnvironment(const FVertexFactoryType* Type, EShaderPlatform Platform, const FMaterial* Material, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		OutEnvironment.SetDefine(TEXT("CUSTOM_INSTANCEDATA_NUM"), CustomDataNum);
+
+		FInstancedStaticMeshVertexFactory::ModifyCompilationEnvironment(Type, Platform, Material, OutEnvironment);
+	}
+
+	static FVertexFactoryShaderParameters* ConstructShaderParameters(EShaderFrequency ShaderFrequency);
+};
+
+//end
+
 
 struct FEmulatedInstancedStaticMeshVertexFactory : public FInstancedStaticMeshVertexFactory
 {
@@ -359,9 +387,6 @@ class FInstancedStaticMeshVertexFactoryShaderParameters : public FLocalVertexFac
 		CPUInstanceTransform.Bind(ParameterMap, TEXT("CPUInstanceTransform"));
 		CPUInstanceLightmapAndShadowMapBias.Bind(ParameterMap, TEXT("CPUInstanceLightmapAndShadowMapBias"));
 		VertexFetch_InstanceOriginBufferParameter.Bind(ParameterMap, TEXT("VertexFetch_InstanceOriginBuffer"));
-		//#Change by wh, 2019/6/10 
-		VertexFetch_InstanceShadowFakeryBufferParameter.Bind(ParameterMap, TEXT("VertexFetch_InstanceShadowFakeryBuffer"));
-		//end
 		VertexFetch_InstanceTransformBufferParameter.Bind(ParameterMap, TEXT("VertexFetch_InstanceTransformBuffer"));
 		VertexFetch_InstanceLightmapBufferParameter.Bind(ParameterMap, TEXT("VertexFetch_InstanceLightmapBuffer"));
 		InstanceOffset.Bind(ParameterMap, TEXT("InstanceOffset"));
@@ -412,15 +437,52 @@ private:
 	FShaderParameter CPUInstanceLightmapAndShadowMapBias;
 
 	FShaderResourceParameter VertexFetch_InstanceOriginBufferParameter;
-	//#Change by wh, 2019/6/10 
-	FShaderResourceParameter VertexFetch_InstanceShadowFakeryBufferParameter;
-	//end
+	
 	FShaderResourceParameter VertexFetch_InstanceTransformBufferParameter;
 	FShaderResourceParameter VertexFetch_InstanceLightmapBufferParameter;
 	FShaderParameter InstanceOffset;
 };
 
+//#Change by wh, 2020/6/12 
+template<uint32 CustomDataNum = 1>
+class FInstancedStaticMeshVertexFactoryShaderParameters_CustomData : public FInstancedStaticMeshVertexFactoryShaderParameters
+{
+public:
+	virtual void Bind(const FShaderParameterMap& ParameterMap) override
+	{
+		FInstancedStaticMeshVertexFactoryShaderParameters::Bind(ParameterMap);
+		
+		if (CustomDataNum > 0)
+			VertexFetch_InstanceShadowFakeryBufferParameter.Bind(ParameterMap, TEXT("VertexFetch_InstanceShadowFakeryBuffer"));
+	}
+
+	virtual void GetElementShaderBindings(
+		const class FSceneInterface* Scene,
+		const FSceneView* View,
+		const FMeshMaterialShader* Shader,
+		const EVertexInputStreamType InputStreamType,
+		ERHIFeatureLevel::Type FeatureLevel,
+		const FVertexFactory* VertexFactory,
+		const FMeshBatchElement& BatchElement,
+		FMeshDrawSingleShaderBindings& ShaderBindings,
+		FVertexInputStreamArray& VertexStreams
+	) const override;
+
+	void Serialize(FArchive& Ar) override
+	{
+		FInstancedStaticMeshVertexFactoryShaderParameters::Serialize(Ar);
+		if (CustomDataNum > 0)
+			Ar << VertexFetch_InstanceShadowFakeryBufferParameter;
+	}
+	//#Change by wh, 2019/6/10 
+	FShaderResourceParameter VertexFetch_InstanceShadowFakeryBufferParameter;
+	//end
+};
+
+//end
+
 struct FInstanceUpdateCmdBuffer;
+//#Change by wh, 2020/6/12 
 /*-----------------------------------------------------------------------------
 	FPerInstanceRenderData
 	Holds render data that can persist between scene proxy reconstruction
@@ -428,7 +490,9 @@ struct FInstanceUpdateCmdBuffer;
 struct FPerInstanceRenderData
 {
 	// Should be always constructed on main thread
-	FPerInstanceRenderData(FStaticMeshInstanceData& Other, ERHIFeatureLevel::Type InFeaureLevel, bool InRequireCPUAccess);
+	//#Change by wh, 2020/6/12 
+	FPerInstanceRenderData(FStaticMeshInstanceData* Other, ERHIFeatureLevel::Type InFeaureLevel, bool InRequireCPUAccess);
+	//end
 	~FPerInstanceRenderData();
 
 	/**
@@ -438,6 +502,10 @@ struct FPerInstanceRenderData
 	 */
 	ENGINE_API void UpdateFromPreallocatedData(FStaticMeshInstanceData& InOther);
 		
+	//#Change by wh, 2020/6/12 
+	ENGINE_API void UpdateFromPreallocatedData(FStaticMeshInstanceData* InOther);
+	//end
+
 	/**
 	*/
 	ENGINE_API void UpdateFromCommandBuffer(FInstanceUpdateCmdBuffer& CmdBuffer);
@@ -452,7 +520,7 @@ struct FPerInstanceRenderData
 	FStaticMeshInstanceBuffer			InstanceBuffer;
 	TSharedPtr<FStaticMeshInstanceData, ESPMode::ThreadSafe> InstanceBuffer_GameThread;
 };
-
+//end
 
 /*-----------------------------------------------------------------------------
 	FInstancedStaticMeshRenderData

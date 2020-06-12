@@ -1049,6 +1049,7 @@ private:
 	void RemoveSpeedTreeWind();
 };
 
+//#Change by wh, 2020/6/12 
 /*-----------------------------------------------------------------------------
 	FStaticMeshInstanceData
 -----------------------------------------------------------------------------*/
@@ -1113,19 +1114,16 @@ public:
 		AllocateBuffers(0);
 	}
 
-	~FStaticMeshInstanceData()
+	virtual ~FStaticMeshInstanceData()
 	{
 		delete InstanceOriginData;
 		delete InstanceLightmapData;
 		delete InstanceTransformData;
-		//#Change by wh, 2019/6/10 
-		delete InstanceShadowFakeryData;
-		//end
 	}
 
 	void Serialize(FArchive& Ar);
 	
-	void AllocateInstances(int32 InNumInstances, EResizeBufferFlags BufferFlags, bool DestroyExistingInstances)
+	virtual void AllocateInstances(int32 InNumInstances, EResizeBufferFlags BufferFlags, bool DestroyExistingInstances)
 	{
 		NumInstances = InNumInstances;
 
@@ -1134,9 +1132,6 @@ public:
 			InstanceOriginData->Empty(NumInstances);
 			InstanceLightmapData->Empty(NumInstances);
 			InstanceTransformData->Empty(NumInstances);
-			//#Change by wh, 2019/6/10 
-			InstanceShadowFakeryData->Empty(NumInstances);
-			//end
 		}
 
 		// We cannot write directly to the data on all platforms,
@@ -1149,11 +1144,6 @@ public:
 
 		InstanceTransformData->ResizeBuffer(NumInstances, BufferFlags);
 		InstanceTransformDataPtr = InstanceTransformData->GetDataPointer();
-
-		//#Change by wh, 2019/6/10 
-		InstanceShadowFakeryData->ResizeBuffer(NumInstances, BufferFlags);
-		InstanceShadowFakeryDataPtr = InstanceShadowFakeryData->GetDataPointer();
-		//end
 	}
 
 	FORCEINLINE_DEBUGGABLE int32 IsValidIndex(int32 Index) const
@@ -1255,13 +1245,15 @@ public:
 		SetInstanceLightMapDataInternal(InstanceIndex, FVector4(LightmapUVBias.X, LightmapUVBias.Y, ShadowmapUVBias.X, ShadowmapUVBias.Y));
 	}
 
-	//#Change by wh, 2019/6/10 
-	FORCEINLINE_DEBUGGABLE void SetInstance(int32 InstanceIndex, const FMatrix& Transform, const FVector4& ShadowFakeryParam, float RandomInstanceID, const FVector2D& LightmapUVBias, const FVector2D& ShadowmapUVBias)
+	//#Change by wh, 2020/6/12 
+	//For custom instance data
+	FORCEINLINE_DEBUGGABLE virtual void SetInstance(int32 InstanceIndex, const FMatrix& Transform, const TArray<FVector4>& ShadowFakeryParam, float RandomInstanceID, const FVector2D& LightmapUVBias, const FVector2D& ShadowmapUVBias){}
+	//end
+
+	/*FORCEINLINE_DEBUGGABLE void SetInstance(int32 InstanceIndex, const FMatrix& Transform, float RandomInstanceID, const FVector2D& LightmapUVBias, const FVector2D& ShadowmapUVBias)
 	{
 		FVector4 Origin(Transform.M[3][0], Transform.M[3][1], Transform.M[3][2], RandomInstanceID);
 		SetInstanceOriginInternal(InstanceIndex, Origin);
-
-		SetInstanceShadowFakeryInternal(InstanceIndex, ShadowFakeryParam);
 
 		FVector4 InstanceTransform[3];
 		InstanceTransform[0] = FVector4(Transform.M[0][0], Transform.M[0][1], Transform.M[0][2], 0.0f);
@@ -1278,8 +1270,7 @@ public:
 		}
 
 		SetInstanceLightMapDataInternal(InstanceIndex, FVector4(LightmapUVBias.X, LightmapUVBias.Y, ShadowmapUVBias.X, ShadowmapUVBias.Y));
-	}
-	//end
+	}*/
 
 	FORCEINLINE void SetInstance(int32 InstanceIndex, const FMatrix& Transform, const FVector2D& LightmapUVBias, const FVector2D& ShadowmapUVBias)
 	{
@@ -1415,21 +1406,6 @@ public:
 			ElementData[Index1] = ElementData[Index2];
 			ElementData[Index2] = TempStore;
 		}
-		//#Change by wh, 2019/6/10 
-		{
-
-			FVector4* ElementData = reinterpret_cast<FVector4*>(InstanceShadowFakeryDataPtr);
-			uint32 CurrentSize = InstanceShadowFakeryData->Num() * InstanceShadowFakeryData->GetStride();
-			check((void*)((&ElementData[Index1]) + 1) <= (void*)(InstanceShadowFakeryDataPtr + CurrentSize));
-			check((void*)((&ElementData[Index1]) + 0) >= (void*)(InstanceShadowFakeryDataPtr));
-			check((void*)((&ElementData[Index2]) + 1) <= (void*)(InstanceShadowFakeryDataPtr + CurrentSize));
-			check((void*)((&ElementData[Index2]) + 0) >= (void*)(InstanceShadowFakeryDataPtr));
-
-			FVector4 TempStore = ElementData[Index1];
-			ElementData[Index1] = ElementData[Index2];
-			ElementData[Index2] = TempStore;
-		}
-		//end
 		{
 			FInstanceLightMapVector* ElementData = reinterpret_cast<FInstanceLightMapVector*>(InstanceLightmapDataPtr);
 			uint32 CurrentSize = InstanceLightmapData->Num() * InstanceLightmapData->GetStride();
@@ -1449,6 +1425,12 @@ public:
 		return NumInstances;
 	}
 
+	FORCEINLINE_DEBUGGABLE int32 GetNumCustomData() const
+	{
+		return NumCustomData;
+	}
+
+
 	FORCEINLINE_DEBUGGABLE void SetAllowCPUAccess(bool InNeedsCPUAccess)
 	{
 		if (InstanceOriginData)
@@ -1463,12 +1445,6 @@ public:
 		{
 			InstanceTransformData->GetResourceArray()->SetAllowCPUAccess(InNeedsCPUAccess);
 		}
-		//#Change by wh, 2019/6/10 
-		if (InstanceShadowFakeryData)
-		{
-			InstanceShadowFakeryData->GetResourceArray()->SetAllowCPUAccess(InNeedsCPUAccess);
-		}
-		//end
 	}
 
 	FORCEINLINE_DEBUGGABLE bool GetTranslationUsesHalfs() const
@@ -1490,12 +1466,11 @@ public:
 	{
 		return InstanceLightmapData->GetResourceArray();
 	}
-	//#Change by wh, 2019/6/10 
-	FORCEINLINE_DEBUGGABLE FResourceArrayInterface* GetShadowFakeryResourceArray()
+
+	FORCEINLINE_DEBUGGABLE virtual FResourceArrayInterface* GetShadowFakeryResourceArray()
 	{
-		return InstanceShadowFakeryData->GetResourceArray();
+		return nullptr;
 	}
-	//end
 
 	FORCEINLINE_DEBUGGABLE uint32 GetOriginStride()
 	{
@@ -1511,22 +1486,12 @@ public:
 	{
 		return InstanceLightmapData->GetStride();
 	}
-
-	//#Change by wh, 2019/6/10 
-	FORCEINLINE_DEBUGGABLE uint32 GetShadowFakeryStride()
-	{
-		return InstanceShadowFakeryData->GetStride();
-	}
-	//end
-
-	FORCEINLINE_DEBUGGABLE SIZE_T GetResourceSize() const
+	
+	FORCEINLINE_DEBUGGABLE virtual SIZE_T GetResourceSize() const
 	{
 		return	InstanceOriginData->GetResourceSize() + 
 				InstanceTransformData->GetResourceSize() + 
-				InstanceLightmapData->GetResourceSize() + 
-			    //#Change by wh, 2019/6/10 
-				InstanceShadowFakeryData->GetResourceSize();
-		        //end
+				InstanceLightmapData->GetResourceSize();
 	}
 
 private:
@@ -1613,18 +1578,7 @@ private:
 
 		ElementData[InstanceIndex] = Origin;
 	}
-
-	//#Change by wh, 2019/6/10 
-	FORCEINLINE_DEBUGGABLE void SetInstanceShadowFakeryInternal(int32 InstanceIndex, const FVector4& ShadowFakery) const
-	{
-		FVector4* ElementData = reinterpret_cast<FVector4*>(InstanceShadowFakeryDataPtr);
-		uint32 CurrentSize = InstanceShadowFakeryData->Num() * InstanceShadowFakeryData->GetStride();
-		check((void*)((&ElementData[InstanceIndex]) + 1) <= (void*)(InstanceShadowFakeryDataPtr + CurrentSize));
-		check((void*)((&ElementData[InstanceIndex]) + 0) >= (void*)(InstanceShadowFakeryDataPtr));
-
-		ElementData[InstanceIndex] = ShadowFakery;
-	}
-	//end
+	
 
 	FORCEINLINE_DEBUGGABLE void SetInstanceLightMapDataInternal(int32 InstanceIndex, const FVector4& LightmapData) const
 	{
@@ -1652,10 +1606,7 @@ private:
 		 		
 		InstanceOriginData = new TStaticMeshVertexData<FVector4>();
 		InstanceOriginData->ResizeBuffer(InNumInstances, BufferFlags);
-		//#Change by wh, 2019/6/10 
-		InstanceShadowFakeryData = new TStaticMeshVertexData<FVector4>();
-		InstanceShadowFakeryData->ResizeBuffer(InNumInstances, BufferFlags);
-		//end
+
 		InstanceLightmapData = new TStaticMeshVertexData<FInstanceLightMapVector>();
 		InstanceLightmapData->ResizeBuffer(InNumInstances, BufferFlags);
 		if (bUseHalfFloat)
@@ -1675,17 +1626,130 @@ private:
 	FStaticMeshVertexDataInterface* InstanceTransformData = nullptr;
 	uint8* InstanceTransformDataPtr = nullptr;
 
-	//#Change by wh, 2019/6/10 
-	FStaticMeshVertexDataInterface* InstanceShadowFakeryData = nullptr;
-	uint8* InstanceShadowFakeryDataPtr = nullptr;
-	//end
-
 	FStaticMeshVertexDataInterface* InstanceLightmapData = nullptr;
 	uint8* InstanceLightmapDataPtr = nullptr;	
 
 	int32 NumInstances = 0;
 	bool bUseHalfFloat = false;
+	int32 NumCustomData = 0;
 };
+
+template<uint32 PerInstanceDataNum = 1>
+class FStaticMeshInstanceData_CustomData : public FStaticMeshInstanceData
+{
+public:
+	FStaticMeshInstanceData_CustomData()
+	{
+		NumCustomData = PerInstanceDataNum;
+	}
+	
+	FStaticMeshInstanceData_CustomData(bool bInUseHalfFloat)
+	:	FStaticMeshInstanceData(bInUseHalfFloat)
+	{
+		NumCustomData = PerInstanceDataNum;
+	}
+
+	~FStaticMeshInstanceData_CustomData()
+	{
+		FStaticMeshInstanceData::~FStaticMeshInstanceData();
+
+		delete InstanceShadowFakeryData;
+	}
+
+	FORCEINLINE_DEBUGGABLE void SetInstance(int32 InstanceIndex, const FMatrix& Transform, const TArray<FVector4>& ShadowFakeryParam, float RandomInstanceID, const FVector2D& LightmapUVBias, const FVector2D& ShadowmapUVBias)
+	{
+		FStaticMeshInstanceData::SetInstance(InstanceIndex, Transform, RandomInstanceID, LightmapUVBias, ShadowmapUVBias);
+
+		SetInstanceShadowFakeryInternal(InstanceIndex, ShadowFakeryParam);
+	}
+
+	FORCEINLINE_DEBUGGABLE void SetInstanceShadowFakeryInternal(int32 InstanceIndex, const TArray<FVector4>& ShadowFakery) const
+	{
+		if (PerInstanceDataNum == 0)return;
+		FVector4* ElementData = reinterpret_cast<FVector4*>(InstanceShadowFakeryDataPtr);
+		uint32 CurrentSize = InstanceShadowFakeryData->Num() * InstanceShadowFakeryData->GetStride();
+		check((void*)((&ElementData[InstanceIndex * PerInstanceDataNum]) + 1) <= (void*)(InstanceShadowFakeryDataPtr + CurrentSize));
+		check((void*)((&ElementData[InstanceIndex * PerInstanceDataNum]) + 0) >= (void*)(InstanceShadowFakeryDataPtr));
+		check(ShadowFakery.Num() >= PerInstanceDataNum);
+
+		for (int32 i = 0; i < PerInstanceDataNum; ++i)
+		{
+			ElementData[InstanceIndex++] = ShadowFakery;
+		}
+	}
+	void AllocateInstances(int32 InNumInstances, EResizeBufferFlags BufferFlags, bool DestroyExistingInstances)override
+	{
+		FStaticMeshInstanceData::AllocateInstances(InNumInstances, BufferFlags, DestroyExistingInstances);
+		if (DestroyExistingInstances)
+		{
+			InstanceShadowFakeryData->Empty(NumInstances);
+		}
+
+		InstanceShadowFakeryData->ResizeBuffer(NumInstances, BufferFlags);
+		InstanceShadowFakeryDataPtr = InstanceShadowFakeryData->GetDataPointer();
+	}
+
+	void AllocateBuffers(int32 InNumInstances, EResizeBufferFlags BufferFlags = EResizeBufferFlags::None)
+	{
+		FStaticMeshInstanceData::AllocateBuffers(InNumInstances, BufferFlags);
+
+		delete InstanceShadowFakeryData;
+		InstanceShadowFakeryData = nullptr;
+		
+		if (PerInstanceDataNum > 0)
+			InstanceShadowFakeryData = new TStaticMeshVertexData<FVector4[PerInstanceDataNum]>();
+		else
+			InstanceShadowFakeryData = new TStaticMeshVertexData<FVector4>();
+		InstanceShadowFakeryData->ResizeBuffer(InNumInstances, BufferFlags);
+	}
+	
+	FORCEINLINE_DEBUGGABLE void SwapInstance(int32 Index1, int32 Index2)
+	{
+		FStaticMeshInstanceData::SwapInstance(Index1, Index2);
+		/*{
+			FVector4* ElementData = reinterpret_cast<FVector4*>(InstanceShadowFakeryDataPtr);
+			uint32 CurrentSize = InstanceShadowFakeryData->Num() * InstanceShadowFakeryData->GetStride();
+			check((void*)((&ElementData[Index1]) + 1) <= (void*)(InstanceShadowFakeryDataPtr + CurrentSize));
+			check((void*)((&ElementData[Index1]) + 0) >= (void*)(InstanceShadowFakeryDataPtr));
+			check((void*)((&ElementData[Index2]) + 1) <= (void*)(InstanceShadowFakeryDataPtr + CurrentSize));
+			check((void*)((&ElementData[Index2]) + 0) >= (void*)(InstanceShadowFakeryDataPtr));
+
+			FVector4 TempStore = ElementData[Index1];
+			ElementData[Index1] = ElementData[Index2];
+			ElementData[Index2] = TempStore;
+		}*/
+	}
+
+	FORCEINLINE_DEBUGGABLE void SetAllowCPUAccess(bool InNeedsCPUAccess)
+	{
+		FStaticMeshInstanceData::SetAllowCPUAccess(InNeedsCPUAccess);
+
+		if (InstanceShadowFakeryData)
+		{
+			InstanceShadowFakeryData->GetResourceArray()->SetAllowCPUAccess(InNeedsCPUAccess);
+		}
+	}
+
+	FORCEINLINE_DEBUGGABLE FResourceArrayInterface* GetShadowFakeryResourceArray()override
+	{
+		return InstanceShadowFakeryData->GetResourceArray();
+	}
+
+	FORCEINLINE_DEBUGGABLE uint32 GetShadowFakeryStride()
+	{
+		return InstanceShadowFakeryData->GetStride();
+	}
+
+	FORCEINLINE_DEBUGGABLE SIZE_T GetResourceSize() const override
+	{
+		return	FStaticMeshInstanceData::GetResourceSize() +
+			InstanceShadowFakeryData->GetResourceSize();
+	}
+
+	FStaticMeshVertexDataInterface* InstanceShadowFakeryData = nullptr;
+	uint8* InstanceShadowFakeryDataPtr = nullptr;
+};
+//end
 	
 #if WITH_EDITOR
 /**

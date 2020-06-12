@@ -82,10 +82,11 @@ void AShadowFakeryInst::Tick(float DeltaTime)
 		ShadowFakeryStaticMesh = NewObject<UShadowFakeryStaticMeshComponent>(this, ShadowMeshCompentType);
 		ShadowFakeryStaticMesh->RegisterComponent();
 		ShadowFakeryStaticMesh->SetWorldLocationAndRotation(FVector::ZeroVector, FRotator::ZeroRotator);
+		ShadowFakeryStaticMesh->CustomInstanceDataNum = 1;
 
 		for (auto& Iter : OutTransforms)
 		{
-			ShadowFakeryStaticMesh->AddInstance_ShadowFakery(FTransform( Iter.GetRotation(), Iter.GetLocation() + FVector::UpVector * 20.f), FVector4(3.f, 0, 45.f, 1500.f));
+			ShadowFakeryStaticMesh->AddInstance_ShadowFakery(FTransform(Iter.GetRotation(), Iter.GetLocation() + FVector::UpVector * 20.f), { FVector4(3.f, 0, 45.f, 1500.f) });
 			/*UShadowFakeryStaticMeshComponent* ShadowFakeryStaticMesh = NewObject<UShadowFakeryStaticMeshComponent>(this, ShadowMeshCompentType);
 			ShadowFakeryStaticMesh->RegisterComponent();
 			ShadowFakeryStaticMesh->SetWorldLocationAndRotation(Iter.GetLocation() + FVector::UpVector * 20.f, Iter.GetRotation());
@@ -149,7 +150,7 @@ void AShadowFakeryInst::Tick(float DeltaTime)
 
 		if (ShadowFakeryStaticMesh)
 		{
-			ShadowFakeryStaticMesh->BatchUpdateInstancesShadowFakeryParam(0, ShadowFakeryStaticMesh->GetInstanceCount(), FVector4(LightSize.X, LightSize.Y, SunYaw, 2000.f), false, true);
+			ShadowFakeryStaticMesh->BatchUpdateInstancesShadowFakeryParam(0, ShadowFakeryStaticMesh->GetInstanceCount(), { FVector4(LightSize.X, LightSize.Y, SunYaw, 2000.f) }, false, true);
 		}
 			
 		/*MaterialInst->SetScalarParameterValue(SunYawParam, SunYaw);

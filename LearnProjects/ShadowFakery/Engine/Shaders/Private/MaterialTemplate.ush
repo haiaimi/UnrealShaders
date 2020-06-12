@@ -283,7 +283,9 @@ struct FMaterialPixelParameters
 #if USE_INSTANCING
 	half4 PerInstanceParams;
 	//#Change by wh, 2019/6/10 
-	float4 ShadowFakeryParams;
+	#if CUSTOM_INSTANCEDATA_NUM
+		float4 ShadowFakeryParams[CUSTOM_INSTANCEDATA_NUM];
+	#endif
 	//end
 #endif
 
@@ -379,7 +381,9 @@ struct FMaterialVertexParameters
 	float3 InstanceLocalPosition;
 	float4 PerInstanceParams;
 	//#Change by wh, 2019/6/10 
-	float4 ShadowFakeryParams;
+	#if CUSTOM_INSTANCEDATA_NUM
+		float4 ShadowFakeryParams[CUSTOM_INSTANCEDATA_NUM];
+	#endif
 	//end
 #elif IS_MESHPARTICLE_FACTORY 
 	/** Per-particle properties. */
@@ -905,8 +909,8 @@ float GetPerInstanceRandom(FMaterialPixelParameters Parameters)
 //#Change by wh, 2019/6/10 
 float4 GetPerInstanceShadowFakery(FMaterialVertexParameters Parameters)
 {
-#if USE_INSTANCING
-	return Parameters.ShadowFakeryParams;
+#if USE_INSTANCING && CUSTOM_INSTANCEDATA_NUM
+	return Parameters.ShadowFakeryParams[0];
 #else
 	return 0.0;
 #endif
@@ -914,8 +918,8 @@ float4 GetPerInstanceShadowFakery(FMaterialVertexParameters Parameters)
 
 float4 GetPerInstanceShadowFakery(FMaterialPixelParameters Parameters)
 {
-#if USE_INSTANCING
-	return Parameters.ShadowFakeryParams;
+#if USE_INSTANCING && CUSTOM_INSTANCEDATA_NUM
+	return Parameters.ShadowFakeryParams[0];
 #else
 	return 0.0;
 #endif

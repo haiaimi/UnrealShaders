@@ -226,14 +226,29 @@ void FStaticMeshInstanceBuffer::CleanUp()
 	InstanceData.Reset();
 }
 
-void FStaticMeshInstanceBuffer::InitFromPreallocatedData(FStaticMeshInstanceData& Other)
+//#Change by wh, 2020/6/12 
+void FStaticMeshInstanceBuffer::InitFromPreallocatedData(FStaticMeshInstanceData* Other)
 {
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_FStaticMeshInstanceBuffer_InitFromPreallocatedData);
 
+	if (Other->GetNumCustomData() == 0)
+		InstanceData = MakeShared<FStaticMeshInstanceData, ESPMode::ThreadSafe>();
+	else
+	{
+		switch (Other->GetNumCustomData())
+		{
+		case 1: InstanceData = MakeShared<FStaticMeshInstanceData_CustomData<1>, ESPMode::ThreadSafe>(); break;
+		case 2: InstanceData = MakeShared<FStaticMeshInstanceData_CustomData<2>, ESPMode::ThreadSafe>(); break;
+		case 3: InstanceData = MakeShared<FStaticMeshInstanceData_CustomData<3>, ESPMode::ThreadSafe>(); break;
+		case 4: InstanceData = MakeShared<FStaticMeshInstanceData_CustomData<4>, ESPMode::ThreadSafe>(); break;
+		}
+	}
+
 	InstanceData = MakeShared<FStaticMeshInstanceData, ESPMode::ThreadSafe>();
-	FMemory::Memswap(&Other, InstanceData.Get(), sizeof(FStaticMeshInstanceData));
+	FMemory::Memswap(Other, InstanceData.Get(), sizeof(FStaticMeshInstanceData));
 	InstanceData->SetAllowCPUAccess(RequireCPUAccess);
 }
+//end
 
 void FStaticMeshInstanceBuffer::UpdateFromCommandBuffer_Concurrent(FInstanceUpdateCmdBuffer& CmdBuffer)
 {
@@ -318,7 +333,8 @@ void FStaticMeshInstanceBuffer::InitRHI()
 		CreateVertexBuffer(InstanceData->GetTransformResourceArray(), AccessFlags | BUF_ShaderResource, InstanceData->GetTranslationUsesHalfs() ? 8 : 16, InstanceData->GetTranslationUsesHalfs() ? PF_FloatRGBA : PF_A32B32G32R32F, InstanceTransformBuffer.VertexBufferRHI, InstanceTransformSRV);
 		CreateVertexBuffer(InstanceData->GetLightMapResourceArray(), AccessFlags | BUF_ShaderResource, 8, PF_R16G16B16A16_SNORM, InstanceLightmapBuffer.VertexBufferRHI, InstanceLightmapSRV);
 		//#Change by wh, 2019/6/10 
-		CreateVertexBuffer(InstanceData->GetShadowFakeryResourceArray(), AccessFlags | BUF_ShaderResource, 16, PF_A32B32G32R32F, InstanceShadowFakeryBuffer.VertexBufferRHI, InstanceShadowFakerySRV);
+		if (InstanceData->GetNumCustomData() > 0)
+			CreateVertexBuffer(InstanceData->GetShadowFakeryResourceArray(), AccessFlags | BUF_ShaderResource, InstanceData->GetNumCustomData() * 16, PF_A32B32G32R32F, InstanceShadowFakeryBuffer.VertexBufferRHI, InstanceShadowFakerySRV);
 		//end
 	}
 }
@@ -419,7 +435,7 @@ void FStaticMeshInstanceBuffer::BindInstanceVertexBuffer(const class FVertexFact
 		InstancedStaticMeshData.InstanceShadowFakeryComponent = FVertexStreamComponent(
 			&InstanceShadowFakeryBuffer,
 			0,
-			16,
+			16 * InstanceData->GetNumInstances(),
 			VET_Float4,
 			EVertexStreamUsage::ManualFetch | EVertexStreamUsage::Instancing
 		);
@@ -525,17 +541,19 @@ void FStaticMeshInstanceData::Serialize(FArchive& Ar)
 	}
 }
 
-
+//#Change by wh, 2020/6/12 
 /**
  * Should we cache the material's shadertype on this platform with this vertex factory? 
  */
+
 bool FInstancedStaticMeshVertexFactory::ShouldCompilePermutation(EShaderPlatform Platform, const class FMaterial* Material, const class FShaderType* ShaderType)
 {
 	return (Material->IsUsedWithInstancedStaticMeshes() || Material->IsSpecialEngineMaterial()) 
 			&& FLocalVertexFactory::ShouldCompilePermutation(Platform, Material, ShaderType);
 }
+//end
 
-
+//#Change by wh, 2020/6/12 
 /**
  * Copy the data from another vertex factory
  * @param Other - factory to copy from
@@ -551,7 +569,9 @@ void FInstancedStaticMeshVertexFactory::Copy(const FInstancedStaticMeshVertexFac
 	});
 	BeginUpdateResourceRHI(this);
 }
+//end
 
+//#Change by wh, 2020/6/12 
 void FInstancedStaticMeshVertexFactory::InitRHI()
 {
 	check(HasValidFeatureLevel());
@@ -679,16 +699,34 @@ void FInstancedStaticMeshVertexFactory::InitRHI()
 	// we don't need per-vertex shadow or lightmap rendering
 	InitDeclaration(Elements);
 }
+//end
 
-
+//#Change by wh, 2020/6/12 
 FVertexFactoryShaderParameters* FInstancedStaticMeshVertexFactory::ConstructShaderParameters(EShaderFrequency ShaderFrequency)
 {
 	return ShaderFrequency == SF_Vertex ? new FInstancedStaticMeshVertexFactoryShaderParameters() : NULL;
 }
+//end
+
+//#Change by wh, 2020/6/12 
+template<uint32 CustomDataNum>
+FVertexFactoryShaderParameters* FInstancedStaticMeshVertexFactory_CustomData<CustomDataNum>::ConstructShaderParameters(EShaderFrequency ShaderFrequency)
+{
+	return ShaderFrequency == SF_Vertex ? new FInstancedStaticMeshVertexFactoryShaderParameters_CustomData<CustomDataNum>() : NULL;
+}
+//end
 
 IMPLEMENT_VERTEX_FACTORY_TYPE_EX(FInstancedStaticMeshVertexFactory,"/Engine/Private/LocalVertexFactory.ush",true,true,true,true,true,true,false);
+
+//#Change by wh, 2020/6/12 
+IMPLEMENT_VERTEX_FACTORY_TYPE_EX_TEMPLATE(FInstancedStaticMeshVertexFactory_CustomData, 1, "/Engine/Private/LocalVertexFactory.ush",true,true,true,true,true,true,false);
+IMPLEMENT_VERTEX_FACTORY_TYPE_EX_TEMPLATE(FInstancedStaticMeshVertexFactory_CustomData, 2, "/Engine/Private/LocalVertexFactory.ush",true,true,true,true,true,true,false);
+IMPLEMENT_VERTEX_FACTORY_TYPE_EX_TEMPLATE(FInstancedStaticMeshVertexFactory_CustomData, 3, "/Engine/Private/LocalVertexFactory.ush",true,true,true,true,true,true,false);
+IMPLEMENT_VERTEX_FACTORY_TYPE_EX_TEMPLATE(FInstancedStaticMeshVertexFactory_CustomData, 4,"/Engine/Private/LocalVertexFactory.ush",true,true,true,true,true,true,false);
+//end
 IMPLEMENT_VERTEX_FACTORY_TYPE_EX(FEmulatedInstancedStaticMeshVertexFactory,"/Engine/Private/LocalVertexFactory.ush",true,true,true,true,true,true,false);
 
+//#Change by wh, 2020/6/12 
 void FInstancedStaticMeshRenderData::InitVertexFactories()
 {
 	const bool bInstanced = GRHISupportsInstancing;
@@ -696,7 +734,20 @@ void FInstancedStaticMeshRenderData::InitVertexFactories()
 	// Allocate the vertex factories for each LOD
 	for (int32 LODIndex = 0; LODIndex < LODModels.Num(); LODIndex++)
 	{
-		VertexFactories.Add(bInstanced ? new FInstancedStaticMeshVertexFactory(FeatureLevel) : new FEmulatedInstancedStaticMeshVertexFactory(FeatureLevel));
+		if(Component->CustomInstanceDataNum == 0)
+			VertexFactories.Add(bInstanced ? new FInstancedStaticMeshVertexFactory(FeatureLevel) : new FEmulatedInstancedStaticMeshVertexFactory(FeatureLevel));
+		else
+		{
+			switch (Component->CustomInstanceDataNum)
+			{
+			case 1: VertexFactories.Add(bInstanced ? (FInstancedStaticMeshVertexFactory*)new FInstancedStaticMeshVertexFactory_CustomData<1>(FeatureLevel) : new FEmulatedInstancedStaticMeshVertexFactory(FeatureLevel)); break;
+			case 2: VertexFactories.Add(bInstanced ? (FInstancedStaticMeshVertexFactory*)new FInstancedStaticMeshVertexFactory_CustomData<2>(FeatureLevel) : new FEmulatedInstancedStaticMeshVertexFactory(FeatureLevel)); break;
+			case 3: VertexFactories.Add(bInstanced ? (FInstancedStaticMeshVertexFactory*)new FInstancedStaticMeshVertexFactory_CustomData<3>(FeatureLevel) : new FEmulatedInstancedStaticMeshVertexFactory(FeatureLevel)); break;
+			case 4: VertexFactories.Add(bInstanced ? (FInstancedStaticMeshVertexFactory*)new FInstancedStaticMeshVertexFactory_CustomData<4>(FeatureLevel) : new FEmulatedInstancedStaticMeshVertexFactory(FeatureLevel)); break;
+			}
+		}
+		//Component->CustomInstanceDataNum
+		
 	}
 
 	const int32 LightMapCoordinateIndex = Component->GetStaticMesh()->LightMapCoordinateIndex;
@@ -731,9 +782,11 @@ void FInstancedStaticMeshRenderData::InitVertexFactories()
 		}
 	});
 }
+//end
 
-FPerInstanceRenderData::FPerInstanceRenderData(FStaticMeshInstanceData& Other, ERHIFeatureLevel::Type InFeaureLevel, bool InRequireCPUAccess)
-	: ResourceSize(InRequireCPUAccess ? Other.GetResourceSize() : 0)
+//#Change by wh, 2020/6/12 
+FPerInstanceRenderData::FPerInstanceRenderData(FStaticMeshInstanceData* Other, ERHIFeatureLevel::Type InFeaureLevel, bool InRequireCPUAccess)
+	: ResourceSize(InRequireCPUAccess ? Other->GetResourceSize() : 0)
 	, InstanceBuffer(InFeaureLevel, InRequireCPUAccess)
 {
 	InstanceBuffer.InitFromPreallocatedData(Other);
@@ -741,6 +794,7 @@ FPerInstanceRenderData::FPerInstanceRenderData(FStaticMeshInstanceData& Other, E
 
 	BeginInitResource(&InstanceBuffer);
 }
+//end
 		
 FPerInstanceRenderData::~FPerInstanceRenderData()
 {
@@ -749,15 +803,29 @@ FPerInstanceRenderData::~FPerInstanceRenderData()
 	InstanceBuffer.ReleaseResource();
 }
 
-void FPerInstanceRenderData::UpdateFromPreallocatedData(FStaticMeshInstanceData& InOther)
+//#Change by wh, 2020/6/12 
+void FPerInstanceRenderData::UpdateFromPreallocatedData(FStaticMeshInstanceData* InOther)
 {
-	InstanceBuffer.RequireCPUAccess = (InOther.GetOriginResourceArray()->GetAllowCPUAccess() || InOther.GetTransformResourceArray()->GetAllowCPUAccess() || InOther.GetLightMapResourceArray()->GetAllowCPUAccess()) ? true : InstanceBuffer.RequireCPUAccess;
-	ResourceSize = InstanceBuffer.RequireCPUAccess ? InOther.GetResourceSize() : 0;
+	if (!InOther)return;
+	InstanceBuffer.RequireCPUAccess = (InOther->GetOriginResourceArray()->GetAllowCPUAccess() || InOther->GetTransformResourceArray()->GetAllowCPUAccess() || InOther->GetLightMapResourceArray()->GetAllowCPUAccess()) ? true : InstanceBuffer.RequireCPUAccess;
+	ResourceSize = InstanceBuffer.RequireCPUAccess ? InOther->GetResourceSize() : 0;
 
-	InOther.SetAllowCPUAccess(InstanceBuffer.RequireCPUAccess);
+	InOther->SetAllowCPUAccess(InstanceBuffer.RequireCPUAccess);
 
-	InstanceBuffer_GameThread = MakeShared<FStaticMeshInstanceData, ESPMode::ThreadSafe>();
-	FMemory::Memswap(&InOther, InstanceBuffer_GameThread.Get(), sizeof(FStaticMeshInstanceData));
+	if (InOther->GetNumCustomData() == 0)
+		InstanceBuffer_GameThread = MakeShared<FStaticMeshInstanceData, ESPMode::ThreadSafe>();
+	else
+	{
+		switch (InOther->GetNumCustomData())
+		{
+		case 1: InstanceBuffer_GameThread = MakeShared<FStaticMeshInstanceData_CustomData<1>, ESPMode::ThreadSafe>(); break;
+		case 2: InstanceBuffer_GameThread = MakeShared<FStaticMeshInstanceData_CustomData<2>, ESPMode::ThreadSafe>(); break;
+		case 3: InstanceBuffer_GameThread = MakeShared<FStaticMeshInstanceData_CustomData<3>, ESPMode::ThreadSafe>(); break;
+		case 4: InstanceBuffer_GameThread = MakeShared<FStaticMeshInstanceData_CustomData<4>, ESPMode::ThreadSafe>(); break;
+		}
+	}
+	//InstanceBuffer_GameThread = MakeShared<FStaticMeshInstanceData, ESPMode::ThreadSafe>();
+	FMemory::Memswap(InOther, InstanceBuffer_GameThread.Get(), sizeof(FStaticMeshInstanceData));
 
 	typedef TSharedPtr<FStaticMeshInstanceData, ESPMode::ThreadSafe> FStaticMeshInstanceDataPtr;
 
@@ -771,6 +839,19 @@ void FPerInstanceRenderData::UpdateFromPreallocatedData(FStaticMeshInstanceData&
 		}
 	);
 }
+
+ENGINE_API void FPerInstanceRenderData::UpdateFromPreallocatedData(FStaticMeshInstanceData& Other)
+{
+	InstanceBuffer.RequireCPUAccess = (Other.GetOriginResourceArray()->GetAllowCPUAccess() || Other.GetTransformResourceArray()->GetAllowCPUAccess() || Other.GetLightMapResourceArray()->GetAllowCPUAccess()) ? true : InstanceBuffer.RequireCPUAccess;
+	ResourceSize = InstanceBuffer.RequireCPUAccess ? Other.GetResourceSize() : 0;
+
+	Other.SetAllowCPUAccess(InstanceBuffer.RequireCPUAccess);
+
+	InstanceBuffer_GameThread = MakeShared<FStaticMeshInstanceData, ESPMode::ThreadSafe>();
+	FMemory::Memswap(&Other, InstanceBuffer_GameThread.Get(), sizeof(FStaticMeshInstanceData));
+}
+
+//end
 
 void FPerInstanceRenderData::UpdateFromCommandBuffer(FInstanceUpdateCmdBuffer& CmdBuffer)
 {
@@ -863,7 +944,9 @@ int32 FInstancedStaticMeshSceneProxy::GetNumMeshBatches() const
 	else
 	{
 		const uint32 NumInstances = InstancedRenderData.PerInstanceRenderData->InstanceBuffer.GetNumInstances();
+		//#Change by wh, 2020/6/12 
 		const uint32 MaxInstancesPerBatch = FInstancedStaticMeshVertexFactory::NumBitsForVisibilityMask();
+		//end
 		const uint32 NumBatches = FMath::DivideAndRoundUp(NumInstances, MaxInstancesPerBatch);
 		return NumBatches;
 	}
@@ -1417,9 +1500,22 @@ FPrimitiveSceneProxy* UInstancedStaticMeshComponent::CreateSceneProxy()
 		{
 			InstanceUpdateCmdBuffer.Reset();
 
-			FStaticMeshInstanceData RenderInstanceData = FStaticMeshInstanceData(GVertexElementTypeSupport.IsSupported(VET_Half2));
+			FStaticMeshInstanceData* RenderInstanceData = nullptr;
+			if(CustomInstanceDataNum == 0)
+				RenderInstanceData = new FStaticMeshInstanceData(GVertexElementTypeSupport.IsSupported(VET_Half2));
+			else
+			{
+				switch (CustomInstanceDataNum)
+				{
+				case 1: RenderInstanceData = new FStaticMeshInstanceData_CustomData<1>(GVertexElementTypeSupport.IsSupported(VET_Half2));break;
+				case 2: RenderInstanceData = new FStaticMeshInstanceData_CustomData<2>(GVertexElementTypeSupport.IsSupported(VET_Half2));break;
+				case 3: RenderInstanceData = new FStaticMeshInstanceData_CustomData<3>(GVertexElementTypeSupport.IsSupported(VET_Half2));break;
+				case 4: RenderInstanceData = new FStaticMeshInstanceData_CustomData<4>(GVertexElementTypeSupport.IsSupported(VET_Half2));break;
+				}
+			}
 			BuildRenderData(RenderInstanceData, PerInstanceRenderData->HitProxies);
 			PerInstanceRenderData->UpdateFromPreallocatedData(RenderInstanceData);
+			delete RenderInstanceData;
 		}
 		
 		ProxySize = PerInstanceRenderData->ResourceSize;
@@ -1451,7 +1547,8 @@ void UInstancedStaticMeshComponent::CreateHitProxyData(TArray<TRefCountPtr<HHitP
 	}
 }
 
-void UInstancedStaticMeshComponent::BuildRenderData(FStaticMeshInstanceData& OutData, TArray<TRefCountPtr<HHitProxy>>& OutHitProxies)
+//#Change by wh, 2020/6/12 
+void UInstancedStaticMeshComponent::BuildRenderData(FStaticMeshInstanceData* OutData, TArray<TRefCountPtr<HHitProxy>>& OutHitProxies)
 {
 	LLM_SCOPE(ELLMTag::InstancedMesh);
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_UInstancedStaticMeshComponent_BuildRenderData);
@@ -1464,7 +1561,7 @@ void UInstancedStaticMeshComponent::BuildRenderData(FStaticMeshInstanceData& Out
 		return;
 	}
 	
-	OutData.AllocateInstances(NumInstances, GIsEditor ? EResizeBufferFlags::AllowSlackOnGrow | EResizeBufferFlags::AllowSlackOnReduce : EResizeBufferFlags::None, true); // In Editor always permit overallocation, to prevent too much realloc
+	OutData->AllocateInstances(NumInstances, GIsEditor ? EResizeBufferFlags::AllowSlackOnGrow | EResizeBufferFlags::AllowSlackOnReduce : EResizeBufferFlags::None, true); // In Editor always permit overallocation, to prevent too much realloc
 
 	const FMeshMapBuildData* MeshMapBuildData = nullptr;
 	if (LODData.Num() > 0)
@@ -1494,9 +1591,13 @@ void UInstancedStaticMeshComponent::BuildRenderData(FStaticMeshInstanceData& Out
 			ShadowmapUVBias = MeshMapBuildData->PerInstanceLightmapData[Index].ShadowmapUVBias;
 		}
 		
-		//#Change by wh, 2019/6/10
-		OutData.SetInstance(RenderIndex, InstanceData.Transform, InstanceData.ShadowFakeryParam, RandomStream.GetFraction(), LightmapUVBias, ShadowmapUVBias);
+		//#Change by wh, 2020/6/12 
+		if (CustomInstanceDataNum == 0)
+			OutData->SetInstance(RenderIndex, InstanceData.Transform, RandomStream.GetFraction(), LightmapUVBias, ShadowmapUVBias);
+		else
+			OutData->SetInstance(RenderIndex, InstanceData.Transform, TArray<FVector4>(InstanceData.ShadowFakeryParam, CustomInstanceDataNum), RandomStream.GetFraction(), LightmapUVBias, ShadowmapUVBias);
 		//end
+
 #if WITH_EDITOR
 		if (GIsEditor)
 		{
@@ -1509,11 +1610,12 @@ void UInstancedStaticMeshComponent::BuildRenderData(FStaticMeshInstanceData& Out
 				HitProxyColor = OutHitProxies[Index]->Id.GetColor();
 			}
 
-			OutData.SetInstanceEditorData(RenderIndex, HitProxyColor, bSelected);
+			OutData->SetInstanceEditorData(RenderIndex, HitProxyColor, bSelected);
 		}
 #endif
 	}
 }
+//end
 
 void UInstancedStaticMeshComponent::InitInstanceBody(int32 InstanceIdx, FBodyInstance* InstanceBodyInstance)
 {
@@ -1995,9 +2097,24 @@ void UInstancedStaticMeshComponent::SerializeRenderData(FArchive& Ar)
 				{
 					InstanceUpdateCmdBuffer.Reset();
 
-					FStaticMeshInstanceData RenderInstanceData = FStaticMeshInstanceData(GVertexElementTypeSupport.IsSupported(VET_Half2));
+					//#Change by wh, 2020/6/12 
+					//FStaticMeshInstanceData RenderInstanceData = FStaticMeshInstanceData(GVertexElementTypeSupport.IsSupported(VET_Half2));
+					FStaticMeshInstanceData* RenderInstanceData = nullptr;
+					if (CustomInstanceDataNum == 0)
+						RenderInstanceData = new FStaticMeshInstanceData(GVertexElementTypeSupport.IsSupported(VET_Half2));
+					else
+					{
+						switch (CustomInstanceDataNum)
+						{
+						case 1: RenderInstanceData = new FStaticMeshInstanceData_CustomData<1>(GVertexElementTypeSupport.IsSupported(VET_Half2)); break;
+						case 2: RenderInstanceData = new FStaticMeshInstanceData_CustomData<2>(GVertexElementTypeSupport.IsSupported(VET_Half2)); break;
+						case 3: RenderInstanceData = new FStaticMeshInstanceData_CustomData<3>(GVertexElementTypeSupport.IsSupported(VET_Half2)); break;
+						case 4: RenderInstanceData = new FStaticMeshInstanceData_CustomData<4>(GVertexElementTypeSupport.IsSupported(VET_Half2)); break;
+						}
+					}
 					BuildRenderData(RenderInstanceData, PerInstanceRenderData->HitProxies);
 					PerInstanceRenderData->UpdateFromPreallocatedData(RenderInstanceData);
+					//end
 					MarkRenderStateDirty();
 				}
 			}
@@ -2143,7 +2260,7 @@ int32 UInstancedStaticMeshComponent::AddInstance(const FTransform& InstanceTrans
 }
 
 //#Change by wh, 2019/6/10 
-int32 UInstancedStaticMeshComponent::AddInstanceInternal_ShadowFakery(int32 InstanceIndex, FInstancedStaticMeshInstanceData* InNewInstanceData, const FTransform& InstanceTransform, const FVector4& ShadowFakeryParam)
+int32 UInstancedStaticMeshComponent::AddInstanceInternal_ShadowFakery(int32 InstanceIndex, FInstancedStaticMeshInstanceData* InNewInstanceData, const FTransform& InstanceTransform, const TArray<FVector4>& ShadowFakeryParam)
 {
 	FInstancedStaticMeshInstanceData* NewInstanceData = InNewInstanceData;
 
@@ -2169,7 +2286,7 @@ int32 UInstancedStaticMeshComponent::AddInstanceInternal_ShadowFakery(int32 Inst
 	return InstanceIndex;
 }
 
-int32 UInstancedStaticMeshComponent::AddInstance_ShadowFakery(const FTransform& InstanceTransform, const FVector4& ShadowFakeryParam)
+int32 UInstancedStaticMeshComponent::AddInstance_ShadowFakery(const FTransform& InstanceTransform, const TArray<FVector4>& ShadowFakeryParam)
 {
 	return AddInstanceInternal_ShadowFakery(PerInstanceSMData.Num(), nullptr, InstanceTransform, ShadowFakeryParam);
 }
@@ -2341,7 +2458,7 @@ bool UInstancedStaticMeshComponent::UpdateInstanceTransform(int32 InstanceIndex,
 }
 
 //#Change by wh, 2019/6/10 
-bool UInstancedStaticMeshComponent::UpdateInstanceShadowFakeryParam(int32 InstanceIndex, const FVector4& NewIShadowFakeryParam, bool bMarkRenderStateDirty /*= false*/)
+bool UInstancedStaticMeshComponent::UpdateInstanceShadowFakeryParam(int32 InstanceIndex, const TArray<FVector4>& NewIShadowFakeryParam, bool bMarkRenderStateDirty /*= false*/)
 {
 	if (!PerInstanceSMData.IsValidIndex(InstanceIndex))
 	{
@@ -2350,8 +2467,10 @@ bool UInstancedStaticMeshComponent::UpdateInstanceShadowFakeryParam(int32 Instan
 
 	Modify();
 
+	check(NewIShadowFakeryParam.Num() >= CustomInstanceDataNum)
 	FInstancedStaticMeshInstanceData& InstanceData = PerInstanceSMData[InstanceIndex];
-	InstanceData.ShadowFakeryParam = NewIShadowFakeryParam;
+	for (int32 i = 0; i < CustomInstanceDataNum; ++i)
+		InstanceData.ShadowFakeryParam[i] = NewIShadowFakeryParam[i];
 
 	// Force recreation of the render data when proxy is created
 	InstanceUpdateCmdBuffer.Edit();
@@ -2454,7 +2573,7 @@ bool UInstancedStaticMeshComponent::BatchUpdateInstancesTransform(int32 StartIns
 }
 
 //#Change by wh, 2019/6/10 
-bool UInstancedStaticMeshComponent::BatchUpdateInstancesShadowFakeryParam(int32 StartInstanceIndex, int32 NumInstances, const FVector4& NewShadowFakeryParam, bool bWorldSpace, bool bMarkRenderStateDirty, bool bTeleport)
+bool UInstancedStaticMeshComponent::BatchUpdateInstancesShadowFakeryParam(int32 StartInstanceIndex, int32 NumInstances, const TArray<FVector4>& NewIShadowFakeryParam, bool bWorldSpace, bool bMarkRenderStateDirty, bool bTeleport)
 {
 	if (!PerInstanceSMData.IsValidIndex(StartInstanceIndex) || !PerInstanceSMData.IsValidIndex(StartInstanceIndex + NumInstances - 1))
 	{
@@ -2464,10 +2583,12 @@ bool UInstancedStaticMeshComponent::BatchUpdateInstancesShadowFakeryParam(int32 
 	Modify();
 
 	int32 EndInstanceIndex = StartInstanceIndex + NumInstances;
+	check(NewIShadowFakeryParam.Num() >= CustomInstanceDataNum)
 	for (int32 InstanceIndex = StartInstanceIndex; InstanceIndex < EndInstanceIndex; ++InstanceIndex)
 	{
 		FInstancedStaticMeshInstanceData& InstanceData = PerInstanceSMData[InstanceIndex];
-		InstanceData.ShadowFakeryParam = NewShadowFakeryParam;
+		for (int32 i = 0; i < CustomInstanceDataNum; ++i)
+			InstanceData.ShadowFakeryParam[i] = NewIShadowFakeryParam[i];
 	}
 
 	// Force recreation of the render data when proxy is created
@@ -2660,10 +2781,13 @@ void UInstancedStaticMeshComponent::SetupNewInstanceData(FInstancedStaticMeshIns
 }
 
 //#Change by wh, 2019/6/10 
-void UInstancedStaticMeshComponent::SetupNewInstanceData_ShadowFakery(FInstancedStaticMeshInstanceData& InOutNewInstanceData, int32 InInstanceIndex, const FTransform& InInstanceTransform, const FVector4& ShadowFakeryParam)
+void UInstancedStaticMeshComponent::SetupNewInstanceData_ShadowFakery(FInstancedStaticMeshInstanceData& InOutNewInstanceData, int32 InInstanceIndex, const FTransform& InInstanceTransform, const TArray<FVector4>& NewIShadowFakeryParam)
 {
 	InOutNewInstanceData.Transform = InInstanceTransform.ToMatrixWithScale();
-	InOutNewInstanceData.ShadowFakeryParam = ShadowFakeryParam;
+	check(NewIShadowFakeryParam.Num() >= CustomInstanceDataNum)
+	FInstancedStaticMeshInstanceData& InstanceData = PerInstanceSMData[InInstanceIndex];
+	for (int32 i = 0; i < CustomInstanceDataNum; ++i)
+		InstanceData.ShadowFakeryParam[i] = NewIShadowFakeryParam[i];
 
 	if (bPhysicsStateCreated)
 	{
@@ -2744,12 +2868,25 @@ void UInstancedStaticMeshComponent::InitPerInstanceRenderData(bool InitializeFro
 
 	if (InSharedInstanceBufferData != nullptr)
 	{
-		PerInstanceRenderData = MakeShareable(new FPerInstanceRenderData(*InSharedInstanceBufferData, FeatureLevel, KeepInstanceBufferCPUAccess));
+		PerInstanceRenderData = MakeShareable(new FPerInstanceRenderData(InSharedInstanceBufferData, FeatureLevel, KeepInstanceBufferCPUAccess));
 	}
 	else
 	{
 		TArray<TRefCountPtr<HHitProxy>> HitProxies;
-		FStaticMeshInstanceData InstanceBufferData = FStaticMeshInstanceData(GVertexElementTypeSupport.IsSupported(VET_Half2));
+		//#Change by wh, 2020/6/12 
+		FStaticMeshInstanceData* InstanceBufferData = nullptr;
+		if (CustomInstanceDataNum == 0)
+			InstanceBufferData = new FStaticMeshInstanceData(GVertexElementTypeSupport.IsSupported(VET_Half2));
+		else
+		{
+			switch (CustomInstanceDataNum)
+			{
+			case 1: InstanceBufferData = new FStaticMeshInstanceData_CustomData<1>(GVertexElementTypeSupport.IsSupported(VET_Half2)); break;
+			case 2: InstanceBufferData = new FStaticMeshInstanceData_CustomData<2>(GVertexElementTypeSupport.IsSupported(VET_Half2)); break;
+			case 3: InstanceBufferData = new FStaticMeshInstanceData_CustomData<3>(GVertexElementTypeSupport.IsSupported(VET_Half2)); break;
+			case 4: InstanceBufferData = new FStaticMeshInstanceData_CustomData<4>(GVertexElementTypeSupport.IsSupported(VET_Half2)); break;
+			}
+		}
 		
 		if (InitializeFromCurrentData)
 		{
@@ -2757,6 +2894,7 @@ void UInstancedStaticMeshComponent::InitPerInstanceRenderData(bool InitializeFro
 			InstanceUpdateCmdBuffer.Reset(); 
 			BuildRenderData(InstanceBufferData, HitProxies);
 		}
+		//end
 			
 		PerInstanceRenderData = MakeShareable(new FPerInstanceRenderData(InstanceBufferData, FeatureLevel, KeepInstanceBufferCPUAccess));
 		PerInstanceRenderData->HitProxies = MoveTemp(HitProxies);
@@ -3101,9 +3239,6 @@ void FInstancedStaticMeshVertexFactoryShaderParameters::GetElementShaderBindings
 				ShaderBindings.Add(VertexFetch_InstanceOriginBufferParameter, InstancedVertexFactory->GetInstanceOriginSRV());
 				ShaderBindings.Add(VertexFetch_InstanceTransformBufferParameter, InstancedVertexFactory->GetInstanceTransformSRV());
 				ShaderBindings.Add(VertexFetch_InstanceLightmapBufferParameter, InstancedVertexFactory->GetInstanceLightmapSRV());
-				//#Change by wh, 2019/6/10 
-				ShaderBindings.Add(VertexFetch_InstanceShadowFakeryBufferParameter, InstancedVertexFactory->GetInstanceShadowFakerySRV());
-				//end
 				ShaderBindings.Add(InstanceOffset, InstanceOffsetValue);
 			}
 			else
@@ -3276,5 +3411,28 @@ void FInstancedStaticMeshVertexFactoryShaderParameters::GetElementShaderBindings
 
 		ShaderBindings.Add(InstancingFadeOutParamsParameter, InstancingFadeOutParams);
 
+	}
+}
+
+
+template<uint32 CustomDataNum>
+void FInstancedStaticMeshVertexFactoryShaderParameters_CustomData<CustomDataNum>::GetElementShaderBindings(const class FSceneInterface* Scene, const FSceneView* View, const FMeshMaterialShader* Shader, const EVertexInputStreamType InputStreamType, ERHIFeatureLevel::Type FeatureLevel, const FVertexFactory* VertexFactory, const FMeshBatchElement& BatchElement, FMeshDrawSingleShaderBindings& ShaderBindings, FVertexInputStreamArray& VertexStreams) const
+{
+	FInstancedStaticMeshVertexFactoryShaderParameters::GetElementShaderBindings(Scene, View, Shader, InputStreamType, FeatureLevel, VertexFactory, BatchElement, ShaderBindings, VertexStreams);
+	const auto* InstancedVertexFactory = static_cast<const FInstancedStaticMeshVertexFactory*>(VertexFactory);
+
+	if (bInstanced)
+	{
+		if (InstancedVertexFactory->SupportsManualVertexFetch(FeatureLevel))
+		{
+			if (InstancedVertexFactory->GetNumInstances() > 0)
+			{
+				ShaderBindings.Add(VertexFetch_InstanceShadowFakeryBufferParameter, InstancedVertexFactory->GetInstanceShadowFakerySRV());
+			}
+			else
+			{
+				ensureMsgf(false, TEXT("Instanced static mesh rendered with no instances. Data initialized: %d"), InstancedVertexFactory->IsDataInitialized());
+			}
+		}
 	}
 }
