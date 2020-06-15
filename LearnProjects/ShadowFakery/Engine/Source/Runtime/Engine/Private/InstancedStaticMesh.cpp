@@ -432,13 +432,17 @@ void FStaticMeshInstanceBuffer::BindInstanceVertexBuffer(const class FVertexFact
 		);
 
 		//#Change by wh, 2019/6/10 
-		InstancedStaticMeshData.InstanceShadowFakeryComponent = FVertexStreamComponent(
-			&InstanceShadowFakeryBuffer,
-			0,
-			16 * InstanceData->GetNumInstances(),
-			VET_Float4,
-			EVertexStreamUsage::ManualFetch | EVertexStreamUsage::Instancing
-		);
+		if (InstanceData->GetNumCustomData() > 0)
+		{
+			InstancedStaticMeshData.InstanceShadowFakeryComponent = FVertexStreamComponent(
+				&InstanceShadowFakeryBuffer,
+				0,
+				16 * InstanceData->GetNumCustomData(),
+				VET_Float4,
+				EVertexStreamUsage::ManualFetch | EVertexStreamUsage::Instancing
+			);
+		}
+		
 		//end
 
 		EVertexElementType TransformType = InstanceData->GetTranslationUsesHalfs() ? VET_Half4 : VET_Float4;
@@ -689,7 +693,7 @@ void FInstancedStaticMeshVertexFactory::InitRHI()
 		Elements.Add(AccessStreamComponent(Data.InstanceLightmapAndShadowMapUVBiasComponent,12));
 	}
 	//#Change by wh, 2019/6/10 
-	check(Data.InstanceShadowFakeryComponent.VertexBuffer || !bInstanced);
+	//check(Data.InstanceShadowFakeryComponent.VertexBuffer || !bInstanced);
 	if (bInstanced && Data.InstanceShadowFakeryComponent.VertexBuffer)
 	{
 		Elements.Add(AccessStreamComponent(Data.InstanceShadowFakeryComponent, 13));
@@ -722,7 +726,7 @@ IMPLEMENT_VERTEX_FACTORY_TYPE_EX(FInstancedStaticMeshVertexFactory,"/Engine/Priv
 IMPLEMENT_VERTEX_FACTORY_TYPE_EX_TEMPLATE(FInstancedStaticMeshVertexFactory_CustomData, 1, "/Engine/Private/LocalVertexFactory.ush",true,true,true,true,true,true,false);
 IMPLEMENT_VERTEX_FACTORY_TYPE_EX_TEMPLATE(FInstancedStaticMeshVertexFactory_CustomData, 2, "/Engine/Private/LocalVertexFactory.ush",true,true,true,true,true,true,false);
 IMPLEMENT_VERTEX_FACTORY_TYPE_EX_TEMPLATE(FInstancedStaticMeshVertexFactory_CustomData, 3, "/Engine/Private/LocalVertexFactory.ush",true,true,true,true,true,true,false);
-IMPLEMENT_VERTEX_FACTORY_TYPE_EX_TEMPLATE(FInstancedStaticMeshVertexFactory_CustomData, 4,"/Engine/Private/LocalVertexFactory.ush",true,true,true,true,true,true,false);
+IMPLEMENT_VERTEX_FACTORY_TYPE_EX_TEMPLATE(FInstancedStaticMeshVertexFactory_CustomData, 4, "/Engine/Private/LocalVertexFactory.ush",true,true,true,true,true,true,false);
 //end
 IMPLEMENT_VERTEX_FACTORY_TYPE_EX(FEmulatedInstancedStaticMeshVertexFactory,"/Engine/Private/LocalVertexFactory.ush",true,true,true,true,true,true,false);
 
@@ -3414,12 +3418,14 @@ void FInstancedStaticMeshVertexFactoryShaderParameters::GetElementShaderBindings
 	}
 }
 
-
+//#Change by wh, 2020/6/15
 template<uint32 CustomDataNum>
 void FInstancedStaticMeshVertexFactoryShaderParameters_CustomData<CustomDataNum>::GetElementShaderBindings(const class FSceneInterface* Scene, const FSceneView* View, const FMeshMaterialShader* Shader, const EVertexInputStreamType InputStreamType, ERHIFeatureLevel::Type FeatureLevel, const FVertexFactory* VertexFactory, const FMeshBatchElement& BatchElement, FMeshDrawSingleShaderBindings& ShaderBindings, FVertexInputStreamArray& VertexStreams) const
 {
 	FInstancedStaticMeshVertexFactoryShaderParameters::GetElementShaderBindings(Scene, View, Shader, InputStreamType, FeatureLevel, VertexFactory, BatchElement, ShaderBindings, VertexStreams);
 	const auto* InstancedVertexFactory = static_cast<const FInstancedStaticMeshVertexFactory*>(VertexFactory);
+
+	const bool bInstanced = GRHISupportsInstancing;
 
 	if (bInstanced)
 	{
@@ -3436,3 +3442,4 @@ void FInstancedStaticMeshVertexFactoryShaderParameters_CustomData<CustomDataNum>
 		}
 	}
 }
+//end

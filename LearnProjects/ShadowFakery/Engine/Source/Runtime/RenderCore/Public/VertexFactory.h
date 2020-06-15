@@ -423,7 +423,7 @@ extern RENDERCORE_API FVertexFactoryType* FindVertexFactoryType(FName TypeName);
 #define IMPLEMENT_VERTEX_FACTORY_TYPE_EX_TEMPLATE(FactoryClass, TemplateType, ShaderFilename,bUsedWithMaterials,bSupportsStaticLighting,bSupportsDynamicLighting,bPrecisePrevWorldPos,bSupportsPositionOnly,bSupportsCachingMeshDrawCommands,bSupportsPrimitiveIdStream) \
 	FVertexFactoryShaderParameters* Construct##FactoryClass##ShaderParameters##TemplateType(EShaderFrequency ShaderFrequency) { return FactoryClass<TemplateType>::ConstructShaderParameters(ShaderFrequency); } \
 	FVertexFactoryType FactoryClass<TemplateType>::StaticType( \
-		*(FString(#FactoryClass) + FString(#TemplateType)), \
+		TEXT(#FactoryClass) TEXT(#TemplateType), \
 		TEXT(ShaderFilename), \
 		bUsedWithMaterials, \
 		bSupportsStaticLighting, \

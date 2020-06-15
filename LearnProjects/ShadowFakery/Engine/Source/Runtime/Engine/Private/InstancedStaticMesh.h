@@ -324,8 +324,10 @@ class FInstancedStaticMeshVertexFactory_CustomData : public FInstancedStaticMesh
 	static_assert(CustomDataNum <= MAX_CUSTOM_INSTANCEDATA_NUM, "OUT OF MAX CUSTOM INSTANCE DATA NUM");
 public:
 	FInstancedStaticMeshVertexFactory_CustomData(ERHIFeatureLevel::Type InFeatureLevel)
-		: FInstancedStaticMeshVertexFactory(InFeatureLevel, "FInstancedStaticMeshVertexFactory" + FString::FormatAsNumber(CustomDataNum))
+		: FInstancedStaticMeshVertexFactory(InFeatureLevel)
 	{
+		const char* Name = TCHAR_TO_ANSI(*FString("FInstancedStaticMeshVertexFactory" + FString::FormatAsNumber(CustomDataNum)));
+		DebugName = FDebugName(Name);
 	}
 	static void ModifyCompilationEnvironment(const FVertexFactoryType* Type, EShaderPlatform Platform, const FMaterial* Material, FShaderCompilerEnvironment& OutEnvironment)
 	{
@@ -373,6 +375,7 @@ public:
 
 class FInstancedStaticMeshVertexFactoryShaderParameters : public FLocalVertexFactoryShaderParametersBase
 {
+public:
 	virtual void Bind(const FShaderParameterMap& ParameterMap) override
 	{
 		FLocalVertexFactoryShaderParametersBase::Bind(ParameterMap);

@@ -583,7 +583,7 @@ FMaterialVertexParameters GetMaterialVertexParameters(FVertexFactoryInput Input,
 	//#Change by wh, 2019/6/10 
 	#if CUSTOM_INSTANCEDATA_NUM
 		for(int i = 0; i < CUSTOM_INSTANCEDATA_NUM; ++i)
-			Result.ShadowFakeryParams[i] = Interpolants.ShadowFakeryParams[i];
+			Result.ShadowFakeryParams[i] = Intermediates.ShadowFakeryParams[i];
 	#endif
 	//end
 

@@ -1631,6 +1631,7 @@ private:
 
 	int32 NumInstances = 0;
 	bool bUseHalfFloat = false;
+protected:
 	int32 NumCustomData = 0;
 };
 
@@ -1638,6 +1639,18 @@ template<uint32 PerInstanceDataNum = 1>
 class FStaticMeshInstanceData_CustomData : public FStaticMeshInstanceData
 {
 public:
+	struct FDataType
+	{
+		FVector4 Data[PerInstanceDataNum > 0 ? PerInstanceDataNum : 1];
+
+		friend FArchive& operator<<(FArchive& Ar, FDataType& Elem)
+		{
+			for (int32 i = 0; i < UE_ARRAY_COUNT(Data); ++i)
+				Ar << Elem.Data[i];
+			return Ar;
+		}
+	};
+
 	FStaticMeshInstanceData_CustomData()
 	{
 		NumCustomData = PerInstanceDataNum;
@@ -1646,6 +1659,7 @@ public:
 	FStaticMeshInstanceData_CustomData(bool bInUseHalfFloat)
 	:	FStaticMeshInstanceData(bInUseHalfFloat)
 	{
+		AllocateBuffers(0);
 		NumCustomData = PerInstanceDataNum;
 	}
 
@@ -1674,7 +1688,7 @@ public:
 
 		for (int32 i = 0; i < PerInstanceDataNum; ++i)
 		{
-			ElementData[InstanceIndex++] = ShadowFakery;
+			ElementData[InstanceIndex++] = ShadowFakery[i];
 		}
 	}
 	void AllocateInstances(int32 InNumInstances, EResizeBufferFlags BufferFlags, bool DestroyExistingInstances)override
@@ -1682,24 +1696,22 @@ public:
 		FStaticMeshInstanceData::AllocateInstances(InNumInstances, BufferFlags, DestroyExistingInstances);
 		if (DestroyExistingInstances)
 		{
-			InstanceShadowFakeryData->Empty(NumInstances);
+			InstanceShadowFakeryData->Empty(InNumInstances);
 		}
 
-		InstanceShadowFakeryData->ResizeBuffer(NumInstances, BufferFlags);
+		InstanceShadowFakeryData->ResizeBuffer(InNumInstances, BufferFlags);
 		InstanceShadowFakeryDataPtr = InstanceShadowFakeryData->GetDataPointer();
 	}
 
 	void AllocateBuffers(int32 InNumInstances, EResizeBufferFlags BufferFlags = EResizeBufferFlags::None)
 	{
-		FStaticMeshInstanceData::AllocateBuffers(InNumInstances, BufferFlags);
+		//FStaticMeshInstanceData::AllocateBuffers(InNumInstances, BufferFlags);
 
 		delete InstanceShadowFakeryData;
 		InstanceShadowFakeryData = nullptr;
 		
-		if (PerInstanceDataNum > 0)
-			InstanceShadowFakeryData = new TStaticMeshVertexData<FVector4[PerInstanceDataNum]>();
-		else
-			InstanceShadowFakeryData = new TStaticMeshVertexData<FVector4>();
+		InstanceShadowFakeryData = new TStaticMeshVertexData<FDataType>();
+		
 		InstanceShadowFakeryData->ResizeBuffer(InNumInstances, BufferFlags);
 	}
 	
