@@ -244,8 +244,8 @@ void FStaticMeshInstanceBuffer::InitFromPreallocatedData(FStaticMeshInstanceData
 		}
 	}
 
-	InstanceData = MakeShared<FStaticMeshInstanceData, ESPMode::ThreadSafe>();
-	FMemory::Memswap(Other, InstanceData.Get(), sizeof(FStaticMeshInstanceData));
+	//InstanceData = MakeShared<FStaticMeshInstanceData, ESPMode::ThreadSafe>();
+	FMemory::Memswap(Other, InstanceData.Get(), Other->GetNumCustomData() ? sizeof(FStaticMeshInstanceData) : sizeof(FStaticMeshInstanceData_CustomData<1>));
 	InstanceData->SetAllowCPUAccess(RequireCPUAccess);
 }
 //end
@@ -829,7 +829,7 @@ void FPerInstanceRenderData::UpdateFromPreallocatedData(FStaticMeshInstanceData*
 		}
 	}
 	//InstanceBuffer_GameThread = MakeShared<FStaticMeshInstanceData, ESPMode::ThreadSafe>();
-	FMemory::Memswap(InOther, InstanceBuffer_GameThread.Get(), sizeof(FStaticMeshInstanceData));
+	FMemory::Memswap(InOther, InstanceBuffer_GameThread.Get(), InOther->GetNumCustomData() ? sizeof(FStaticMeshInstanceData) : sizeof(FStaticMeshInstanceData_CustomData<1>));
 
 	typedef TSharedPtr<FStaticMeshInstanceData, ESPMode::ThreadSafe> FStaticMeshInstanceDataPtr;
 

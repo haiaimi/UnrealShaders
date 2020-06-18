@@ -181,6 +181,7 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 		return;
 	}
 
+	//Following Code Was For CPU
 	const FStaticMeshLODResources& LODModel = GenerateStaticMesh->RenderData->LODResources[0];
 	const FBoxSphereBounds& Bounds = GenerateStaticMesh->RenderData->Bounds;
 	const FPositionVertexBuffer& PositionVertexBuffer = LODModel.VertexBuffers.PositionVertexBuffer;

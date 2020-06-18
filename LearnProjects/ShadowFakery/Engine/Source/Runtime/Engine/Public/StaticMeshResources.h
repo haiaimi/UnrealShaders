@@ -1744,18 +1744,18 @@ public:
 
 	FORCEINLINE_DEBUGGABLE FResourceArrayInterface* GetShadowFakeryResourceArray()override
 	{
-		return InstanceShadowFakeryData->GetResourceArray();
+		return InstanceShadowFakeryData ? InstanceShadowFakeryData->GetResourceArray() : nullptr;
 	}
 
 	FORCEINLINE_DEBUGGABLE uint32 GetShadowFakeryStride()
 	{
-		return InstanceShadowFakeryData->GetStride();
+		return InstanceShadowFakeryData ? InstanceShadowFakeryData->GetStride() : 0;
 	}
 
 	FORCEINLINE_DEBUGGABLE SIZE_T GetResourceSize() const override
 	{
 		return	FStaticMeshInstanceData::GetResourceSize() +
-			InstanceShadowFakeryData->GetResourceSize();
+			InstanceShadowFakeryData ? InstanceShadowFakeryData->GetResourceSize() : 0;
 	}
 
 	FStaticMeshVertexDataInterface* InstanceShadowFakeryData = nullptr;
