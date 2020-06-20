@@ -61,6 +61,8 @@ private:
 
 	FVector MaskCutDir;
 
+	class UShadowFakeryStaticMeshComponent* ShadowFakeryStaticMesh = nullptr;
+
 	TArray<UShadowFakeryStaticMeshComponent*> AllShadowStaticMesh;
 
 	bool bHasInit;

@@ -63,18 +63,20 @@ void AShadowFakeryInst::Tick(float DeltaTime)
 
 	AInstancedFoliageActor* FoliageActor = AInstancedFoliageActor::GetInstancedFoliageActorForCurrentLevel(GetWorld(), true);
 	TUniqueObj<FFoliageInfo>* CurFoliageInfo = FoliageActor->FoliageInfos.Find(CurFoliageType);
-
+	
 	if (CurFoliageInfo && !bHasInit && ShadowMeshCompentType)
 	{
 		FBox Box(FVector(-25200.f, -25200.f, 0.f), FVector(25200.f, 25200.f, 10000.f));
 		TArray<FTransform> OutTransforms;
 		FoliageActor->GetOverlappingBoxTransforms(CurFoliageType, Box, OutTransforms);
+		ShadowFakeryStaticMesh = NewObject<UShadowFakeryStaticMeshComponent>(this, ShadowMeshCompentType);
+		ShadowFakeryStaticMesh->RegisterComponent();
+		ShadowFakeryStaticMesh->NumCustomDataFloats = 4;
+		ShadowFakeryStaticMesh->SetWorldLocationAndRotation(FVector::ZeroVector, FRotator::ZeroRotator);
+
 		for (auto& Iter : OutTransforms)
 		{
-			UShadowFakeryStaticMeshComponent* ShadowFakeryStaticMesh = NewObject<UShadowFakeryStaticMeshComponent>(this, ShadowMeshCompentType);
-			ShadowFakeryStaticMesh->RegisterComponent();
-			ShadowFakeryStaticMesh->SetWorldLocationAndRotation(Iter.GetLocation() + FVector::UpVector * 20.f, Iter.GetRotation());
-			AllShadowStaticMesh.Add(ShadowFakeryStaticMesh);
+			ShadowFakeryStaticMesh->AddInstance(FTransform(Iter.GetRotation(), Iter.GetLocation() + FVector::UpVector * 20.f));
 		}
 		bHasInit = true;
 	}
@@ -130,6 +132,15 @@ void AShadowFakeryInst::Tick(float DeltaTime)
 		const FVector LightSize = LightDir.GetSafeNormal2D() * FMath::Abs(FMath::Tan(FMath::DegreesToRadians(90.f - FMath::Abs(SunYaw))));
 		//ShadowMeshCompent->UpdateShadowState(LightSize, 1500, 1500);
 
+		const TArray<float> CustomData = { LightSize.X, LightSize.Y, SunYaw, 3000.f };
+		if (ShadowFakeryStaticMesh)
+		{
+			for (int32 i = 0; i < ShadowFakeryStaticMesh->GetInstanceCount(); ++i)
+			{
+				ShadowFakeryStaticMesh->SetCustomData(i, CustomData, true);
+			}
+		}
+		
 		GSunYaw = SunYaw;
 		GLightDirWithSize = LightSize;
 		/*MaterialInst->SetScalarParameterValue(SunYawParam, SunYaw);

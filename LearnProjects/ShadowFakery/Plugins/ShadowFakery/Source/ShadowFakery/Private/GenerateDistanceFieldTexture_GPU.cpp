@@ -139,7 +139,7 @@ void DrawQuadWithPSParams(FRHICommandList& RHICmdList, ERHIFeatureLevel::Type Fe
 	FRHIRenderPassInfo RPInfo(RTCounts, ResultRTs, ERenderTargetActions::Load_Store);
 	RHICmdList.BeginRenderPass(RPInfo, PassName);
 
-	TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
+	FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 	TShaderMapRef<VertexShaderType> VertexShader(GlobalShaderMap);
 	TShaderMapRef<PixelShaderType> PixelShader(GlobalShaderMap);    
 
@@ -153,8 +153,8 @@ void DrawQuadWithPSParams(FRHICommandList& RHICmdList, ERHIFeatureLevel::Type Fe
 	GraphicPSPoint.RasterizerState = TStaticRasterizerState<>::GetRHI();
 	GraphicPSPoint.PrimitiveType = PT_TriangleList;
 	GraphicPSPoint.BoundShaderState.VertexDeclarationRHI = VertexDeclaration.VertexDeclarationRHI;
-	GraphicPSPoint.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-	GraphicPSPoint.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+	GraphicPSPoint.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+	GraphicPSPoint.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 	SetGraphicsPipelineState(RHICmdList, GraphicPSPoint);
 
 	FVertexInput Vertices[4];
@@ -211,20 +211,12 @@ public:
 		const FMatrix& ViewProjMat
 	)
 	{
-		SetShaderValue(RHICmdList, GetVertexShader(), ViewProjMatrix, ViewProjMat);
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-
-		Ar << ViewProjMatrix;
-
-		return bShaderHasOutdatedParameters;
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), ViewProjMatrix, ViewProjMat);
 	}
 
 private:
-	FShaderParameter ViewProjMatrix;
+	LAYOUT_FIELD(FShaderParameter, ViewProjMatrix);
+	//FShaderParameter ViewProjMatrix;
 };
 
 class FGenerateMeshMaskShaderPS : public FGlobalShader
@@ -260,20 +252,20 @@ public:
 		float InTextureSize
 	)
 	{
-		SetShaderValue(RHICmdList, GetPixelShader(), TextureSize, InTextureSize);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), TextureSize, InTextureSize);
 	}
 
-	virtual bool Serialize(FArchive& Ar) override
+	/*virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 
 		Ar << TextureSize;
 
 		return bShaderHasOutdatedParameters;
-	}
+	}*/
 
 private:
-	FShaderParameter TextureSize;
+	LAYOUT_FIELD(FShaderParameter, TextureSize);
 };
 
 IMPLEMENT_SHADER_TYPE(, FGenerateMeshMaskShaderVS, TEXT("/Plugins/Shaders/ShadowFakery.usf"), TEXT("GenerateMeshMaskShaderVS"), SF_Vertex)
@@ -313,11 +305,11 @@ public:
 	{
 	}
 
-	virtual bool Serialize(FArchive& Ar) override
+	/*virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 		return bShaderHasOutdatedParameters;
-	}
+	}*/
 
 private:
 };
@@ -366,13 +358,13 @@ public:
 		FRHITexture* InMaskTexture1
 	)
 	{
-		SetShaderValue(RHICmdList, GetPixelShader(), CurLevel, InLevel);
-		SetShaderValue(RHICmdList, GetPixelShader(), DistanceFieldDimension, DFDimension);
-		SetTextureParameter(RHICmdList, GetPixelShader(), MaskTexture0, TextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InMaskTexture0);
-		SetTextureParameter(RHICmdList, GetPixelShader(), MaskTexture1, InMaskTexture1);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), CurLevel, InLevel);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), DistanceFieldDimension, DFDimension);
+		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), MaskTexture0, TextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InMaskTexture0);
+		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), MaskTexture1, InMaskTexture1);
 	}
 
-	virtual bool Serialize(FArchive& Ar) override
+	/*virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 
@@ -383,14 +375,14 @@ public:
 		Ar << TextureSampler;
 
 		return bShaderHasOutdatedParameters;
-	}
+	}*/
 
 private:
-	FShaderParameter CurLevel;
-	FShaderParameter DistanceFieldDimension;
-	FShaderResourceParameter MaskTexture0;
-	FShaderResourceParameter MaskTexture1;
-	FShaderResourceParameter TextureSampler;
+	LAYOUT_FIELD(FShaderParameter, CurLevel);
+	LAYOUT_FIELD(FShaderParameter, DistanceFieldDimension);
+	LAYOUT_FIELD(FShaderResourceParameter, MaskTexture0);
+	LAYOUT_FIELD(FShaderResourceParameter, MaskTexture1);
+	LAYOUT_FIELD(FShaderResourceParameter, TextureSampler);
 };
 
 //IMPLEMENT_SHADER_TYPE(, FGeneralShaderVS, TEXT("/Shaders/ShadowFakery.usf"), TEXT("GeneralShaderVS"), SF_Vertex)
@@ -432,11 +424,11 @@ public:
 		FRHITexture* InTexture1 
 	)
 	{
-		SetTextureParameter(RHICmdList, GetPixelShader(), MaskTexture0, TextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InTexture0);
-		SetTextureParameter(RHICmdList, GetPixelShader(), MaskTexture1, InTexture1);
+		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), MaskTexture0, TextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InTexture0);
+		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), MaskTexture1, InTexture1);
 	}
 
-	virtual bool Serialize(FArchive& Ar) override
+	/*virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 
@@ -445,12 +437,12 @@ public:
 		Ar << TextureSampler;
 
 		return bShaderHasOutdatedParameters;
-	}
+	}*/
 
 private:
-	FShaderResourceParameter MaskTexture0;
-	FShaderResourceParameter MaskTexture1;
-	FShaderResourceParameter TextureSampler;
+	LAYOUT_FIELD(FShaderResourceParameter, MaskTexture0);
+	LAYOUT_FIELD(FShaderResourceParameter, MaskTexture1);
+	LAYOUT_FIELD(FShaderResourceParameter, TextureSampler);
 };
 
 IMPLEMENT_SHADER_TYPE(, FRevertToDistanceFieldShaderPS, TEXT("/Plugins/Shaders/ProcessShadowFakery.usf"), TEXT("RevertToDistanceFieldShaderPS"), SF_Pixel)
@@ -491,11 +483,11 @@ public:
 		FRHITexture* InUnSignedDistanceField
 	)
 	{
-		SetShaderValue(RHICmdList, GetPixelShader(), DistanceOffset, InDistanceOffset);
-		SetTextureParameter(RHICmdList, GetPixelShader(), UnsignedDistanceField, TextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InUnSignedDistanceField);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), DistanceOffset, InDistanceOffset);
+		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), UnsignedDistanceField, TextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InUnSignedDistanceField);
 	}
 
-	virtual bool Serialize(FArchive& Ar) override
+	/*virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 
@@ -504,12 +496,12 @@ public:
 		Ar << TextureSampler;
 
 		return bShaderHasOutdatedParameters;
-	}
+	}*/
 
 private:
-	FShaderParameter DistanceOffset;
-	FShaderResourceParameter UnsignedDistanceField;
-	FShaderResourceParameter TextureSampler;
+	LAYOUT_FIELD(FShaderParameter, DistanceOffset);
+	LAYOUT_FIELD(FShaderResourceParameter, UnsignedDistanceField);
+	LAYOUT_FIELD(FShaderResourceParameter, TextureSampler);
 };
 
 IMPLEMENT_SHADER_TYPE(, FReconstructAndReverseDistanceFieldShaderPS, TEXT("/Plugins/Shaders/ProcessShadowFakery.usf"), TEXT("ReconstructDistanceFieldShaderPS"), SF_Pixel)
@@ -550,11 +542,11 @@ public:
 		FRHITexture* InUnSignedDistanceField
 	)
 	{
-		SetTextureParameter(RHICmdList, GetPixelShader(), SignedDistanceField, TextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InSignedDistanceField);
-		SetTextureParameter(RHICmdList, GetPixelShader(), UnsignedDistanceField, InUnSignedDistanceField);
+		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), SignedDistanceField, TextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InSignedDistanceField);
+		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), UnsignedDistanceField, InUnSignedDistanceField);
 	}
 
-	virtual bool Serialize(FArchive& Ar) override
+	/*virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 
@@ -563,12 +555,12 @@ public:
 		Ar << TextureSampler;
 
 		return bShaderHasOutdatedParameters;
-	}
+	}*/
 
 private:
-	FShaderResourceParameter SignedDistanceField;
-	FShaderResourceParameter UnsignedDistanceField;
-	FShaderResourceParameter TextureSampler;
+	LAYOUT_FIELD(FShaderResourceParameter, SignedDistanceField);
+	LAYOUT_FIELD(FShaderResourceParameter, UnsignedDistanceField);
+	LAYOUT_FIELD(FShaderResourceParameter, TextureSampler);
 };
 
 IMPLEMENT_SHADER_TYPE(, FMergeDistanceFieldShaderPS, TEXT("/Plugins/Shaders/ProcessShadowFakery.usf"), TEXT("MergeToFinalSignedDistanceField"), SF_Pixel)
@@ -662,8 +654,8 @@ void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLe
 	GraphicPSPoint.RasterizerState = TStaticRasterizerState<>::GetRHI();
 	GraphicPSPoint.PrimitiveType = PT_TriangleList;
 	GraphicPSPoint.BoundShaderState.VertexDeclarationRHI = VertexDeclaration.VertexDeclarationRHI;
-	GraphicPSPoint.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-	GraphicPSPoint.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+	GraphicPSPoint.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+	GraphicPSPoint.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 	SetGraphicsPipelineState(RHICmdList, GraphicPSPoint);
 
 	VertexShader->SetParameters(RHICmdList, ViewProjMatrix);
