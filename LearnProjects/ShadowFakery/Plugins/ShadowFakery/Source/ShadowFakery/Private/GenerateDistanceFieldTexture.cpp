@@ -117,6 +117,7 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 		return;*/
 		// We need to run all renderthread command to save texture
 		FlushRenderingCommands();
+		int32 AtlasSize = MergedDistanceFieldRT->GetSizeXYZ().X;
 		FString TextureName = TEXT("Tex_ShadowFakery_2");
 		FString PackageName = TEXT("/Game/ShadowFakeryTextures/");
 		PackageName += TextureName;
@@ -126,8 +127,8 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 		UTexture2D* TargetTex = NewObject<UTexture2D>(Package, *TextureName, RF_Public | RF_Standalone | RF_MarkAsRootSet);
 		TargetTex->AddToRoot();				// This line prevents garbage collection of the texture
 		TargetTex->PlatformData = new FTexturePlatformData();	// Then we initialize the PlatformData
-		TargetTex->PlatformData->SizeX = DistanceFieldSize;
-		TargetTex->PlatformData->SizeY = DistanceFieldSize;
+		TargetTex->PlatformData->SizeX = AtlasSize;
+		TargetTex->PlatformData->SizeY = AtlasSize;
 		TargetTex->PlatformData->SetNumSlices(1);
 		TargetTex->PlatformData->PixelFormat = EPixelFormat::PF_B8G8R8A8;
 		TargetTex->AddressX = TextureAddress::TA_Clamp;
@@ -137,15 +138,15 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 
 		int32 Index = TargetTex->PlatformData->Mips.Add(new FTexture2DMipMap());
 		FTexture2DMipMap* Mip = &TargetTex->PlatformData->Mips[Index];
-		Mip->SizeX = DistanceFieldSize;
-		Mip->SizeY = DistanceFieldSize;
+		Mip->SizeX = AtlasSize;
+		Mip->SizeY = AtlasSize;
 
 		uint32 DestStride = 0;
 		FRHITexture2D* MergedTexture2D = static_cast<FRHITexture2D*>(MergedDistanceFieldRT);
 		TArray<uint8> PixelData;
-		uint32 RowDataSize = DistanceFieldSize * 4 * sizeof(uint8);
+		uint32 RowDataSize = AtlasSize * 4 * sizeof(uint8);
 		//PixelData.Reserve(DistanceFieldSize * RowDataSize);
-		PixelData.SetNumZeroed(DistanceFieldSize * RowDataSize);
+		PixelData.SetNumZeroed(AtlasSize * RowDataSize);
 		uint8* Texture2DData = (uint8*)RHILockTexture2D(MergedTexture2D, 0, RLM_ReadOnly, DestStride, false);
 
 		if (DestStride == RowDataSize)
@@ -155,7 +156,7 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 		else
 		{
 			uint8* TempData = PixelData.GetData();
-			for (int32 i = 0; i < DistanceFieldSize; ++i)
+			for (int32 i = 0; i < AtlasSize; ++i)
 			{
 				FMemory::Memcpy(TempData, Texture2DData, RowDataSize);
 				TempData += RowDataSize;
@@ -167,11 +168,11 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 
 		// Lock the texture so it can be modified
 		Mip->BulkData.Lock(LOCK_READ_WRITE);
-		uint8* TextureData = (uint8*)Mip->BulkData.Realloc(DistanceFieldSize * DistanceFieldSize * 4 * sizeof(uint8));
+		uint8* TextureData = (uint8*)Mip->BulkData.Realloc(AtlasSize * AtlasSize * 4 * sizeof(uint8));
 		FMemory::Memcpy(TextureData, PixelData.GetData(), PixelData.Num());
 		Mip->BulkData.Unlock();
 
-		TargetTex->Source.Init(DistanceFieldSize, DistanceFieldSize, 1, 1, ETextureSourceFormat::TSF_BGRA8, PixelData.GetData());
+		TargetTex->Source.Init(AtlasSize, AtlasSize, 1, 1, ETextureSourceFormat::TSF_BGRA8, PixelData.GetData());
 		TargetTex->UpdateResource();
 		Package->MarkPackageDirty();
 		FAssetRegistryModule::AssetCreated(TargetTex);

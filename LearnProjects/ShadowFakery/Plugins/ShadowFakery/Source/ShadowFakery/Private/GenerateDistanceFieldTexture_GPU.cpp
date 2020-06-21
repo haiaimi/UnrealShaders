@@ -506,19 +506,22 @@ private:
 
 IMPLEMENT_SHADER_TYPE(, FReconstructAndReverseDistanceFieldShaderPS, TEXT("/Plugins/Shaders/ProcessShadowFakery.usf"), TEXT("ReconstructDistanceFieldShaderPS"), SF_Pixel)
 
-class FMergeDistanceFieldShaderPS : public FGlobalShader
+#define THREADGROUP_SIZE 32u
+
+class FMergeToAtlasCS : public FGlobalShader
 {
-	DECLARE_SHADER_TYPE(FMergeDistanceFieldShaderPS, Global)
+	DECLARE_SHADER_TYPE(FMergeToAtlasCS, Global)
 
 public:
-	FMergeDistanceFieldShaderPS() {};
+	FMergeToAtlasCS() {};
 
-	FMergeDistanceFieldShaderPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
+	FMergeToAtlasCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
 		FGlobalShader(Initializer)
 	{
+		TileIndex.Bind(Initializer.ParameterMap, TEXT("TileIndex"));
 		SignedDistanceField.Bind(Initializer.ParameterMap, TEXT("SignedDistanceField"));
 		UnsignedDistanceField.Bind(Initializer.ParameterMap, TEXT("UnsignedDistanceField"));
-		TextureSampler.Bind(Initializer.ParameterMap, TEXT("TextureSampler"));
+		RWAtlasTexture.Bind(Initializer.ParameterMap, TEXT("RWAtlasTexture"));
 	}
 
 	static bool ShouldCache(EShaderPlatform Platform)
@@ -534,36 +537,42 @@ public:
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), THREADGROUP_SIZE);
 	}
 
 	void SetParameters(
 		FRHICommandList& RHICmdList,
+		uint32 InTileIndex,
 		FRHITexture* InSignedDistanceField,
-		FRHITexture* InUnSignedDistanceField
+		FRHITexture* InUnSignedDistanceField,
+		FRHIUnorderedAccessView* AtlasTex
 	)
 	{
-		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), SignedDistanceField, TextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InSignedDistanceField);
-		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), UnsignedDistanceField, InUnSignedDistanceField);
+		FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
+
+		SetShaderValue(RHICmdList, ShaderRHI, TileIndex, InTileIndex);
+		SetTextureParameter(RHICmdList, ShaderRHI, SignedDistanceField, InSignedDistanceField);
+		SetTextureParameter(RHICmdList, ShaderRHI, UnsignedDistanceField, InUnSignedDistanceField);
+		SetUAVParameter(RHICmdList, ShaderRHI, RWAtlasTexture, AtlasTex);
 	}
 
-	/*virtual bool Serialize(FArchive& Ar) override
+	void UnsetParameters(FRHICommandList& RHICmdList)
 	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
 
-		Ar << SignedDistanceField;
-		Ar << UnsignedDistanceField;
-		Ar << TextureSampler;
-
-		return bShaderHasOutdatedParameters;
-	}*/
+		SetUAVParameter(RHICmdList, ShaderRHI, RWAtlasTexture, 0);
+	}
 
 private:
+
+	LAYOUT_FIELD(FShaderParameter, TileIndex);
 	LAYOUT_FIELD(FShaderResourceParameter, SignedDistanceField);
 	LAYOUT_FIELD(FShaderResourceParameter, UnsignedDistanceField);
-	LAYOUT_FIELD(FShaderResourceParameter, TextureSampler);
+	LAYOUT_FIELD(FShaderResourceParameter, RWAtlasTexture);
 };
 
-IMPLEMENT_SHADER_TYPE(, FMergeDistanceFieldShaderPS, TEXT("/Plugins/Shaders/ProcessShadowFakery.usf"), TEXT("MergeToFinalSignedDistanceField"), SF_Pixel)
+IMPLEMENT_SHADER_TYPE(, FMergeToAtlasCS, TEXT("/Plugins/Shaders/ProcessShadowFakery.usf"), TEXT("MergeToAtlasCS"), SF_Compute)
 #endif
 
 void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, class UStaticMesh* StaticMesh, FRHITexture*& MergedDistanceFieldTexture, class UTextureRenderTarget* OutputRenderTarget, float StartDegree, uint32 TextureSize)
@@ -725,12 +734,27 @@ void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLe
 	//Merge two distance field 
 	TRefCountPtr<IPooledRenderTarget> MergedDistanceFieldRT;
 	{
-		FPooledRenderTargetDesc MDesc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(TextureSize, TextureSize), /*PF_A32B32G32R32F*/ PF_R32_UINT, FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable, false));
+		FPooledRenderTargetDesc MDesc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(TextureSize * 4, TextureSize * 4), /*PF_A32B32G32R32F*/ PF_R32_UINT, FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_UAV, false));
 		GRenderTargetPool.FindFreeElement(RHICmdList, MDesc, MergedDistanceFieldRT, TEXT("MergedDistanceFieldRT"));
-		FRHITexture* FinalRenderTargets[] = { MergedDistanceFieldRT->GetRenderTargetItem().TargetableTexture };
-		DrawQuadWithPSParams<FGeneralShaderVS, FMergeDistanceFieldShaderPS>(RHICmdList, FeatureLevel, TEXT("MergeDistanceFieldPass"), FIntPoint(TextureSize, TextureSize), 1, FinalRenderTargets, SignedDistanceFieldRT->GetRenderTargetItem().TargetableTexture, UnsignedDistanceFieldRT->GetRenderTargetItem().TargetableTexture);
+		//FRHITexture* FinalRenderTargets[] = { MergedDistanceFieldRT->GetRenderTargetItem().TargetableTexture };
+
+		RHICmdList.BeginComputePass(TEXT("MergeToAtlas"));
+		TShaderMapRef<FMergeToAtlasCS> MergeCS(GetGlobalShaderMap(FeatureLevel));
+		FRHIComputeShader* ShaderRHI = MergeCS.GetComputeShader();
+		RHICmdList.SetComputeShader(ShaderRHI);
+
+		//RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, SignedDistanceFieldRT->GetRenderTargetItem().TargetableTexture);
+		auto AtlasUAV = RHICreateUnorderedAccessView(MergedDistanceFieldRT->GetRenderTargetItem().TargetableTexture, 0);
+		MergeCS->SetParameters(RHICmdList, 0, SignedDistanceFieldRT->GetRenderTargetItem().TargetableTexture, UnsignedDistanceFieldRT->GetRenderTargetItem().TargetableTexture, AtlasUAV);
+		DispatchComputeShader(RHICmdList, MergeCS, FMath::DivideAndRoundUp(TextureSize, THREADGROUP_SIZE), FMath::DivideAndRoundUp(TextureSize, THREADGROUP_SIZE), 1);
+		MergeCS->UnsetParameters(RHICmdList);
+		RHICmdList.EndComputePass();
+		//DrawQuadWithPSParams<FGeneralShaderVS, FMergeDistanceFieldShaderPS>(RHICmdList, FeatureLevel, TEXT("MergeDistanceFieldPass"), FIntPoint(TextureSize, TextureSize), 1, FinalRenderTargets, SignedDistanceFieldRT->GetRenderTargetItem().TargetableTexture, UnsignedDistanceFieldRT->GetRenderTargetItem().TargetableTexture);
+
 		MergedDistanceFieldTexture = MergedDistanceFieldRT->GetRenderTargetItem().TargetableTexture;
 	}
+	
+	//
 
 	FRHICopyTextureInfo CopyInfo;
 	if (OutputRenderTarget)
