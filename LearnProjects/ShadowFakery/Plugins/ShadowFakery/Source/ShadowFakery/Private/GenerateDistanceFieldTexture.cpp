@@ -20,7 +20,7 @@
 #include "Engine/TextureRenderTarget.h"
 #include "RenderingThread.h"
 
-extern void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, class UStaticMesh* StaticMesh, FRHITexture*& MergedDistanceFieldRT, class UTextureRenderTarget* OutputRenderTarget, float StartDegree, uint32 TextureSize);
+extern void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, class UStaticMesh* StaticMesh, FRHITexture*& MergedDistanceFieldRT, class UTextureRenderTarget* OutputRenderTarget,  uint32 TileIndex, float StartDegree, uint32 TextureSize);
 
 static void GenerateHemisphereSamples(int32 NumThetaSteps, int32 NumPhiSteps, FRandomStream& RandomStream, TArray<FVector4>& Samples)
 {
@@ -107,7 +107,11 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 		FRHITexture* MergedDistanceFieldRT = nullptr;
 		ENQUEUE_RENDER_COMMAND(CaptureCommand)([GenerateStaticMesh, StartDegree, DistanceFieldSize, &MergedDistanceFieldRT, OutputRenderTarget](FRHICommandListImmediate& RHICmdList)
 		{
-			GenerateMeshMaskTexture(RHICmdList, ERHIFeatureLevel::SM5, GenerateStaticMesh, MergedDistanceFieldRT, OutputRenderTarget, StartDegree, DistanceFieldSize);
+			//TODO
+			for (uint32 i = 0; i < 16; ++i)
+			{
+				GenerateMeshMaskTexture(RHICmdList, ERHIFeatureLevel::SM5, GenerateStaticMesh, MergedDistanceFieldRT, OutputRenderTarget, i, StartDegree + 10.f * i, DistanceFieldSize);
+			}	
 		});
 		/*GEngine->PreRenderDelegate.Remove(GShadowFakeryDelegateHandle);
 		GShadowFakeryDelegateHandle = GEngine->PreRenderDelegate.AddLambda([GenerateStaticMesh, StartDegree, DistanceFieldSize, &MergedDistanceFieldRT, OutputRenderTarget]() {

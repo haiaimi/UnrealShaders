@@ -575,7 +575,7 @@ private:
 IMPLEMENT_SHADER_TYPE(, FMergeToAtlasCS, TEXT("/Plugins/Shaders/ProcessShadowFakery.usf"), TEXT("MergeToAtlasCS"), SF_Compute)
 #endif
 
-void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, class UStaticMesh* StaticMesh, FRHITexture*& MergedDistanceFieldTexture, class UTextureRenderTarget* OutputRenderTarget, float StartDegree, uint32 TextureSize)
+void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, class UStaticMesh* StaticMesh, FRHITexture*& MergedDistanceFieldTexture, class UTextureRenderTarget* OutputRenderTarget, uint32 TileIndex, float StartDegree, uint32 TextureSize)
 {
 	check(IsInRenderingThread());
 	
@@ -745,7 +745,7 @@ void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLe
 
 		//RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, SignedDistanceFieldRT->GetRenderTargetItem().TargetableTexture);
 		auto AtlasUAV = RHICreateUnorderedAccessView(MergedDistanceFieldRT->GetRenderTargetItem().TargetableTexture, 0);
-		MergeCS->SetParameters(RHICmdList, 0, SignedDistanceFieldRT->GetRenderTargetItem().TargetableTexture, UnsignedDistanceFieldRT->GetRenderTargetItem().TargetableTexture, AtlasUAV);
+		MergeCS->SetParameters(RHICmdList, TileIndex, SignedDistanceFieldRT->GetRenderTargetItem().TargetableTexture, UnsignedDistanceFieldRT->GetRenderTargetItem().TargetableTexture, AtlasUAV);
 		DispatchComputeShader(RHICmdList, MergeCS, FMath::DivideAndRoundUp(TextureSize, THREADGROUP_SIZE), FMath::DivideAndRoundUp(TextureSize, THREADGROUP_SIZE), 1);
 		MergeCS->UnsetParameters(RHICmdList);
 		RHICmdList.EndComputePass();
