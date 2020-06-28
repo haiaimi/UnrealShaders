@@ -69,6 +69,6 @@ void MergeToAtlasCS(
 	uint TileCountX = AtlasSize.x / TileSize.x;
 	uint TileCountY = AtlasSize.y / TileSize.y;
 	
-	uint2 DestCoord = uint2((TileIndex % TileCountX) * TileSize.x + DispatchThreadID.x, clamp(TileIndex, 0, TileCountY) * AtlasSize.x * TileSize.y + DispatchThreadID.y);
+	uint2 DestCoord = uint2((TileIndex % TileCountX) * TileSize.x + DispatchThreadID.x, TileIndex / TileCountY * TileSize.y + DispatchThreadID.y);
 	RWAtlasTexture[DestCoord] = OutColor;
 }
