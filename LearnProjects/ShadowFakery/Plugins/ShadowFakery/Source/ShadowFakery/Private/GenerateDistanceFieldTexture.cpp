@@ -104,24 +104,7 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 #if GENERATE_TEXTURE_DF
 	if (bUseGPU)
 	{
-		FRHITexture* MergedDistanceFieldRT = nullptr;
-		ENQUEUE_RENDER_COMMAND(CaptureCommand)([GenerateStaticMesh, StartDegree, DistanceFieldSize, &MergedDistanceFieldRT, OutputRenderTarget](FRHICommandListImmediate& RHICmdList)
-		{
-			//TODO
-			for (uint32 i = 0; i < 16; ++i)
-			{
-				GenerateMeshMaskTexture(RHICmdList, ERHIFeatureLevel::SM5, GenerateStaticMesh, MergedDistanceFieldRT, OutputRenderTarget, i, StartDegree + 10.f * i, DistanceFieldSize);
-			}	
-		});
-		/*GEngine->PreRenderDelegate.Remove(GShadowFakeryDelegateHandle);
-		GShadowFakeryDelegateHandle = GEngine->PreRenderDelegate.AddLambda([GenerateStaticMesh, StartDegree, DistanceFieldSize, &MergedDistanceFieldRT, OutputRenderTarget]() {
-			FRHICommandListImmediate& RHICmdList = GetImmediateCommandList_ForRenderCommand();
-			GenerateMeshMaskTexture(RHICmdList, ERHIFeatureLevel::SM5, GenerateStaticMesh, MergedDistanceFieldRT, OutputRenderTarget, StartDegree, DistanceFieldSize);
-		});
-		return;*/
-		// We need to run all renderthread command to save texture
-		FlushRenderingCommands();
-		int32 AtlasSize = MergedDistanceFieldRT->GetSizeXYZ().X;
+		int32 AtlasSize = DistanceFieldSize * 4;
 		FString TextureName = TEXT("Tex_ShadowFakery_2");
 		FString PackageName = TEXT("/Game/ShadowFakeryTextures/");
 		PackageName += TextureName;
@@ -145,30 +128,50 @@ void UGenerateDistanceFieldTexture::GenerateDistanceFieldTexture(const UObject* 
 		Mip->SizeX = AtlasSize;
 		Mip->SizeY = AtlasSize;
 
-		uint32 DestStride = 0;
-		FRHITexture2D* MergedTexture2D = static_cast<FRHITexture2D*>(MergedDistanceFieldRT);
+		FRHITexture* MergedDistanceFieldRT = nullptr;
 		TArray<uint8> PixelData;
-		uint32 RowDataSize = AtlasSize * 4 * sizeof(uint8);
-		//PixelData.Reserve(DistanceFieldSize * RowDataSize);
-		PixelData.SetNumZeroed(AtlasSize * RowDataSize);
-		uint8* Texture2DData = (uint8*)RHILockTexture2D(MergedTexture2D, 0, RLM_ReadOnly, DestStride, false);
-
-		if (DestStride == RowDataSize)
+		ENQUEUE_RENDER_COMMAND(CaptureCommand)([GenerateStaticMesh, StartDegree, DistanceFieldSize, &MergedDistanceFieldRT, OutputRenderTarget, &PixelData, AtlasSize](FRHICommandListImmediate& RHICmdList)
 		{
-			FMemory::Memcpy(PixelData.GetData(), Texture2DData, PixelData.Num());
-		}
-		else
-		{
-			uint8* TempData = PixelData.GetData();
-			for (int32 i = 0; i < AtlasSize; ++i)
+			//TODO
+			for (uint32 i = 0; i < 16; ++i)
 			{
-				FMemory::Memcpy(TempData, Texture2DData, RowDataSize);
-				TempData += RowDataSize;
-				Texture2DData += DestStride;
+				GenerateMeshMaskTexture(RHICmdList, ERHIFeatureLevel::SM5, GenerateStaticMesh, MergedDistanceFieldRT, OutputRenderTarget, i, StartDegree + 10.f * i, DistanceFieldSize);
 			}
-		}
 
-		RHIUnlockTexture2D(MergedTexture2D, 0, false);
+			uint32 DestStride = 0;
+			FRHITexture2D* MergedTexture2D = static_cast<FRHITexture2D*>(MergedDistanceFieldRT);
+			
+			uint32 RowDataSize = AtlasSize * 4 * sizeof(uint8);
+			//PixelData.Reserve(DistanceFieldSize * RowDataSize);
+			PixelData.SetNumZeroed(AtlasSize * RowDataSize);
+			uint8* Texture2DData = (uint8*)RHILockTexture2D(MergedTexture2D, 0, RLM_ReadOnly, DestStride, false);
+
+			if (DestStride == RowDataSize)
+			{
+				FMemory::Memcpy(PixelData.GetData(), Texture2DData, PixelData.Num());
+			}
+			else
+			{
+				uint8* TempData = PixelData.GetData();
+				for (int32 i = 0; i < AtlasSize; ++i)
+				{
+					FMemory::Memcpy(TempData, Texture2DData, RowDataSize);
+					TempData += RowDataSize;
+					Texture2DData += DestStride;
+				}
+			}
+
+			RHIUnlockTexture2D(MergedTexture2D, 0, false);
+		});
+		/*GEngine->PreRenderDelegate.Remove(GShadowFakeryDelegateHandle);
+		GShadowFakeryDelegateHandle = GEngine->PreRenderDelegate.AddLambda([GenerateStaticMesh, StartDegree, DistanceFieldSize, &MergedDistanceFieldRT, OutputRenderTarget]() {
+			FRHICommandListImmediate& RHICmdList = GetImmediateCommandList_ForRenderCommand();
+			GenerateMeshMaskTexture(RHICmdList, ERHIFeatureLevel::SM5, GenerateStaticMesh, MergedDistanceFieldRT, OutputRenderTarget, StartDegree, DistanceFieldSize);
+		});
+		return;*/
+		// We need to run all renderthread command to save texture
+		
+		FlushRenderingCommands();
 
 		// Lock the texture so it can be modified
 		Mip->BulkData.Lock(LOCK_READ_WRITE);

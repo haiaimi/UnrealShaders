@@ -132,7 +132,7 @@ void AShadowFakeryInst::Tick(float DeltaTime)
 		const FVector LightSize = LightDir.GetSafeNormal2D() * FMath::Abs(FMath::Tan(FMath::DegreesToRadians(90.f - FMath::Abs(SunYaw))));
 		//ShadowMeshCompent->UpdateShadowState(LightSize, 1500, 1500);
 
-		const TArray<float> CustomData = { LightSize.X, LightSize.Y, SunYaw, 3000.f, 0 };
+		const TArray<float> CustomData = { LightSize.X, LightSize.Y, SunYaw, 2500.f, 0 };
 		if (ShadowFakeryStaticMesh)
 		{
 			for (int32 i = 0; i < ShadowFakeryStaticMesh->GetInstanceCount(); ++i)

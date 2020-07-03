@@ -16,10 +16,10 @@ void RevertToDistanceFieldShaderPS(
 	float2 Channel3 = Data1.zw;
 	
 	float2 Scale = float2(1.f, 1.f);
-	OutColor0 = float4(clamp(length((Channel0 - InUV) * Scale) / 0.1f, 0.f, 1.f),
-						clamp(length((Channel1 - InUV) * Scale) / 0.1f, 0.f, 1.f),
-						clamp(length((Channel2 - InUV) * Scale) / 0.1f, 0.f, 1.f),
-						clamp(length((Channel3 - InUV) * Scale) / 0.1f, 0.f, 1.f));
+	OutColor0 = float4(clamp(length((Channel0 - InUV) * Scale) / 0.15f, 0.f, 1.f),
+						clamp(length((Channel1 - InUV) * Scale) / 0.15f, 0.f, 1.f),
+						clamp(length((Channel2 - InUV) * Scale) / 0.15f, 0.f, 1.f),
+						clamp(length((Channel3 - InUV) * Scale) / 0.15f, 0.f, 1.f));
 }
 
 float DistanceOffset;
@@ -69,6 +69,6 @@ void MergeToAtlasCS(
 	uint TileCountX = AtlasSize.x / TileSize.x;
 	uint TileCountY = AtlasSize.y / TileSize.y;
 	
-	uint2 DestCoord = uint2((TileIndex % TileCountX) * TileSize.x + DispatchThreadID.x, clamp(TileIndex, 0, TileCountY) * AtlasSize.x * TileSize.y + DispatchThreadID.y);
+	uint2 DestCoord = uint2((TileIndex % TileCountX) * TileSize.x + DispatchThreadID.x, TileIndex / TileCountX * TileSize.y + DispatchThreadID.y);
 	RWAtlasTexture[DestCoord] = OutColor;
 }
