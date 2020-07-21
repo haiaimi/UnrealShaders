@@ -105,11 +105,11 @@ UE4也为Forward管线实现了一个Cluster Shading，下面内容就是UE4中�
 * FLightGridInjectionCS 构建LightGrid信息的CS
   * ForwardLightData Forward; Forward光源的数据引用，是一个UniformBuffer
   * FViewUniformShaderParameters View; View Buffer的引用
-  * RWBuffer< uint> RWNumCulledLightsGrid; 
+  * RWBuffer< uint> RWNumCulledLightsGrid; 每个格子受影响的光源数
   * RWBuffer< uint> RWCulledLightDataGrid;
-  * RWBuffer< uint> RWNextCulledLightLink; 链表信息
-  * RWBuffer< uint> RWStartOffsetGrid;
-  * RWBuffer< uint> RWCulledLightLinks;
+  * RWBuffer< uint> RWNextCulledLightLink; 只有一个值，用于计数，保持数据间的同步
+  * RWBuffer< uint> RWStartOffsetGrid;  用于记录当前计算的格子的光源信息所在链表的位置
+  * RWBuffer< uint> RWCulledLightLinks; 用于存放所有格子数据的链表
   * StrongTypedBuffer< float4> LightViewSpacePositionAndRadius;
   * StrongTypedBuffer< float4> LightViewSpaceDirAndPreprocAngle;
 
