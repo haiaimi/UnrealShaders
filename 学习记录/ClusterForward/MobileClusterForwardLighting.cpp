@@ -1,4 +1,6 @@
+#include "MobileClusterForwardLighting.h"
 #include "ScenePrivate.h"
+#include "SceneRendering.h"
 
 int32 GMobileLightGridPixel = 64;
 FAutoConsoleVariableRef CVarMobileLightGridPixelSize(
@@ -24,7 +26,7 @@ FAutoConsoleVariableRef CVarMobileMaxCulledLightsPerCell(
 	ECVF_Scalability | ECVF_RenderThreadSafe
 );
 
-FVector GetLightGridZParams(float NearPlane, float FarPlane)
+FVector MobileGetLightGridZParams(float NearPlane, float FarPlane)
 {
 	// slice = log2(z*B + O)*S
 	double NearOffset = 0.95f * 100.f;
@@ -38,7 +40,7 @@ FVector GetLightGridZParams(float NearPlane, float FarPlane)
 }
 
 // Get depth by slice, z=(exp2(slice/S)-O)/B
-float ComputeCellNearViewDepthFromZSlice(const FVector& ZParam, uint ZSlice)
+float ComputeCellNearViewDepthFromZSlice(const FVector& ZParam, uint32 ZSlice)
 {
 	if (ZSlice == GMobileLightGridSizeZ)
 		return 2000000.f;
@@ -60,6 +62,7 @@ float ConvertDepthToDeviceZ(const FMatrix& ProjMat, float ZDepth)
 	float C1 = 1 / A;
 	float C2 = A / B;
 
+	// Because the depth in UE4 is reversed :  1/Depth
 	return 1.f / ((ZDepth + C1) * C2);
 }
 
@@ -78,17 +81,17 @@ void ComputeCellViewAABB(const FViewInfo& ViewInfo, const FVector& ZParam, const
 	float MinTileZ = ComputeCellNearViewDepthFromZSlice(ZParam, GridCoord.Z);
 	float MaxTileZ = ComputeCellNearViewDepthFromZSlice(ZParam, GridCoord.Z + 1);
 
-	float MinTileDeviceZ = ConvertDepthToDeviceZ(ViewMats.ProjectionMatrix, MinTileZ);
-	VectorRegister MinDepthCorner0 = VectorTransformVector(MakeVectorRegister(UnitPlaneTileMin.x, UnitPlaneTileMin.Y, MinTileDeviceZ, 1.f), &ViewMats.InvProjectionMatrix);
-	VectorRegister MinDepthCorner1 = VectorTransformVector(MakeVectorRegister(UnitPlaneTileMax.x, UnitPlaneTileMax.Y, MinTileDeviceZ, 1.f), &ViewMats.InvProjectionMatrix);
-	VectorRegister MinDepthCorner2 = VectorTransformVector(MakeVectorRegister(UnitPlaneTileMin.x, UnitPlaneTileMax.Y, MinTileDeviceZ, 1.f), &ViewMats.InvProjectionMatrix);
-	VectorRegister MinDepthCorner3 = VectorTransformVector(MakeVectorRegister(UnitPlaneTileMax.x, UnitPlaneTileMin.Y, MinTileDeviceZ, 1.f), &ViewMats.InvProjectionMatrix);
+	float MinTileDeviceZ = ConvertDepthToDeviceZ(ViewMats.GetProjectionMatrix(), MinTileZ);
+	VectorRegister MinDepthCorner0 = VectorTransformVector(MakeVectorRegister(UnitPlaneTileMin.X, UnitPlaneTileMin.Y, MinTileDeviceZ, 1.f), &ViewMats.GetInvProjectionMatrix());
+	VectorRegister MinDepthCorner1 = VectorTransformVector(MakeVectorRegister(UnitPlaneTileMax.X, UnitPlaneTileMax.Y, MinTileDeviceZ, 1.f), &ViewMats.GetInvProjectionMatrix());
+	VectorRegister MinDepthCorner2 = VectorTransformVector(MakeVectorRegister(UnitPlaneTileMin.X, UnitPlaneTileMax.Y, MinTileDeviceZ, 1.f), &ViewMats.GetInvProjectionMatrix());
+	VectorRegister MinDepthCorner3 = VectorTransformVector(MakeVectorRegister(UnitPlaneTileMax.X, UnitPlaneTileMin.Y, MinTileDeviceZ, 1.f), &ViewMats.GetInvProjectionMatrix());
 
-	float MaxTileDeviceZ = ConvertDepthToDeviceZ(ViewMats.ProjectionMatrix, MaxTileZ);
-	VectorRegister MaxDepthCorner0 = VectorTransformVector(MakeVectorRegister(UnitPlaneTileMin.x, UnitPlaneTileMin.Y, MaxTileDeviceZ, 1.f), &ViewMats.InvProjectionMatrix);
-	VectorRegister MaxDepthCorner1 = VectorTransformVector(MakeVectorRegister(UnitPlaneTileMax.x, UnitPlaneTileMax.Y, MaxTileDeviceZ, 1.f), &ViewMats.InvProjectionMatrix);
-	VectorRegister MaxDepthCorner2 = VectorTransformVector(MakeVectorRegister(UnitPlaneTileMin.x, UnitPlaneTileMax.Y, MaxTileDeviceZ, 1.f), &ViewMats.InvProjectionMatrix);
-	VectorRegister MaxDepthCorner3 = VectorTransformVector(MakeVectorRegister(UnitPlaneTileMax.x, UnitPlaneTileMin.Y, MaxTileDeviceZ, 1.f), &ViewMats.InvProjectionMatrix);
+	float MaxTileDeviceZ = ConvertDepthToDeviceZ(ViewMats.GetProjectionMatrix(), MaxTileZ);
+	VectorRegister MaxDepthCorner0 = VectorTransformVector(MakeVectorRegister(UnitPlaneTileMin.X, UnitPlaneTileMin.Y, MaxTileDeviceZ, 1.f), &ViewMats.GetInvProjectionMatrix());
+	VectorRegister MaxDepthCorner1 = VectorTransformVector(MakeVectorRegister(UnitPlaneTileMax.X, UnitPlaneTileMax.Y, MaxTileDeviceZ, 1.f), &ViewMats.GetInvProjectionMatrix());
+	VectorRegister MaxDepthCorner2 = VectorTransformVector(MakeVectorRegister(UnitPlaneTileMin.X, UnitPlaneTileMax.Y, MaxTileDeviceZ, 1.f), &ViewMats.GetInvProjectionMatrix());
+	VectorRegister MaxDepthCorner3 = VectorTransformVector(MakeVectorRegister(UnitPlaneTileMax.X, UnitPlaneTileMin.Y, MaxTileDeviceZ, 1.f), &ViewMats.GetInvProjectionMatrix());
 
 	VectorRegister ViewMinDepthCorner0_1 = VectorDivide(VectorShuffle(MinDepthCorner0, MinDepthCorner1, 0, 1, 0, 1), VectorShuffle(MinDepthCorner0, MinDepthCorner1, 3, 3, 3, 3));
 	VectorRegister ViewMinDepthCorner2_3 = VectorDivide(VectorShuffle(MinDepthCorner2, MinDepthCorner3, 0, 1, 0, 1), VectorShuffle(MinDepthCorner2, MinDepthCorner3, 3, 3, 3, 3));
@@ -121,7 +124,7 @@ bool IntersectConeWithSphere(const FVector& ConeVertex, const FVector& ConeAxis,
 
 bool AABBOutsidePlane(const FVector& Center, const FVector& Extents, const FVector4& Plane)
 {
-	float Dist = FVector4::Dot4(FVector4(Center, 1.f), Plane);
+	float Dist = Dot4(FVector4(Center, 1.f), Plane);
 	float Radius = FVector::DotProduct(Extents, FVector(Plane));
 
 	return Dist > Radius;
@@ -141,8 +144,8 @@ void MobileComputeLightGrid_CPU()
 	FScene* Scene = nullptr;
 	TArray<FViewInfo> Views;
 	TArray<FSortedLightSceneInfo, SceneRenderingAllocator> SortedLight;
-	Scene->Lights
-	if ()
+	//Scene->Lights
+	//if ()
 }
 
 void MobileComputeLightGrid_GPU()
