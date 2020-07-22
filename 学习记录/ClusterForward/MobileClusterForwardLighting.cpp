@@ -30,6 +30,7 @@ FAutoConsoleVariableRef CVarMobileMaxCulledLightsPerCell(
 
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileClusterLightingUniformParameters, "MobileClusterLight");
 
+FMobileClusterLightingResources* GetMobileClusterLightingResources();
 
 struct FMobileLocalLightData
 {
@@ -53,7 +54,7 @@ void SetupMobileClusterLightingUniformBuffer(FRHICommandListImmediate& RHICmdLis
 	FMobileClusterLightingResources* ClusterLightRes = GetMobileClusterLightingResources();
 	if (ClusterLightRes && GMobileLocalLightData.Num() > 0 && GNumCulledLightData.Num() > 0 && GCulledLightDataGrid.Num() > 0)
 	{
-		checkf(ClusterLightRes->MobileLocalLight.NumBytes < GMobileLocalLightData * sizeof(FMobileLocalLightData) &&
+		checkf(ClusterLightRes->MobileLocalLight.NumBytes < GMobileLocalLightData.Num() * sizeof(FMobileLocalLightData) &&
 			ClusterLightRes->NumCulledLightsGrid.NumBytes < GNumCulledLightData.Num() * sizeof(uint16) &&
 			ClusterLightRes->CulledLightDataGrid.NumBytes < GNumCulledLightData.Num() * sizeof(uint8), TEXT("------Cluster gpu data have not prepared-------"));
 
@@ -91,7 +92,7 @@ void UpdateClusterLightingBufferData()
 		ClusterLightRes->NumCulledLightsGrid.Initialize(sizeof(uint16), NumRequired / sizeof(uint16), EPixelFormat::PF_R16_UINT, BUF_Dynamic);
 	}
 	NumRequired = GCulledLightDataGrid.Num() * GCulledLightDataGrid.GetTypeSize();
-	if (ClusterLightRes->GCulledLightDataGrid.NumBytes < NumRequired)
+	if (ClusterLightRes->CulledLightDataGrid.NumBytes < NumRequired)
 	{
 		ClusterLightRes->CulledLightDataGrid.Release();
 		ClusterLightRes->CulledLightDataGrid.Initialize(sizeof(uint8), NumRequired / sizeof(uint8), EPixelFormat::PF_R8_UINT, BUF_Dynamic);
@@ -103,11 +104,11 @@ void UpdateClusterLightingBufferData()
 
 	ClusterLightRes->NumCulledLightsGrid.Lock();
 	FPlatformMemory::Memcpy(ClusterLightRes->NumCulledLightsGrid.MappedBuffer, GNumCulledLightData.GetData(), GNumCulledLightData.Num() * GNumCulledLightData.GetTypeSize());
-	ClusterLightRes->NumCulledLightsGrid.UnLock();
+	ClusterLightRes->NumCulledLightsGrid.Unlock();
 
 	ClusterLightRes->CulledLightDataGrid.Lock();
 	FPlatformMemory::Memcpy(ClusterLightRes->CulledLightDataGrid.MappedBuffer, GCulledLightDataGrid.GetData(), GCulledLightDataGrid.Num() * GCulledLightDataGrid.GetTypeSize());
-	ClusterLightRes->CulledLightDataGrid.UnLock();
+	ClusterLightRes->CulledLightDataGrid.Unlock();
 }
 
 class FMobileClusterLightingResourceManager : FRenderResource

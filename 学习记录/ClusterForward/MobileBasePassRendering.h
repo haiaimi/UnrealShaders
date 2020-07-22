@@ -24,10 +24,17 @@
 #include "BasePassRendering.h"
 #include "SkyAtmosphereRendering.h"
 
+// #change by wh, 2020/7/23
+#include "MobileClusterForwardLighting.h"
+// end
+
 BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileBasePassUniformParameters, )
 	SHADER_PARAMETER_STRUCT(FFogUniformParameters, Fog)
 	SHADER_PARAMETER_STRUCT(FPlanarReflectionUniformParameters, PlanarReflection) // Single global planar reflection for the forward pass.
 	SHADER_PARAMETER_STRUCT(FMobileSceneTextureUniformParameters, SceneTextures)
+	// #change by wh, 2020/7/23
+	SHADER_PARAMETER_STRUCT(FMobileClusterLightingUniformParameters, ClusterLighting)
+	// end
 	SHADER_PARAMETER_TEXTURE(Texture2D, PreIntegratedGFTexture)
 	SHADER_PARAMETER_SAMPLER(SamplerState, PreIntegratedGFSampler)
 END_GLOBAL_SHADER_PARAMETER_STRUCT()

@@ -171,6 +171,10 @@ void SetupMobileBasePassUniformParameters(
 		BasePassParameters.SceneTextures.EyeAdaptationBuffer = View.GetEyeAdaptationBuffer()->SRV;
 	}
 
+	// #change by wh, 2020/7/23
+	SetupMobileClusterLightingUniformBuffer(RHICmdList, View, BasePassParameters.ClusterLighting);
+	// end
+
 	BasePassParameters.PreIntegratedGFTexture = GSystemTextures.PreintegratedGF->GetRenderTargetItem().ShaderResourceTexture;
 	BasePassParameters.PreIntegratedGFSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 }
