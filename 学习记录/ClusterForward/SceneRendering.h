@@ -1832,6 +1832,10 @@ protected:
 	/** Build visibility lists on CSM receivers and non-csm receivers. */
 	void BuildCSMVisibilityState(FLightSceneInfo* LightSceneInfo);
 
+	// #change by wh, 2020/7/23 
+	void MobileComputeLightGrid();
+	// end
+
 	void InitViews(FRHICommandListImmediate& RHICmdList);
 
 	void RenderPrePass(FRHICommandListImmediate& RHICmdList);
@@ -1882,10 +1886,6 @@ protected:
 
 	void SortMobileBasePassAfterShadowInit(FExclusiveDepthStencil::Type BasePassDepthStencilAccess, FViewVisibleCommandsPerView& ViewCommandsPerView);
 	void SetupMobileBasePassAfterShadowInit(FExclusiveDepthStencil::Type BasePassDepthStencilAccess, FViewVisibleCommandsPerView& ViewCommandsPerView);
-
-	// #change by wh, 2020/7/22
-	void UpdateClusterLightingUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
-	// end
 
 	void UpdateOpaqueBasePassUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 	void UpdateTranslucentBasePassUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
