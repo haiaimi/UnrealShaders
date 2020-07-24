@@ -3,6 +3,8 @@
 #include "SceneRendering.h"
 #include "LightSceneInfo.h"
 #include "SceneManagement.h"
+#include "Stats/Stats.h"
+#include "DrawDebugHelpers.h"
 
 int32 GMobileLightGridPixel = 64;
 FAutoConsoleVariableRef CVarMobileLightGridPixelSize(
@@ -28,9 +30,23 @@ FAutoConsoleVariableRef CVarMobileMaxCulledLightsPerCell(
 	ECVF_Scalability | ECVF_RenderThreadSafe
 );
 
+int32 GMobileShowClusterDebug = 0;
+FAutoConsoleVariableRef CVarMobileShowClusterDebug(
+	TEXT("r.Mobile.ShowClusterDebug"),
+	GMobileShowClusterDebug,
+	TEXT("Show Debug."),
+	ECVF_Scalability | ECVF_RenderThreadSafe
+);
+
+
+static float MaxCullDistance = 50000.f;
+
+FMatrix GInvViewMatrix;
+
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileClusterLightingUniformParameters, "MobileClusterLight");
 
 FMobileClusterLightingResources* GetMobileClusterLightingResources();
+FVector MobileGetLightGridZParams(float NearPlane, float FarPlane);
 
 struct FMobileLocalLightData
 {
@@ -41,27 +57,43 @@ public:
 	FVector4 SpotLightDirectionAndSpecularScale;
 };
 
-TArray<FMobileLocalLightData, SceneRenderingAllocator> GMobileLocalLightData;
-TArray<FVector4, SceneRenderingAllocator> GLightViewSpaceDirAndPreprocAngle;
-TArray<FVector4, SceneRenderingAllocator> GLightViewSpacePosAndRadius;
-TArray<uint16, SceneRenderingAllocator> GNumCulledLightData;
-TArray<uint8, SceneRenderingAllocator> GCulledLightDataGrid;
+TArray<FMobileLocalLightData> GMobileLocalLightData;
+TArray<FVector4> GLightViewSpaceDirAndPreprocAngle;
+TArray<FVector4> GLightViewSpacePosAndRadius;
+TArray<uint32> GNumCulledLightData;
+TArray<uint8> GCulledLightDataGrid;
 
 void SetupMobileClusterLightingUniformBuffer(FRHICommandListImmediate& RHICmdList,
 	const FViewInfo& View,
 	FMobileClusterLightingUniformParameters& ClusterLightingParameters)
 {
-	FMobileClusterLightingResources* ClusterLightRes = GetMobileClusterLightingResources();
-	if (ClusterLightRes && GMobileLocalLightData.Num() > 0 && GNumCulledLightData.Num() > 0 && GCulledLightDataGrid.Num() > 0)
-	{
-		checkf(ClusterLightRes->MobileLocalLight.NumBytes < GMobileLocalLightData.Num() * sizeof(FMobileLocalLightData) &&
-			ClusterLightRes->NumCulledLightsGrid.NumBytes < GNumCulledLightData.Num() * sizeof(uint16) &&
-			ClusterLightRes->CulledLightDataGrid.NumBytes < GNumCulledLightData.Num() * sizeof(uint8), TEXT("------Cluster gpu data have not prepared-------"));
+	TRefCountPtr<IPooledRenderTarget> MaskRT0;
+	FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(64, 64), PF_A32B32G32R32F, FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource, false));
+	//Desc.NumSamples = 4;  //can not open mipmap and multisample simultaneously
+	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, MaskRT0, TEXT("MaskRT0"));
 
-		ClusterLightingParameters.MobileLocalLightBuffer = ClusterLightRes->MobileLocalLight.SRV;
+	//FSceneRenderTargets& Context = FSceneRenderTargets::Get(RHICmdList);
+	//Context
+	ClusterLightingParameters.MobileLocalLightBuffer = MaskRT0->GetRenderTargetItem().TargetableTexture;
+	ClusterLightingParameters.NumCulledLightsGrid = MaskRT0->GetRenderTargetItem().TargetableTexture;
+	ClusterLightingParameters.CulledLightDataGrid = MaskRT0->GetRenderTargetItem().TargetableTexture;
+	FMobileClusterLightingResources* ClusterLightRes = GetMobileClusterLightingResources();
+	if (ClusterLightRes)
+	{
+		/*checkf(ClusterLightRes->MobileLocalLight.NumBytes <= GMobileLocalLightData.Num() * sizeof(FMobileLocalLightData) &&
+			ClusterLightRes->NumCulledLightsGrid.NumBytes <= GNumCulledLightData.Num() * sizeof(uint16) &&
+			ClusterLightRes->CulledLightDataGrid.NumBytes <= GCulledLightDataGrid.Num() * sizeof(uint8), TEXT("------Cluster gpu data have not prepared-------"));*/
+
+		/*ClusterLightingParameters.MobileLocalLightBuffer = ClusterLightRes->MobileLocalLight.SRV;
 		ClusterLightingParameters.NumCulledLightsGrid = ClusterLightRes->NumCulledLightsGrid.SRV;
-		ClusterLightingParameters.CulledLightDataGrid = ClusterLightRes->CulledLightDataGrid.SRV;
+		ClusterLightingParameters.CulledLightDataGrid = ClusterLightRes->CulledLightDataGrid.SRV;*/
+
+		
 	}
+	ClusterLightingParameters.LightGridZParams = MobileGetLightGridZParams(View.NearClippingDistance, MaxCullDistance);
+	//ClusterLightingParameters.PixelSizeShift = FMath::FloorLog2(GMobileLightGridPixel);
+	FIntPoint CulledGridSizeXY = FIntPoint::DivideAndRoundUp(View.ViewRect.Size(), GMobileLightGridPixel);
+	ClusterLightingParameters.CulledGridSizeParams = FUintVector4((uint32)CulledGridSizeXY.X, (uint32)CulledGridSizeXY.Y, (uint32)GMobileLightGridSizeZ, (uint32)FMath::FloorLog2(GMobileLightGridPixel));
 }
 
 void CreateMobileClusterLightingUniformBuffer(
@@ -77,9 +109,12 @@ void CreateMobileClusterLightingUniformBuffer(
 void UpdateClusterLightingBufferData()
 {
 	// Prepare for
+	if (GMobileLocalLightData.Num() <= 0 || GNumCulledLightData.Num() <= 0 || GCulledLightDataGrid.Num() <= 0)
+		return;
 	FMobileClusterLightingResources* ClusterLightRes = GetMobileClusterLightingResources();
+	return;
 
-	uint32 NumRequired = GMobileLocalLightData.Num() * GMobileLocalLightData.GetTypeSize();
+	/*uint32 NumRequired = GMobileLocalLightData.Num() * GMobileLocalLightData.GetTypeSize();
 	if (ClusterLightRes->MobileLocalLight.NumBytes < NumRequired)
 	{
 		ClusterLightRes->MobileLocalLight.Release();
@@ -89,7 +124,7 @@ void UpdateClusterLightingBufferData()
 	if (ClusterLightRes->NumCulledLightsGrid.NumBytes < NumRequired)
 	{
 		ClusterLightRes->NumCulledLightsGrid.Release();
-		ClusterLightRes->NumCulledLightsGrid.Initialize(sizeof(uint16), NumRequired / sizeof(uint16), EPixelFormat::PF_R16_UINT, BUF_Dynamic);
+		ClusterLightRes->NumCulledLightsGrid.Initialize(sizeof(uint32), NumRequired / sizeof(uint32), EPixelFormat::PF_R32_UINT, BUF_Dynamic);
 	}
 	NumRequired = GCulledLightDataGrid.Num() * GCulledLightDataGrid.GetTypeSize();
 	if (ClusterLightRes->CulledLightDataGrid.NumBytes < NumRequired)
@@ -108,19 +143,28 @@ void UpdateClusterLightingBufferData()
 
 	ClusterLightRes->CulledLightDataGrid.Lock();
 	FPlatformMemory::Memcpy(ClusterLightRes->CulledLightDataGrid.MappedBuffer, GCulledLightDataGrid.GetData(), GCulledLightDataGrid.Num() * GCulledLightDataGrid.GetTypeSize());
-	ClusterLightRes->CulledLightDataGrid.Unlock();
+	ClusterLightRes->CulledLightDataGrid.Unlock();*/
 }
 
-class FMobileClusterLightingResourceManager : FRenderResource
+class FMobileClusterLightingResourceManager : public FRenderResource
 {
 public:
 	FMobileClusterLightingResources LightingResources;
 
 	virtual void InitRHI()
 	{
-		LightingResources.MobileLocalLight.Initialize(sizeof(FVector4), sizeof(FMobileLocalLightData) / sizeof(FVector4), EPixelFormat::PF_A32B32G32R32F, BUF_Dynamic);
+		/*LightingResources.MobileLocalLight.Initialize(sizeof(FVector4), sizeof(FMobileLocalLightData) / sizeof(FVector4), EPixelFormat::PF_A32B32G32R32F, BUF_Dynamic);
 		LightingResources.NumCulledLightsGrid.Initialize(sizeof(uint16), 1, EPixelFormat::PF_R16_UINT, BUF_Dynamic);
-		LightingResources.CulledLightDataGrid.Initialize(sizeof(uint8), 1, EPixelFormat::PF_R8_UINT, BUF_Dynamic);
+		LightingResources.CulledLightDataGrid.Initialize(sizeof(uint8), 1, EPixelFormat::PF_R8_UINT, BUF_Dynamic);*/
+
+		uint32 CreateFlags = TexCreate_ShaderResource;
+		FRHIResourceCreateInfo CreateInfo;
+
+		LightingResources.MobileLocalLight = GSystemTextures.BlackDummy->GetRenderTargetItem().ShaderResourceTexture;// RHICreateTexture2D(64, 64, PF_R8G8B8A8, 1, 1, CreateFlags, CreateInfo);
+		LightingResources.NumCulledLightsGrid = GSystemTextures.MaxFP16Depth->GetRenderTargetItem().ShaderResourceTexture;
+		LightingResources.CulledLightDataGrid = GSystemTextures.DepthDummy->GetRenderTargetItem().ShaderResourceTexture;
+
+		
 	}
 
 	virtual void ReleaseRHI()
@@ -201,8 +245,8 @@ void ComputeCellViewAABB(const FViewInfo& ViewInfo, const FVector& ZParam, const
 	const FVector2D UnitPlaneTileMin = FVector2D(GridCoord) * TileSize + UnitPlaneMin;
 	const FVector2D UnitPlaneTileMax = (FVector2D(GridCoord) + 1.f) * TileSize + UnitPlaneMin;
 
-	float MinTileZ = ComputeCellNearViewDepthFromZSlice(ZParam, GridCoord.Z);
-	float MaxTileZ = ComputeCellNearViewDepthFromZSlice(ZParam, GridCoord.Z + 1);
+	float MinTileZ = FMath::Max(ComputeCellNearViewDepthFromZSlice(ZParam, GridCoord.Z), 10.f);
+	float MaxTileZ = FMath::Max(ComputeCellNearViewDepthFromZSlice(ZParam, GridCoord.Z + 1), 10.f);
 
 	// First get the tile pos in NDC space,then convert to view space
 	float MinTileDeviceZ = ConvertDepthToDeviceZ(ViewMats.GetProjectionMatrix(), MinTileZ);
@@ -225,7 +269,52 @@ void ComputeCellViewAABB(const FViewInfo& ViewInfo, const FVector& ZParam, const
 	VectorRegister Min = VectorMin(VectorMin(ViewMinDepthCorner0_1, ViewMinDepthCorner2_3), VectorMin(ViewMaxDepthCorner0_1, ViewMaxDepthCorner2_3));
 	Min = VectorMin(Min, VectorSwizzle(Min, 2, 3, 0, 0));
 	VectorRegister Max = VectorMax(VectorMax(ViewMinDepthCorner0_1, ViewMinDepthCorner2_3), VectorMax(ViewMaxDepthCorner0_1, ViewMaxDepthCorner2_3));
-	Max = VectorMin(Max, VectorSwizzle(Max, 2, 3, 0, 0));
+	Max = VectorMax(Max, VectorSwizzle(Max, 2, 3, 0, 0));
+	
+	if (GMobileShowClusterDebug == 1)
+	{
+		FVector4 MinCorner0, MinCorner1, MinCorner2, MinCorner3;
+		VectorStore(VectorTransformVector(MinDepthCorner0, &GInvViewMatrix), &MinCorner0);
+		VectorStore(VectorTransformVector(MinDepthCorner1, &GInvViewMatrix), &MinCorner1);
+		VectorStore(VectorTransformVector(MinDepthCorner2, &GInvViewMatrix), &MinCorner2);
+		VectorStore(VectorTransformVector(MinDepthCorner3, &GInvViewMatrix), &MinCorner3);
+		MinCorner0 = MinCorner0 / MinCorner0.W;
+		MinCorner1 = MinCorner1 / MinCorner1.W;
+		MinCorner2 = MinCorner2 / MinCorner2.W;
+		MinCorner3 = MinCorner3 / MinCorner3.W;
+
+		FVector4 MaxCorner0, MaxCorner1, MaxCorner2, MaxCorner3;
+		VectorStore(VectorTransformVector(MaxDepthCorner0, &GInvViewMatrix), &MaxCorner0);
+		VectorStore(VectorTransformVector(MaxDepthCorner1, &GInvViewMatrix), &MaxCorner1);
+		VectorStore(VectorTransformVector(MaxDepthCorner2, &GInvViewMatrix), &MaxCorner2);
+		VectorStore(VectorTransformVector(MaxDepthCorner3, &GInvViewMatrix), &MaxCorner3);
+		MaxCorner0 = MaxCorner0 / MaxCorner0.W;
+		MaxCorner1 = MaxCorner1 / MaxCorner1.W;
+		MaxCorner2 = MaxCorner2 / MaxCorner2.W;
+		MaxCorner3 = MaxCorner3 / MaxCorner3.W;
+
+		FFunctionGraphTask::CreateAndDispatchWhenReady([MinCorner0, MinCorner1, MinCorner2, MinCorner3, MaxCorner0, MaxCorner1, MaxCorner2, MaxCorner3]
+		{
+			DrawDebugLine(GWorld, MinCorner0, MinCorner3, FColor::Red);
+			DrawDebugLine(GWorld, MinCorner3, MinCorner1, FColor::Red);
+			DrawDebugLine(GWorld, MinCorner1, MinCorner2, FColor::Red);
+			DrawDebugLine(GWorld, MinCorner2, MinCorner0, FColor::Red);
+
+			DrawDebugLine(GWorld, MaxCorner0, MaxCorner3, FColor::Red);
+			DrawDebugLine(GWorld, MaxCorner3, MaxCorner1, FColor::Red);
+			DrawDebugLine(GWorld, MaxCorner1, MaxCorner2, FColor::Red);
+			DrawDebugLine(GWorld, MaxCorner2, MaxCorner0, FColor::Red);
+
+			DrawDebugLine(GWorld, MaxCorner0, MinCorner0, FColor::Red);
+			DrawDebugLine(GWorld, MaxCorner3, MinCorner3, FColor::Red);
+			DrawDebugLine(GWorld, MaxCorner1, MinCorner1, FColor::Red);
+			DrawDebugLine(GWorld, MaxCorner2, MinCorner2, FColor::Red);
+		}, TStatId(), nullptr, ENamedThreads::GameThread);
+	}
+	else
+	{
+		GInvViewMatrix = ViewMats.GetInvViewMatrix();
+	}
 
 	VectorStoreFloat3(Min, &OutMin);
 	VectorStoreFloat3(Max, &OutMax);
@@ -271,11 +360,9 @@ float ComputeSquaredDistanceFromBoxToPointNoAccurate(FVector BoxCenter, FVector 
 	return FVector::DotProduct(AxisDistances, AxisDistances);
 }
 
-void MobileComputeLightGrid_CPU()
+void MobileComputeLightGrid_CPU(FScene* Scene, TArray<FViewInfo>& Views)
 {
-	FScene* Scene = nullptr;
-	TArray<FViewInfo> Views;
-	TArray<FSortedLightSceneInfo, SceneRenderingAllocator> SortedLight;
+	//TArray<FSortedLightSceneInfo, SceneRenderingAllocator> SortedLight;
 	//Scene->Lights
 	//if ()
 
@@ -292,6 +379,7 @@ void MobileComputeLightGrid_CPU()
 		GMobileLocalLightData.Reset();
 		GLightViewSpaceDirAndPreprocAngle.Reset();
 		GLightViewSpacePosAndRadius.Reset();
+		float MaxZ = 0.f;
 		for (TSparseArray<FLightSceneInfoCompact>::TConstIterator LightIt(Scene->Lights); LightIt; ++LightIt)
 		{
 			const FLightSceneInfoCompact& LightSceneInfoCompact = *LightIt;
@@ -301,7 +389,7 @@ void MobileComputeLightGrid_CPU()
 			const FLightSceneProxy* LightProxy = LightSceneInfo->Proxy;
 			LightProxy->GetLightShaderParameters(LightParameters);
 
-			if (GMobileLocalLightData.Num() < GMobileLocalLightData.Max() && LightSceneInfo->ShouldRenderLightViewIndependent() && LightSceneInfo->ShouldRenderLight(View))
+			if (LightProxy->GetLightType() != LightType_Directional && GMobileLocalLightData.Num() < GMobileLocalLightData.Max() && LightSceneInfo->ShouldRenderLightViewIndependent()/* && LightSceneInfo->ShouldRenderLight(View)*/)
 			{
 				FMobileLocalLightData& NewLight = GMobileLocalLightData.AddZeroed_GetRef();
 				NewLight.LightPositionAndInvRadius = FVector4(LightParameters.Position, LightParameters.InvRadius);
@@ -309,13 +397,16 @@ void MobileComputeLightGrid_CPU()
 				NewLight.SpotLightDirectionAndSpecularScale = FVector4(LightParameters.Direction, LightProxy->GetSpecularScale());
 				NewLight.SpotLightAngles = FVector4(LightParameters.SpotAngles.X, LightParameters.SpotAngles.Y, 0.f, LightProxy->GetLightType() == LightType_Spot ? 1.0f : 0.0f);
 				GLightViewSpaceDirAndPreprocAngle.Add(FVector4(View.ViewMatrices.GetViewMatrix().TransformVector(LightParameters.Direction), LightProxy->GetLightType() == LightType_Spot ? GetTanRadAngle(LightProxy->GetOuterConeAngle()) : 0.0f));
-				GLightViewSpacePosAndRadius.Add(FVector4(View.ViewMatrices.GetOverriddenTranslatedViewMatrix().TransformPosition(LightParameters.Position + View.ViewMatrices.GetPreViewTranslation()), 1 / LightParameters.InvRadius));
+				FVector LightPosInView = View.ViewMatrices.GetViewMatrix().TransformPosition(LightParameters.Position);
+				MaxZ = FMath::Max(LightPosInView.Z, MaxZ);
+				GLightViewSpacePosAndRadius.Add(FVector4(LightPosInView, 1 / LightParameters.InvRadius));
 			}
 		}
+		//MaxCullDistance = MaxZ;
 
 		FIntPoint CulledGridSizeXY = FIntPoint::DivideAndRoundUp(View.ViewRect.Size(), GMobileLightGridPixel);
 		const FIntVector CulledGridSize = FIntVector(CulledGridSizeXY.X, CulledGridSizeXY.Y, GMobileLightGridSizeZ);
-		FVector ZParams = MobileGetLightGridZParams(View.NearClippingDistance, 50000.f);
+		FVector ZParams = MobileGetLightGridZParams(View.NearClippingDistance, MaxCullDistance);
 		const int32 CellNum = CulledGridSize.X * CulledGridSize.Y * CulledGridSize.Z;
 		if (GNumCulledLightData.Max() < CellNum * 2)
 		{
@@ -328,30 +419,35 @@ void MobileComputeLightGrid_CPU()
 			//GCulledLightDataGrid.SetNumZeroed(CellNum * GMobileMaxCulledLightsPerCell);
 			GCulledLightDataGrid.Reserve(CellNum * GMobileMaxCulledLightsPerCell);
 		}
+		GNumCulledLightData.Reset();
+		GCulledLightDataGrid.Reset();
+		FPlatformMemory::Memset(GNumCulledLightData.GetData(), 0, GNumCulledLightData.Max() * GNumCulledLightData.GetTypeSize());
 
 		uint32 StartOffset = 0;
 		uint32 PerGridCulledLightNum = 0;
 		for (int32 Z = 0; Z < CulledGridSize.Z; ++Z)
 		{
-			for (int32 X = 0; X < CulledGridSize.X; ++X)
+			for (int32 Y = 0; Y < CulledGridSize.Y; ++Y)
 			{
-				for (int32 Y = 0; Y < CulledGridSize.Y; ++Y)
+				for (int32 X = 0; X < CulledGridSize.X; ++X)
 				{
 					FVector ViewTileMin, ViewTileMax;
 					FVector GridCoord(X, Y, Z);
 					ComputeCellViewAABB(View, ZParams, GridCoord, ViewTileMin, ViewTileMax);
-					FVector ViewTileCenter = (ViewTileMax - ViewTileMin) * 0.5f;
-					FVector ViewTileExtent = ViewTileMax - ViewTileMin;
+					FVector ViewTileCenter = (ViewTileMax + ViewTileMin) * 0.5f;
+					FVector ViewTileExtent = ViewTileMax - ViewTileCenter;
 					FVector WorldTileCenter = FVector(View.ViewMatrices.GetOverriddenInvTranslatedViewMatrix().TransformFVector4(FVector4(ViewTileCenter, 1.f))) - View.ViewMatrices.GetPreViewTranslation();
 					FVector4 WorldTileBoundingSphere(WorldTileCenter, ViewTileExtent.Size());
 
 					int32 LightCount = GMobileLocalLightData.Num();
 					//static const int32 LightDataStride = 4;
 					uint32 CurrentCulledLight = 0;
+					//PerGridCulledLightNum = 0;
 					for (int32 i = 0; i < LightCount; ++i)
 					{
-						float LightRadius = 1.f / GMobileLocalLightData[i].LightPositionAndInvRadius.Z;
-						FVector LightPosition(GMobileLocalLightData[i].LightPositionAndInvRadius);
+						//if (PerGridCulledLightNum >= (uint32)GMobileMaxCulledLightsPerCell)break;
+						float LightRadius = 1.f / GMobileLocalLightData[i].LightPositionAndInvRadius.W;
+						FVector LightPosition(GMobileLocalLightData[i].LightPositionAndInvRadius.X, GMobileLocalLightData[i].LightPositionAndInvRadius.Y, GMobileLocalLightData[i].LightPositionAndInvRadius.Z);
 						FVector ViewSpaceLightPosition = FVector(GLightViewSpacePosAndRadius[i]);
 
 						float BoxDistanceSq = ComputeSquaredDistanceFromBoxToPointNoAccurate(ViewTileCenter, ViewTileExtent, ViewSpaceLightPosition);
@@ -369,18 +465,31 @@ void MobileComputeLightGrid_CPU()
 
 							if (bPassSpotLightTest)
 							{
-								GCulledLightDataGrid.Add(i);
+								GCulledLightDataGrid.Add((uint8)i);
 								PerGridCulledLightNum++;
 								//CurrentCulledLight++;
 							}
+							else
+							{
+								int32 A = PerGridCulledLightNum;
+							}
 						}
+						else
+						{
+							int32 A = PerGridCulledLightNum;
+						}
+
+						//GCulledLightDataGrid.Add((uint8)i);
+						//PerGridCulledLightNum++;
 					}
 					GNumCulledLightData.Add(PerGridCulledLightNum);
 					GNumCulledLightData.Add(StartOffset);
 					StartOffset += PerGridCulledLightNum;
+					PerGridCulledLightNum = 0;
 				}
 			}
 		}
+		UE_LOG(LogTemp, Log, TEXT("Culled Light Count: %d "), GCulledLightDataGrid.Num());
 		UpdateClusterLightingBufferData();
 	}
 }
@@ -388,4 +497,9 @@ void MobileComputeLightGrid_CPU()
 void MobileComputeLightGrid_GPU()
 {
 
+}
+
+void FMobileSceneRenderer::MobileComputeLightGrid()
+{
+	MobileComputeLightGrid_CPU(Scene, Views);
 }

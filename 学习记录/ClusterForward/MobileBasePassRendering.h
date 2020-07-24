@@ -34,6 +34,7 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileBasePassUniformParameters, )
 	SHADER_PARAMETER_STRUCT(FMobileSceneTextureUniformParameters, SceneTextures)
 	// #change by wh, 2020/7/23
 	SHADER_PARAMETER_STRUCT(FMobileClusterLightingUniformParameters, ClusterLighting)
+	SHADER_PARAMETER_TEXTURE(Texture2D, ClusterTest)
 	// end
 	SHADER_PARAMETER_TEXTURE(Texture2D, PreIntegratedGFTexture)
 	SHADER_PARAMETER_SAMPLER(SamplerState, PreIntegratedGFSampler)

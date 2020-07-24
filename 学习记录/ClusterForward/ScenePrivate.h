@@ -2467,6 +2467,10 @@ public:
 	TUniformBufferRef<FInstancedViewUniformShaderParameters> InstancedCustomDepthViewUniformBuffer;
 	TUniformBufferRef<FViewUniformShaderParameters> VirtualTextureViewUniformBuffer;
 	
+	// #change by wh, 2020/7/24
+	TUniformBufferRef<FMobileClusterLightingUniformParameters> MobileClusterLightingUniformBuffer;
+	// end
+
 	TUniformBufferRef<FMobileBasePassUniformParameters> MobileOpaqueBasePassUniformBuffer;
 	TUniformBufferRef<FMobileBasePassUniformParameters> MobileTranslucentBasePassUniformBuffer;
 	TUniformBufferRef<FMobileShadowDepthPassUniformParameters> MobileCSMShadowDepthPassUniformBuffer;

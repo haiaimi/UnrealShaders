@@ -172,6 +172,7 @@ void SetupMobileBasePassUniformParameters(
 	}
 
 	// #change by wh, 2020/7/23
+	BasePassParameters.ClusterTest = GSystemTextures.BlackDummy->GetRenderTargetItem().ShaderResourceTexture;
 	SetupMobileClusterLightingUniformBuffer(RHICmdList, View, BasePassParameters.ClusterLighting);
 	// end
 
@@ -264,7 +265,7 @@ void FMobileSceneRenderer::RenderMobileBasePass(FRHICommandListImmediate& RHICmd
 {
 	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(RenderBasePass);
 	SCOPED_DRAW_EVENT(RHICmdList, MobileBasePass);
-	SCOPE_CYCLE_COUNTER(STAT_BasePassDrawTime);
+	//SCOPE_CYCLE_COUNTER(STAT_);
 
 	for (int32 ViewIndex = 0; ViewIndex < PassViews.Num(); ViewIndex++)
 	{
