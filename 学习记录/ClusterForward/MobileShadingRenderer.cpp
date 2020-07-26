@@ -349,6 +349,13 @@ void FMobileSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdList)
 		}
 	}
 
+	// #change by wh, 2020/7/26
+	if (ComputeClusterTaskEventRef.IsValid())
+	{
+		FTaskGraphInterface::Get().WaitUntilTaskCompletes(ComputeClusterTaskEventRef);
+	}
+	// end
+
 	// update buffers used in cached mesh path
 	// in case there are multiple views, these buffers will be updated before rendering each view
 	if (Views.Num() > 0)

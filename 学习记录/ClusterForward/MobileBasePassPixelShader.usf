@@ -400,33 +400,31 @@ uint ComputeLightClusterIndex(uint2 PixelPos, float SceneDepth, uint EyeIndex)
 	//return 1;
 }
 
-Texture2D<float4> Tex1;
-Texture2D<uint> Tex2;
-
-void ComputeClusterLight(FMaterialPixelParameters MaterialParameters, FMobileShadingModelContext ShadingModelContext, float2 RectMin, out half3 Color)
+half3 ComputeClusterLight(FMaterialPixelParameters MaterialParameters, FMobileShadingModelContext ShadingModelContext, float2 RectMin, half3 Color)
 {
 	uint ClusterIndex = ComputeLightClusterIndex(MaterialParameters.SvPosition.xy - RectMin, MaterialParameters.SvPosition.w, 0);
 	
-	//uint NumLocalLights = min(MobileClusterLighting.NumCulledLightsGrid[ClusterIndex * 2 + 0], 100);
-	//uint DataStartOffset = MobileClusterLighting.NumCulledLightsGrid[ClusterIndex * 2 + 1];
-	uint NumLocalLights = 1;// = min(MobileBasePass.ClusterTest.Load(int3(ClusterIndex * 2, 0, 0)), 100);
-	uint DataStartOffset = 1;//MobileBasePass.ClusterTest.Load(int3(ClusterIndex * 2, 0, 0));
-	Color = half3((half) ClusterIndex, (half) ClusterIndex, (half) ClusterIndex);
-	return;
+	uint NumLocalLights = min(MobileClusterLighting.NumCulledLightsGrid[ClusterIndex * 2 + 0], 100);
+	uint DataStartOffset = MobileClusterLighting.NumCulledLightsGrid[ClusterIndex * 2 + 1];
+	//uint NumLocalLights = 1;// = min(MobileBasePass.ClusterTest.Load(int3(ClusterIndex * 2, 0, 0)), 100);
+	//uint DataStartOffset = 1;//MobileBasePass.ClusterTest.Load(int3(ClusterIndex * 2, 0, 0));
+	//Color = half3((half) ClusterIndex, (half) ClusterIndex, (half) ClusterIndex);
+	//return;
 	
-	for (uint i = 0; i < 2; i++)
+	LOOP
+	for (uint i = 0; i < NumLocalLights; i++)
 	{
-		//uint LightIndex = MobileClusterLighting.CulledLightDataGrid[DataStartOffset + i];
-		//float4 LightPositionAndInvRadius = MobileClusterLighting.MobileLocalLightBuffer[LightIndex * 4 + 0];
-		//float4 LightColorAndFalloffExponent = MobileClusterLighting.MobileLocalLightBuffer[LightIndex * 4 + 1];
-		//float4 SpotLightAngles = MobileClusterLighting.MobileLocalLightBuffer[LightIndex * 4 + 2];
-		//float4 SpotLightDirectionAndSpecularScale = MobileClusterLighting.MobileLocalLightBuffer[LightIndex * 4 + 3];
+		uint LightIndex = MobileClusterLighting.CulledLightDataGrid[DataStartOffset + i];
+		float4 LightPositionAndInvRadius = MobileClusterLighting.MobileLocalLightBuffer[LightIndex * 4 + 0];
+		float4 LightColorAndFalloffExponent = MobileClusterLighting.MobileLocalLightBuffer[LightIndex * 4 + 1];
+		float4 SpotLightAngles = MobileClusterLighting.MobileLocalLightBuffer[LightIndex * 4 + 2];
+		float4 SpotLightDirectionAndSpecularScale = MobileClusterLighting.MobileLocalLightBuffer[LightIndex * 4 + 3];
 		
-		uint LightIndex = MobileBasePass.ClusterTest.Load(int3(DataStartOffset * 2, 0, 0));
-		float4 LightPositionAndInvRadius = MobileBasePass.ClusterTest.Load(int3(DataStartOffset * 2, 0, 0));
-		float4 LightColorAndFalloffExponent = MobileBasePass.ClusterTest.Load(int3(DataStartOffset * 2, 0, 0));
-		float4 SpotLightAngles = MobileBasePass.ClusterTest.Load(int3(DataStartOffset * 2, 0, 0));
-		float4 SpotLightDirectionAndSpecularScale = MobileBasePass.ClusterTest.Load(int3(DataStartOffset * 2, 0, 0));
+		//uint LightIndex = MobileBasePass.ClusterTest.Load(int3(DataStartOffset * 2, 0, 0));
+		//float4 LightPositionAndInvRadius = MobileBasePass.ClusterTest.Load(int3(DataStartOffset * 2, 0, 0));
+		//float4 LightColorAndFalloffExponent = MobileBasePass.ClusterTest.Load(int3(DataStartOffset * 2, 0, 0));
+		//float4 SpotLightAngles = MobileBasePass.ClusterTest.Load(int3(DataStartOffset * 2, 0, 0));
+		//float4 SpotLightDirectionAndSpecularScale = MobileBasePass.ClusterTest.Load(int3(DataStartOffset * 2, 0, 0));
 		
 		float3 ToLight = LightPositionAndInvRadius.xyz - MaterialParameters.AbsoluteWorldPosition;
 		float DistanceSqr = dot(ToLight, ToLight);
@@ -452,20 +450,22 @@ void ComputeClusterLight(FMaterialPixelParameters MaterialParameters, FMobileSha
 			Attenuation = RadialAttenuation(ToLight * LightPositionAndInvRadius.w, LightColorAndFalloffExponent.w);
 		}
 				
-#if PROJECT_MOBILE_ENABLE_MOVABLE_SPOTLIGHTS
-		if(SpotLightAngles.w > 0.0)
-		{
-			Attenuation *= SpotAttenuation(L, -SpotLightDirectionAndSpecularScale.xyz, SpotLightAngles.xy);
-		}
-#endif
-
-#if !FULLY_ROUGH
+		#if PROJECT_MOBILE_ENABLE_MOVABLE_SPOTLIGHTS
+			if(SpotLightAngles.w > 0.0)
+			{
+				Attenuation *= SpotAttenuation(L, -SpotLightDirectionAndSpecularScale.xyz, SpotLightAngles.xy);
+			}
+		#endif
+	
+		#if !FULLY_ROUGH
 			FMobileDirectLighting Lighting = MobileIntegrateBxDF(ShadingModelContext, PointNoL, PointRoL, MaterialParameters.CameraVector, MaterialParameters.WorldNormal, PointH, PointNoH);
 			Color += min(65000.0, (Attenuation * PointNoL) * LightColorAndFalloffExponent.rgb * (1.0/PI) * (Lighting.Diffuse + Lighting.Specular * SpotLightDirectionAndSpecularScale.w));
-#else
-		Color += (Attenuation * PointNoL) * LightColorAndFalloffExponent.rgb * (1.0 / PI) * ShadingModelContext.DiffuseColor;
-#endif
+		#else
+			Color += (Attenuation * PointNoL) * LightColorAndFalloffExponent.rgb * (1.0 / PI) * ShadingModelContext.DiffuseColor;
+		#endif
 	}
+	
+	return Color;
 }
 //end
 
@@ -747,11 +747,11 @@ void Main(
 
 #if MAX_DYNAMIC_POINT_LIGHTS > 0 && !MATERIAL_SHADINGMODEL_SINGLELAYERWATER
 	// #change by wh, 2020/7/23
-	ComputeClusterLight(MaterialParameters, ShadingModelContext, ResolvedView.ViewRectMin.xy, Color);
+	Color = ComputeClusterLight(MaterialParameters, ShadingModelContext, ResolvedView.ViewRectMin.xy, Color);
 	//end
 	//#if VARIABLE_NUM_DYNAMIC_POINT_LIGHTS
 	//#if VULKAN_PROFILE
-	//// webgl and ES2 needs a constant loop counter
+	// webgl and ES2 needs a constant loop counter
 	//UNROLL
 	//for (int i = 0; i < MAX_DYNAMIC_POINT_LIGHTS; i++)
 	//{

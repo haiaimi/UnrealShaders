@@ -172,7 +172,7 @@ void SetupMobileBasePassUniformParameters(
 	}
 
 	// #change by wh, 2020/7/23
-	BasePassParameters.ClusterTest = GSystemTextures.BlackDummy->GetRenderTargetItem().ShaderResourceTexture;
+	//BasePassParameters.ClusterTest = GSystemTextures.BlackDummy->GetRenderTargetItem().ShaderResourceTexture;
 	SetupMobileClusterLightingUniformBuffer(RHICmdList, View, BasePassParameters.ClusterLighting);
 	// end
 

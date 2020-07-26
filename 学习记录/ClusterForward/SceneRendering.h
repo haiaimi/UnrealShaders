@@ -1899,6 +1899,10 @@ private:
 	static FGlobalDynamicIndexBuffer DynamicIndexBuffer;
 	static FGlobalDynamicVertexBuffer DynamicVertexBuffer;
 	static TGlobalResource<FGlobalDynamicReadBuffer> DynamicReadBuffer;
+
+	// #change by wh, 2020/7/26
+	FGraphEventRef ComputeClusterTaskEventRef;
+	//end
 };
 
 // The noise textures need to be set in Slate too.
