@@ -20,7 +20,7 @@ END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 
 #define MAX_BUFFER_MIP_LEVEL 4u
-#define BUFFER_MIP_LEVEL_SCALE 4u
+#define BUFFER_MIP_LEVEL_SCALE 2u
 
 struct FMobileClusterMipBuffer
 {

@@ -122,7 +122,7 @@ void FMobileClusterMipBuffer::Initialize(uint32 ElementSize, uint32 MaxElementBy
 	{
 		uint32 CurLevelByteCount = MaxElementByteCount / FMath::Max(1u, i * BUFFER_MIP_LEVEL_SCALE);
 		if (CurLevelByteCount / ElementSize > 0)
-			MipBuffers[i].Initialize(ElementSize, CurLevelByteCount, Format, BUF_Dynamic);
+			MipBuffers[i].Initialize(ElementSize, CurLevelByteCount / ElementSize, Format, BUF_Dynamic);
 	}
 }
 
@@ -155,14 +155,13 @@ void UpdateClusterLightingBufferData(uint32 CulledDataSize, uint32 NumCulledData
 	FPlatformMemory::Memcpy(ClusterLightRes->MobileLocalLight.MappedBuffer, GMobileLocalLightData.GetData(), GMobileLocalLightData.Num() * GMobileLocalLightData.GetTypeSize());
 	ClusterLightRes->MobileLocalLight.Unlock();
 
-	uint32 CurrentLevel = FMath::Clamp(FMath::FloorToInt(FMath::LogX(BUFFER_MIP_LEVEL_SCALE, ((float)ClusterLightRes->NumCulledLightsGrid.MipBuffers[0].NumBytes / NumCulledDataSize))), 0, (int32)MAX_BUFFER_MIP_LEVEL);
-	uint32 CurrentLevel = FMath::Clamp(FMath::FloorToInt(FMath::LogX(BUFFER_MIP_LEVEL_SCALE, ((float)ClusterLightRes->NumCulledLightsGrid.MipBuffers[0].NumBytes / NumCulledDataSize))), 0, (int32)MAX_BUFFER_MIP_LEVEL);
+	uint32 CurrentLevel = FMath::Clamp(FMath::FloorToInt(FMath::LogX(BUFFER_MIP_LEVEL_SCALE, ((float)ClusterLightRes->NumCulledLightsGrid.MipBuffers[0].NumBytes / NumCulledDataSize))), 0, (int32)MAX_BUFFER_MIP_LEVEL - 1);
 	ClusterLightRes->NumCulledLightsGrid.CurLevel = CurrentLevel;
 	ClusterLightRes->NumCulledLightsGrid.GetCurLevelBuffer().Lock();
 	FPlatformMemory::Memcpy(ClusterLightRes->NumCulledLightsGrid.MipBuffers[CurrentLevel].MappedBuffer, GNumCulledLightData.GetData(), ClusterLightRes->NumCulledLightsGrid.MipBuffers[CurrentLevel].NumBytes);
 	ClusterLightRes->NumCulledLightsGrid.MipBuffers[CurrentLevel].Unlock();
 
-	CurrentLevel = FMath::Clamp(FMath::FloorToInt(FMath::LogX(BUFFER_MIP_LEVEL_SCALE, ((float)ClusterLightRes->CulledLightDataGrid.MipBuffers[0].NumBytes / CulledDataSize))), 0, (int32)MAX_BUFFER_MIP_LEVEL);
+	CurrentLevel = FMath::Clamp(FMath::FloorToInt(FMath::LogX(BUFFER_MIP_LEVEL_SCALE, ((float)ClusterLightRes->CulledLightDataGrid.MipBuffers[0].NumBytes / CulledDataSize))), 0, (int32)MAX_BUFFER_MIP_LEVEL - 1);
 	ClusterLightRes->CulledLightDataGrid.CurLevel = CurrentLevel;
 	ClusterLightRes->CulledLightDataGrid.GetCurLevelBuffer().Lock();
 	FPlatformMemory::Memcpy(ClusterLightRes->CulledLightDataGrid.MipBuffers[CurrentLevel].MappedBuffer, GCulledLightGridData.GetData(), ClusterLightRes->CulledLightDataGrid.MipBuffers[CurrentLevel].NumBytes);
@@ -308,8 +307,8 @@ public:
 			}
 		}
 		
-		GCurrentGridZ = FMath::Min(MaxZ + 1, GCurrentGridZ);
-		UpdateClusterLightingBufferData(CulledDataSize, GCurrentGridZ * GAllCLusterTaskContext[0].SizeX * GAllCLusterTaskContext[0].SizeY * 2 * sizeof(uint16));
+		GCurrentGridZ = FMath::Min(MaxZ + 2, (uint32)GMobileLightGridSizeZ);
+		UpdateClusterLightingBufferData(CulledDataSize, GCurrentGridZ * GAllCLusterTaskContext[0].SizeX * GAllCLusterTaskContext[0].SizeY * 2 * sizeof(FNumCulledDataType));
 		GAllCLusterTaskContext.Reset();
 	}
 
@@ -658,6 +657,7 @@ void MobileComputeLightGrid_CPU(const FViewInfo& View, FGraphEventRef& TaskEvent
 	}
 	else
 	{
+		uint32 PerGirdCulledCount = 0, MaxZ = 0;
 		for (int32 Z = 0; Z < CulledGridSize.Z; ++Z)
 		{
 			for (int32 Y = 0; Y < CulledGridSize.Y; ++Y)
@@ -668,9 +668,14 @@ void MobileComputeLightGrid_CPU(const FViewInfo& View, FGraphEventRef& TaskEvent
 					PerGridCulledLightNum = ComputeSingleLightGrid(View, GridCoord, ZParams, StartOffset, GCulledLightGridData.GetData() + GCulledLightGridData.Num(), GNumCulledLightData.GetData() + GNumCulledLightData.Num());
 					GCulledLightGridData.SetNumUninitialized(GCulledLightGridData.Num() + PerGridCulledLightNum);
 					GNumCulledLightData.SetNumUninitialized(GNumCulledLightData.Num() + 2);
+					PerGirdCulledCount += PerGridCulledLightNum;
 				}
 			}
+			if (PerGirdCulledCount > 0)
+				MaxZ = Z;
+			PerGirdCulledCount = 0;
 		}
+		GCurrentGridZ = FMath::Min(MaxZ + 2, (uint32)GMobileLightGridSizeZ);
 		UpdateClusterLightingBufferData(GCulledLightGridData.Num() * GCulledLightGridData.GetTypeSize(), GNumCulledLightData.Num() * GNumCulledLightData.GetTypeSize());
 	}
 	//UE_LOG(LogTemp, Log, TEXT("Culled Light Count: %d "), GCulledLightDataGrid.Num());
