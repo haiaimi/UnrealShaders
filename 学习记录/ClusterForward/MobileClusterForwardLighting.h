@@ -18,12 +18,37 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileClusterLightingUniformParameters, )
 	SHADER_PARAMETER_SRV(Buffer<uint>, CulledLightDataGrid)
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
+
+#define MAX_BUFFER_MIP_LEVEL 4u
+#define BUFFER_MIP_LEVEL_SCALE 4u
+
+struct FMobileClusterMipBuffer
+{
+public:
+	void Initialize(uint32 ElementSize, uint32 ElementCount, EPixelFormat Format);
+
+	FDynamicReadBuffer& GetCurLevelBuffer()
+	{
+		return MipBuffers[CurLevel];
+	}
+
+	void Release()
+	{
+		for (uint8 i = 0; i < MAX_BUFFER_MIP_LEVEL; ++i)
+			MipBuffers[i].Release();
+	}
+
+	FDynamicReadBuffer MipBuffers[MAX_BUFFER_MIP_LEVEL];
+
+	uint8 CurLevel = 0;
+};
+
 class FMobileClusterLightingResources
 {
 public:
 	FDynamicReadBuffer MobileLocalLight;
-	FDynamicReadBuffer NumCulledLightsGrid;
-	FDynamicReadBuffer CulledLightDataGrid;
+	FMobileClusterMipBuffer NumCulledLightsGrid;
+	FMobileClusterMipBuffer CulledLightDataGrid;
 
 	/*FRHITexture* MobileLocalLight;
 	FRHITexture* NumCulledLightsGrid;
