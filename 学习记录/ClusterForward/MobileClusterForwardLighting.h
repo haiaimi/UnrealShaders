@@ -10,9 +10,6 @@
 BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileClusterLightingUniformParameters, )
 	SHADER_PARAMETER(FUintVector4, CulledGridSizeParams)
 	SHADER_PARAMETER(FVector, LightGridZParams)
-	/*SHADER_PARAMETER_TEXTURE(Texture2D, MobileLocalLightBuffer)
-	SHADER_PARAMETER_TEXTURE(Texture2D, NumCulledLightsGrid)
-	SHADER_PARAMETER_TEXTURE(Texture2D, CulledLightDataGrid)*/
 	SHADER_PARAMETER_SRV(Buffer<float4>, MobileLocalLightBuffer)
 	SHADER_PARAMETER_SRV(Buffer<uint>, NumCulledLightsGrid)
 	SHADER_PARAMETER_SRV(Buffer<uint>, CulledLightDataGrid)
@@ -22,12 +19,13 @@ END_GLOBAL_SHADER_PARAMETER_STRUCT()
 #define MAX_BUFFER_MIP_LEVEL 4u
 #define BUFFER_MIP_LEVEL_SCALE 2u
 
+template<class BufferType>
 struct FMobileClusterMipBuffer
 {
 public:
-	void Initialize(uint32 ElementSize, uint32 ElementCount, EPixelFormat Format);
+	void Initialize(uint32 ElementSize, uint32 ElementCount, EPixelFormat Format, uint32 AdditionalUsage = 0);
 
-	FDynamicReadBuffer& GetCurLevelBuffer()
+	BufferType& GetCurLevelBuffer()
 	{
 		return MipBuffers[CurLevel];
 	}
@@ -38,7 +36,7 @@ public:
 			MipBuffers[i].Release();
 	}
 
-	FDynamicReadBuffer MipBuffers[MAX_BUFFER_MIP_LEVEL];
+	BufferType MipBuffers[MAX_BUFFER_MIP_LEVEL];
 
 	uint8 CurLevel = 0;
 };
@@ -47,21 +45,23 @@ class FMobileClusterLightingResources
 {
 public:
 	FDynamicReadBuffer MobileLocalLight;
-	FMobileClusterMipBuffer NumCulledLightsGrid;
-	FMobileClusterMipBuffer CulledLightDataGrid;
+	FDynamicReadBuffer ViewSpacePosAndRadiusData;
+	FDynamicReadBuffer ViewSpaceDirAndPreprocAngleData;
 
-	/*FRHITexture* MobileLocalLight;
-	FRHITexture* NumCulledLightsGrid;
-	FRHITexture* CulledLightDataGrid;*/
+	FMobileClusterMipBuffer<FDynamicReadBuffer> NumCulledLightsGrid;
+	FMobileClusterMipBuffer<FDynamicReadBuffer> CulledLightDataGrid;
+
+	FMobileClusterMipBuffer<FRWBuffer> RWNumCulledLightsGrid;
+	FMobileClusterMipBuffer<FRWBuffer> RWCulledLightDataGrid;
 
 	void Release()
 	{
 		MobileLocalLight.Release();
+		ViewSpacePosAndRadiusData.Release();
+		ViewSpaceDirAndPreprocAngleData.Release();
 		NumCulledLightsGrid.Release();
 		CulledLightDataGrid.Release();
-
-		/*MobileLocalLight.SafeRelease();
-		NumCulledLightsGrid.SafeRelease();
-		CulledLightDataGrid.SafeRelease();*/
+		RWNumCulledLightsGrid.Release();
+		RWCulledLightDataGrid.Release();
 	}
 };
