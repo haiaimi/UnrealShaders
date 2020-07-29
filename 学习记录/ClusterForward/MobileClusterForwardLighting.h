@@ -23,11 +23,24 @@ template<class BufferType>
 struct FMobileClusterMipBuffer
 {
 public:
-	void Initialize(uint32 ElementSize, uint32 ElementCount, EPixelFormat Format, uint32 AdditionalUsage = 0);
+	void Initialize(uint32 ElementSize, uint32 MaxElementByteCount, EPixelFormat Format, uint32 AdditionalUsage = 0)
+	{
+		for (uint8 i = 0; i < MAX_BUFFER_MIP_LEVEL; ++i)
+		{
+			uint32 CurLevelByteCount = MaxElementByteCount / FMath::Max(1u, i * BUFFER_MIP_LEVEL_SCALE);
+			if (CurLevelByteCount / ElementSize > 0)
+				MipBuffers[i].Initialize(ElementSize, CurLevelByteCount / ElementSize, Format, AdditionalUsage);
+		}
+	}
 
 	BufferType& GetCurLevelBuffer()
 	{
 		return MipBuffers[CurLevel];
+	}
+
+	uint32 GetMaxSizeBytes()
+	{
+		return MipBuffers[0].NumBytes;
 	}
 
 	void Release()

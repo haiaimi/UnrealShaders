@@ -49,7 +49,7 @@ FAutoConsoleVariableRef CVarMobileSupportParallelCluster(
 int32 GMobileSupportGPUCluster = 0;
 FAutoConsoleVariableRef CVarMobileSupportGPUCluster(
 	TEXT("r.Mobile.EnableGPUCluster"),
-	GMobileSupportParallelCluster,
+	GMobileSupportGPUCluster,
 	TEXT("Enable use GPU to compute cluster."),
 	ECVF_Scalability | ECVF_RenderThreadSafe
 );
@@ -118,16 +118,6 @@ void CreateMobileClusterLightingUniformBuffer(
 	ClusterLightUniformBuffer = TUniformBufferRef<FMobileClusterLightingUniformParameters>::CreateUniformBufferImmediate(ClusterLightingParameters, UniformBuffer_SingleFrame);
 }
 
-void FMobileClusterMipBuffer::Initialize(uint32 ElementSize, uint32 MaxElementByteCount, EPixelFormat Format, uint32 AdditionalUsage)
-{
-	for (uint8 i = 0; i < MAX_BUFFER_MIP_LEVEL; ++i)
-	{
-		uint32 CurLevelByteCount = MaxElementByteCount / FMath::Max(1u, i * BUFFER_MIP_LEVEL_SCALE);
-		if (CurLevelByteCount / ElementSize > 0)
-			MipBuffers[i].Initialize(ElementSize, CurLevelByteCount / ElementSize, Format, AdditionalUsage);
-	}
-}
-
 void UpdateClusterLightingBufferData(uint32 CulledDataSize, uint32 NumCulledDataSize)
 {
 	if (GMobileLocalLightData.Num() <= 0 || GNumCulledLightData.Num() <= 0 || GCulledLightGridData.Num() <= 0)
@@ -181,8 +171,8 @@ public:
 		LightingResources.ViewSpacePosAndRadiusData.Initialize(sizeof(FVector4), 1, EPixelFormat::PF_A32B32G32R32F, BUF_Dynamic);
 		LightingResources.ViewSpaceDirAndPreprocAngleData.Initialize(sizeof(FVector4), 1, EPixelFormat::PF_A32B32G32R32F, BUF_Dynamic);
 
-		LightingResources.NumCulledLightsGrid.Initialize(sizeof(FNumCulledDataType), 1, EPixelFormat::PF_R16_UINT);
-		LightingResources.CulledLightDataGrid.Initialize(sizeof(FCulledDataType), 1, EPixelFormat::PF_R8_UINT);		
+		LightingResources.NumCulledLightsGrid.Initialize(sizeof(FNumCulledDataType), 1, EPixelFormat::PF_R16_UINT, BUF_Dynamic);
+		LightingResources.CulledLightDataGrid.Initialize(sizeof(FCulledDataType), 1, EPixelFormat::PF_R8_UINT, BUF_Dynamic);		
 
 		LightingResources.RWNumCulledLightsGrid.Initialize(sizeof(FCulledDataType), 1, EPixelFormat::PF_R8_UINT);
 		LightingResources.RWCulledLightDataGrid.Initialize(sizeof(FNumCulledDataType), 1, PF_R16_UINT);
@@ -694,14 +684,19 @@ void MobileComputeLightGrid_CPU(const FViewInfo& View, FGraphEventRef& TaskEvent
 /// For Gpu Version
 #define MOBILE_CLUSTER_LIGHT_GROUP_SIZE 4
 
-class FMobileComputeClusterCS : public FGlobalShader
+class FMobileComputeClusterCS1 : public FGlobalShader
 {
-	DECLARE_GLOBAL_SHADER(FMobileComputeClusterCS);
-	SHADER_USE_PARAMETER_STRUCT(FMobileComputeClusterCS, FGlobalShader)
+	DECLARE_GLOBAL_SHADER(FMobileComputeClusterCS1);
+	SHADER_USE_PARAMETER_STRUCT(FMobileComputeClusterCS1, FGlobalShader)
 public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
+		SHADER_PARAMETER(FUintVector4, LightGridSize)
+		SHADER_PARAMETER(FVector, ZParams)
+		SHADER_PARAMETER(uint32, PixelSizeShift)
+		SHADER_PARAMETER(FMatrix, ClipToView)
+		SHADER_PARAMETER(FVector2D, ViewInvSize)
+		SHADER_PARAMETER(FVector2D, ViewInvSize1)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWNextCulledLightLink)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWStartOffsetGrid)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWCulledLightLinks)
@@ -720,12 +715,83 @@ public:
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), MOBILE_CLUSTER_LIGHT_GROUP_SIZE);
 		FForwardLightingParameters::ModifyCompilationEnvironment(Parameters.Platform, OutEnvironment);
-		//OutEnvironment.SetDefine(TEXT("LIGHT_LINK_STRIDE"), LightLinkStride);
-		OutEnvironment.SetDefine(TEXT("ENABLE_LIGHT_CULLING_VIEW_SPACE_BUILD_DATA"), ENABLE_LIGHT_CULLING_VIEW_SPACE_BUILD_DATA);
 	}
 };
 
-IMPLEMENT_GLOBAL_SHADER(FMobileComputeClusterCS, "/Engine/Private/MobileClusterForwardLighting.usf", "ComputeClusterCS", SF_Compute);
+//IMPLEMENT_GLOBAL_SHADER(FMobileComputeClusterCS1, "/Engine/Private/MobileClusterForwardLighting.usf", "ComputeClusterCS1", SF_Compute);
+
+class FMobileComputeClusterCS2 : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FMobileComputeClusterCS2);
+	SHADER_USE_PARAMETER_STRUCT(FMobileComputeClusterCS2, FGlobalShader)
+public:
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FUintVector4, LightGridSize)
+		SHADER_PARAMETER(FVector, ZParams)
+		SHADER_PARAMETER(uint32, PixelSizeShift)
+		SHADER_PARAMETER(FMatrix, ClipToView)
+		SHADER_PARAMETER(FVector2D, ViewInvSize)
+		/*SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWNextCulledLightLink1)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWStartOffsetGrid)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWCulledLightLinks)*/
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWTestA)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWTestB)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWTestC)
+		SHADER_PARAMETER_SRV(Buffer<float4>, LocalLightData)
+		SHADER_PARAMETER_SRV(Buffer<float4>, LightViewSpacePositionAndRadius)
+		SHADER_PARAMETER_SRV(Buffer<float4>, LightViewSpaceDirAndPreprocAngle)
+		END_SHADER_PARAMETER_STRUCT()
+
+		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return true;
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), MOBILE_CLUSTER_LIGHT_GROUP_SIZE);
+		FForwardLightingParameters::ModifyCompilationEnvironment(Parameters.Platform, OutEnvironment);
+	}
+};
+class FMobileClusterDataCompactCS2 : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FMobileClusterDataCompactCS2)
+	SHADER_USE_PARAMETER_STRUCT(FMobileClusterDataCompactCS2, FGlobalShader)
+public:
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FUintVector4, LightGridSize)
+		SHADER_PARAMETER(FVector, ZParams)
+		SHADER_PARAMETER(uint32, PixelSizeShift)
+		SHADER_PARAMETER(FMatrix, ClipToView)
+		SHADER_PARAMETER(FVector2D, ViewInvSize)
+		/*SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWNextCulledLightLink1)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWStartOffsetGrid)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWCulledLightLinks)*/
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWTestA)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWTestB)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWTestC)
+		SHADER_PARAMETER_SRV(Buffer<float4>, LocalLightData)
+		SHADER_PARAMETER_SRV(Buffer<float4>, LightViewSpacePositionAndRadius1)
+		SHADER_PARAMETER_SRV(Buffer<float4>, LightViewSpaceDirAndPreprocAngle)
+		END_SHADER_PARAMETER_STRUCT()
+
+		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		//return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::ES3_1);
+		return true;
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), MOBILE_CLUSTER_LIGHT_GROUP_SIZE);
+		FForwardLightingParameters::ModifyCompilationEnvironment(Parameters.Platform, OutEnvironment);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FMobileClusterDataCompactCS2, "/Engine/Private/MobileClusterForwardLighting.usf", "FMobileClusterDataCompactCS2", SF_Compute);
 
 
 class FMobileClusterDataCompactCS : public FGlobalShader
@@ -734,19 +800,19 @@ class FMobileClusterDataCompactCS : public FGlobalShader
 	SHADER_USE_PARAMETER_STRUCT(FMobileClusterDataCompactCS, FGlobalShader)
 public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_SRV(LightData, Forward)
-		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
+		SHADER_PARAMETER(FUintVector4, LightGridSize)
 		SHADER_PARAMETER_UAV(RWBuffer<uint>, RWNumCulledLightsGrid)
 		SHADER_PARAMETER_UAV(RWBuffer<uint>, RWCulledLightDataGrid)
+		SHADER_PARAMETER_SRV(Buffer<float4>, LocalLightData)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWNextCulledLightData)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<uint>, StartOffsetGrid)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<uint>, CulledLightLinks)
-
 		END_SHADER_PARAMETER_STRUCT()
 
-		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+		//return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::ES3_1);
+		return true;
 	}
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
@@ -754,14 +820,12 @@ public:
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), MOBILE_CLUSTER_LIGHT_GROUP_SIZE);
 		FForwardLightingParameters::ModifyCompilationEnvironment(Parameters.Platform, OutEnvironment);
-		//OutEnvironment.SetDefine(TEXT("LIGHT_LINK_STRIDE"), LightLinkStride);
-		OutEnvironment.SetDefine(TEXT("ENABLE_LIGHT_CULLING_VIEW_SPACE_BUILD_DATA"), ENABLE_LIGHT_CULLING_VIEW_SPACE_BUILD_DATA);
 	}
 };
 
 IMPLEMENT_GLOBAL_SHADER(FMobileClusterDataCompactCS, "/Engine/Private/MobileClusterForwardLighting.usf", "ClusterDataCompactCS", SF_Compute);
 
-void OnlyUpdateLightDataBuffer()
+void OnlyUpdateLightDataBuffer(uint32 CellNum = 1)
 {
 	FMobileClusterLightingResources* ClusterResources = GetMobileClusterLightingResources();
 
@@ -782,6 +846,7 @@ void OnlyUpdateLightDataBuffer()
 		PosAndRadiusRef.Initialize(sizeof(FVector4), SizeBytes / sizeof(FVector4), EPixelFormat::PF_A32B32G32R32F, BUF_Dynamic);
 		DirAndAngleRef.Initialize(sizeof(FVector4), SizeBytes / sizeof(FVector4), EPixelFormat::PF_A32B32G32R32F, BUF_Dynamic);
 	}
+
 	LightDataRef.Lock();
 	FPlatformMemory::Memcpy(LightDataRef.MappedBuffer, GMobileLocalLightData.GetData(), GMobileLocalLightData.Num() * GMobileLocalLightData.GetTypeSize());
 	LightDataRef.Unlock();
@@ -791,9 +856,22 @@ void OnlyUpdateLightDataBuffer()
 	DirAndAngleRef.Lock();
 	FPlatformMemory::Memcpy(DirAndAngleRef.MappedBuffer, GLightViewSpaceDirAndPreprocAngle.GetData(), SizeBytes);
 	DirAndAngleRef.Unlock();
+
+	auto& RWNumCulledLightsData = ClusterResources->RWNumCulledLightsGrid;
+	auto& RWCulledLightDataGrid = ClusterResources->RWCulledLightDataGrid;
+
+	if (RWNumCulledLightsData.GetMaxSizeBytes() < CellNum * 2 * sizeof(FNumCulledDataType))
+	{
+		RWNumCulledLightsData.Initialize(sizeof(FNumCulledDataType), CellNum * 2, EPixelFormat::PF_R16_UINT);
+	}
+
+	if (RWCulledLightDataGrid.GetMaxSizeBytes() < CellNum * GMobileMaxCulledLightsPerCell * sizeof(FCulledDataType))
+	{
+		RWNumCulledLightsData.Initialize(sizeof(FCulledDataType), CellNum * GMobileMaxCulledLightsPerCell, EPixelFormat::PF_R8_UINT);
+	}
 }
 
-void MobileComputeLightGrid_GPU(const FViewInfo& View, FRHICommandListImmediate& RHICmdList)
+void MobileComputeLightGrid_GPU(const FViewInfo& View, FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel)
 {
 	FIntPoint CulledGridSizeXY = FIntPoint::DivideAndRoundUp(View.ViewRect.Size(), GMobileLightGridPixel);
 	const FIntVector CulledGridSize = FIntVector(CulledGridSizeXY.X, CulledGridSizeXY.Y, GMobileLightGridSizeZ);
@@ -801,10 +879,13 @@ void MobileComputeLightGrid_GPU(const FViewInfo& View, FRHICommandListImmediate&
 	const int32 CellNum = CulledGridSize.X * CulledGridSize.Y * CulledGridSize.Z;
 	const int32 CulledLightLinksElements = CellNum * GMobileMaxCulledLightsPerCell * 2;
 
+	FIntVector NumGroups = FIntVector::DivideAndRoundUp(CulledGridSize, MOBILE_CLUSTER_LIGHT_GROUP_SIZE);
 	FMobileClusterLightingResources* ClusterResources = GetMobileClusterLightingResources();
 
+	FUintVector4 LocalLightSizeData(CulledGridSizeXY.X, CulledGridSizeXY.Y, GMobileLightGridSizeZ, GMobileMaxCulledLightsPerCell);
+
 	// Update precompte light data use by shader
-	OnlyUpdateLightDataBuffer();
+	OnlyUpdateLightDataBuffer(CellNum);
 
 	TArray<FRHIUnorderedAccessView*, TInlineAllocator<2>> OutUAVs = { 
 		ClusterResources->RWNumCulledLightsGrid.MipBuffers[0].UAV, 
@@ -816,21 +897,47 @@ void MobileComputeLightGrid_GPU(const FViewInfo& View, FRHICommandListImmediate&
 	{
 		FRDGBufferRef CulledLightLinkBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(sizeof(uint16), CulledLightLinksElements), TEXT("CulledLightLink")); //used for link
 		FRDGBufferRef StartOffsetGridBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(sizeof(uint16), CellNum), TEXT("StartOffsetGrid"));
-		FRDGBufferRef NextCulledLightLinkBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), 1), TEXT("NextCulledLightLink"));
+		FRDGBufferRef NextCulledLightLinkBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), 1), TEXT("NextCulledLightLink1"));
+		FRDGBufferRef NextCulledLightDataBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), 1), TEXT("NextCulledLightData"));
 
-		FMobileComputeClusterCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FMobileComputeClusterCS::FParameters>();
-		PassParameters->View = View.ViewUniformBuffer;
+		FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(FeatureLevel);
+
+		TShaderMapRef<FMobileClusterDataCompactCS2> ComputeCS(View.ShaderMap);
+		FMobileClusterDataCompactCS2::FParameters* PassParameters = GraphBuilder.AllocParameters<FMobileClusterDataCompactCS2::FParameters>();
+		//auto ViewUniformBuffer = ComputeCS->GetUniformBufferParameter<FViewUniformShaderParameters>();
+		PassParameters->LightGridSize = LocalLightSizeData;
+		PassParameters->ZParams = ZParams;
+		PassParameters->PixelSizeShift = FMath::FloorLog2(GMobileLightGridPixel);
+		PassParameters->ClipToView = View.ViewMatrices.GetInvProjectionMatrix();
+		PassParameters->ViewInvSize = FVector2D(1.f / View.ViewRect.Width(), 1.f / View.ViewRect.Height());
 		PassParameters->LocalLightData = ClusterResources->MobileLocalLight.SRV;
-		PassParameters->LightViewSpacePositionAndRadius = ClusterResources->ViewSpacePosAndRadiusData.SRV;
+		PassParameters->LightViewSpacePositionAndRadius1 = ClusterResources->ViewSpacePosAndRadiusData.SRV;
 		PassParameters->LightViewSpaceDirAndPreprocAngle = ClusterResources->ViewSpaceDirAndPreprocAngleData.SRV;
-		PassParameters->RWCulledLightLinks = GraphBuilder.CreateUAV(CulledLightLinkBuffer, PF_R16_UINT);
-		PassParameters->RWStartOffsetGrid = GraphBuilder.CreateUAV(StartOffsetGridBuffer, PF_R16_UINT);
-		PassParameters->RWNextCulledLightLink = GraphBuilder.CreateUAV(NextCulledLightLinkBuffer, PF_R32_UINT);
+		PassParameters->RWTestA = GraphBuilder.CreateUAV(CulledLightLinkBuffer, PF_R16_UINT);
+		PassParameters->RWTestB = GraphBuilder.CreateUAV(StartOffsetGridBuffer, PF_R16_UINT);
+		PassParameters->RWTestC = GraphBuilder.CreateUAV(NextCulledLightLinkBuffer, PF_R32_UINT);
 
-		AddClearUAVPass(GraphBuilder, PassParameters->RWStartOffsetGrid, 0xffffffff);
-		AddClearUAVPass(GraphBuilder, PassParameters->RWNextCulledLightLink, 0);
-		//AddClearUAVPass(GraphBuilder,)
+		AddClearUAVPass(GraphBuilder, PassParameters->RWTestB, 0xffffffff);
+		AddClearUAVPass(GraphBuilder, PassParameters->RWTestC, 0);
+		AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(NextCulledLightDataBuffer, PF_R32_UINT), 0);
+
+		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("ComputeClusterCS"), ComputeCS, PassParameters, NumGroups);
+
+		// Compact Data
+		TShaderMapRef<FMobileClusterDataCompactCS> CompactCS(View.ShaderMap);
+		FMobileClusterDataCompactCS::FParameters* PassParametersCompact = GraphBuilder.AllocParameters<FMobileClusterDataCompactCS::FParameters>();
+		LocalLightSizeData.W = GLightViewSpacePosAndRadius.Num();
+		PassParametersCompact->LightGridSize = LocalLightSizeData;
+		PassParametersCompact->RWNumCulledLightsGrid = ClusterResources->RWNumCulledLightsGrid.MipBuffers[0].UAV;
+		PassParametersCompact->RWCulledLightDataGrid = ClusterResources->RWCulledLightDataGrid.MipBuffers[0].UAV;
+		PassParametersCompact->RWNextCulledLightData = GraphBuilder.CreateUAV(NextCulledLightDataBuffer, PF_R32_UINT);
+		PassParametersCompact->StartOffsetGrid = GraphBuilder.CreateSRV(StartOffsetGridBuffer, PF_R32_UINT);
+		PassParametersCompact->CulledLightLinks = GraphBuilder.CreateSRV(CulledLightLinkBuffer, PF_R32_UINT);
+		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("CompactDataCS"), CompactCS, PassParametersCompact, NumGroups);
 	}
+
+	GraphBuilder.Execute();
+	RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, OutUAVs.GetData(), OutUAVs.Num());
 }
 
 /// End
@@ -839,10 +946,10 @@ void FMobileSceneRenderer::MobileComputeLightGrid(FRHICommandListImmediate& RHIC
 	for (auto& View : Views)
 	{
 		GatherLocalLightInfo(Scene, View);
-
-		if (GMobileSupportGPUCluster == 0)
-			MobileComputeLightGrid_CPU(View, ComputeClusterTaskEventRef);
+		
+		if (GMobileSupportGPUCluster == 1 && Scene->GetFeatureLevel() >= ERHIFeatureLevel::ES3_1)
+			MobileComputeLightGrid_GPU(View, RHICmdList, Scene->GetFeatureLevel());
 		else
-			MobileComputeLightGrid_GPU(View, RHICmdList);
+			MobileComputeLightGrid_CPU(View, ComputeClusterTaskEventRef);
 	}
 }

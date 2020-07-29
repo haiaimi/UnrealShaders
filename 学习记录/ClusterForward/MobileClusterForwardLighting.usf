@@ -1,0 +1,252 @@
+#include "Common.ush"
+
+#ifndef THREADGROUP_SIZE
+	#define THREADGROUP_SIZE 4
+#endif
+
+uint4 LightGridSize;
+float3 ZParams;
+uint PixelSizeShift;
+float4x4 ClipToView;
+float2 ViewInvSize;
+//RWBuffer<uint> RWNextCulledLightLink1;
+//RWBuffer<uint> RWStartOffsetGrid;
+//RWBuffer<uint> RWCulledLightLinks;
+RWBuffer<uint> RWTestA;
+RWBuffer<uint> RWTestB;
+RWBuffer<uint> RWTestC;
+
+Buffer<float4> LocalLightData;
+Buffer<float4> LightViewSpacePositionAndRadius1;
+Buffer<float4> LightViewSpaceDirAndPreprocAngle;
+
+
+float ComputeCellNearViewDepthFromZSlice(uint ZSlice)
+{
+	float SliceDepth = (exp2(ZSlice / ZParams.z) - ZParams.y) / ZParams.x;
+
+	if (ZSlice == LightGridSize.z)
+	{
+		SliceDepth = 2000000.0f;
+	}
+
+	if (ZSlice == 0)
+	{
+		SliceDepth = 0.0f;
+	}
+
+	return SliceDepth;
+}
+
+void ComputeCellViewAABB(uint3 GridCoordinate, out float3 ViewTileMin, out float3 ViewTileMax)
+{
+	// Compute extent of tiles in clip-space. Note that the last tile may extend a bit outside of view if view size is not evenly divisible tile size.
+	const float2 InvCulledGridSizeF = (1 << PixelSizeShift) * ViewInvSize;
+	const float2 TileSize = float2(2.0f, -2.0f) * InvCulledGridSizeF.xy;
+	const float2 UnitPlaneMin = float2(-1.0f, 1.0f);
+
+	float2 UnitPlaneTileMin = GridCoordinate.xy * TileSize + UnitPlaneMin;
+	float2 UnitPlaneTileMax = (GridCoordinate.xy + 1) * TileSize + UnitPlaneMin;
+
+	float MinTileZ = ComputeCellNearViewDepthFromZSlice(GridCoordinate.z);
+	float MaxTileZ = ComputeCellNearViewDepthFromZSlice(GridCoordinate.z + 1);
+
+	float MinTileDeviceZ = ConvertToDeviceZ(MinTileZ);
+	float4 MinDepthCorner0 = mul(float4(UnitPlaneTileMin.x, UnitPlaneTileMin.y, MinTileDeviceZ, 1), ClipToView);
+	float4 MinDepthCorner1 = mul(float4(UnitPlaneTileMax.x, UnitPlaneTileMax.y, MinTileDeviceZ, 1), ClipToView);
+	float4 MinDepthCorner2 = mul(float4(UnitPlaneTileMin.x, UnitPlaneTileMax.y, MinTileDeviceZ, 1), ClipToView);
+	float4 MinDepthCorner3 = mul(float4(UnitPlaneTileMax.x, UnitPlaneTileMin.y, MinTileDeviceZ, 1), ClipToView);
+
+	float MaxTileDeviceZ = ConvertToDeviceZ(MaxTileZ);
+	float4 MaxDepthCorner0 = mul(float4(UnitPlaneTileMin.x, UnitPlaneTileMin.y, MaxTileDeviceZ, 1), ClipToView);
+	float4 MaxDepthCorner1 = mul(float4(UnitPlaneTileMax.x, UnitPlaneTileMax.y, MaxTileDeviceZ, 1), ClipToView);
+	float4 MaxDepthCorner2 = mul(float4(UnitPlaneTileMin.x, UnitPlaneTileMax.y, MaxTileDeviceZ, 1), ClipToView);
+	float4 MaxDepthCorner3 = mul(float4(UnitPlaneTileMax.x, UnitPlaneTileMin.y, MaxTileDeviceZ, 1), ClipToView);
+
+	float4 ViewMinDepthCorner0 = float4(MinDepthCorner0.xy, MinDepthCorner1.xy) / float4(MinDepthCorner0.w, MinDepthCorner0.w, MinDepthCorner1.w, MinDepthCorner1.w);
+	float4 ViewMinDepthCorner1 = float4(MinDepthCorner2.xy, MinDepthCorner3.xy) / float4(MinDepthCorner2.w, MinDepthCorner2.w, MinDepthCorner3.w, MinDepthCorner3.w);
+	float4 ViewMaxDepthCorner0 = float4(MaxDepthCorner0.xy, MaxDepthCorner1.xy) / float4(MaxDepthCorner0.w, MaxDepthCorner0.w, MaxDepthCorner1.w, MaxDepthCorner1.w);
+	float4 ViewMaxDepthCorner1 = float4(MaxDepthCorner2.xy, MaxDepthCorner3.xy) / float4(MaxDepthCorner2.w, MaxDepthCorner2.w, MaxDepthCorner3.w, MaxDepthCorner3.w);
+
+	float4 MinTemp = min(min(ViewMinDepthCorner0, ViewMinDepthCorner1), min(ViewMaxDepthCorner0, ViewMaxDepthCorner1));
+	ViewTileMin.xy = min(MinTemp.xy, MinTemp.zw);
+	
+	float4 MaxTemp = max(max(ViewMinDepthCorner0, ViewMinDepthCorner1), max(ViewMaxDepthCorner0, ViewMaxDepthCorner1));
+	ViewTileMax.xy = max(MaxTemp.xy, MaxTemp.zw);
+
+	ViewTileMin.z = MinTileZ;
+	ViewTileMax.z = MaxTileZ;
+}
+
+bool AabbOutsidePlane(float3 center, float3 extents, float4 plane)
+{
+	float dist = dot(float4(center, 1.0), plane);
+	float radius = dot(extents, abs(plane.xyz));
+
+	return dist > radius;
+}
+
+bool IsAabbOutsideInfiniteAcuteConeApprox(float3 ConeVertex, float3 ConeAxis, float TanConeAngle, float3 AabbCentre, float3 AabbExt)
+{
+	float3 D = AabbCentre - ConeVertex;
+
+	// N is the normal direction of the plane that is the edge of the cone, and the normal is faced to the box center
+	// #TODO: is the N need normalized ???
+	float3 M = -normalize(cross(cross(D, ConeAxis), ConeAxis));
+	float3 N = -TanConeAngle * ConeAxis + M;
+	float4 Plane = float4(N, 0.0);
+
+	return AabbOutsidePlane(D, AabbExt, Plane);
+}
+
+[numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, THREADGROUP_SIZE)]
+void ComputeClusterCS1(
+	uint3 GroupId : SV_GroupID,
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint3 GroupThreadId : SV_GroupThreadID)
+{
+	//uint3 GridCoord = DispatchThreadId;
+	//if (all(GridCoord < LightGridSize.xyz))
+	//{
+	//	uint GridIndex = (GridCoord.z * LightGridSize.y + GridCoord.y) * LightGridSize.x + GridCoord.x;
+	//	float3 ViewTileMin, ViewTileMax;
+	//	ComputeCellViewAABB(GridCoord, ViewTileMin, ViewTileMax);
+		
+	//	float3 ViewTileCenter = 0.5f * (ViewTileMin + ViewTileMax);
+	//	float3 ViewTileExtent = ViewTileMax - ViewTileMin;
+	//	uint LightNum = 0;
+	//	LightViewSpacePositionAndRadius.GetDimensions(LightNum);
+	//	LOOP
+	//	for (uint LocalLightIndex = 0; LocalLightIndex < LightNum; ++LocalLightIndex)
+	//	{
+	//		float3 ViewSpaceLightPos = LightViewSpacePositionAndRadius[LocalLightIndex].xyz;
+	//		float LightRadius = LightViewSpacePositionAndRadius[LocalLightIndex].w;
+	//		float BoxDistanceSq = ComputeSquaredDistanceFromBoxToPoint(ViewTileCenter, ViewTileExtent, ViewSpaceLightPos);
+
+	//		if (BoxDistanceSq < LightRadius * LightRadius)
+	//		{
+	//			bool bPassSpotLight = true;
+	//			float4 ViewSpaceDirAndPreprocAngle = LightViewSpaceDirAndPreprocAngle[LocalLightIndex];
+	//			float TanConeAngle = ViewSpaceDirAndPreprocAngle.w;
+	//			if (TanConeAngle > 0.f)
+	//			{
+	//				bPassSpotLight = !IsAabbOutsideInfiniteAcuteConeApprox(ViewSpaceLightPos, ViewSpaceDirAndPreprocAngle.xyz, TanConeAngle, ViewTileCenter, ViewTileExtent);
+	//			}
+	//			BRANCH
+
+	//			if (bPassSpotLight)
+	//			{
+	//				uint MaxLinkIndex = LightGridSize.x * LightGridSize.y * LightGridSize.z * LightGridSize.w * 2;
+	//				uint NextLink;
+	//				InterlockedAdd(RWTestA[0], 1u, NextLink);
+					
+	//				uint PrvLink;
+	//				InterlockedExchange(RWTestB[GridIndex], NextLink, PrvLink);
+	//				RWTestC[NextLink * 2 + 0] = LocalLightIndex;
+	//				RWTestC[NextLink * 2 + 1] = PrvLink;
+	//			}
+	//		}
+	//	}
+	//}
+}
+
+[numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, THREADGROUP_SIZE)]
+void FMobileClusterDataCompactCS2(
+	uint3 GroupId : SV_GroupID,
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint3 GroupThreadId : SV_GroupThreadID)
+{
+	uint3 GridCoord = DispatchThreadId;
+	if (all(GridCoord < LightGridSize.xyz))
+	{
+		uint GridIndex = (GridCoord.z * LightGridSize.y + GridCoord.y) * LightGridSize.x + GridCoord.x;
+		float3 ViewTileMin, ViewTileMax;
+		ComputeCellViewAABB(GridCoord, ViewTileMin, ViewTileMax);
+		
+		float3 ViewTileCenter = 0.5f * (ViewTileMin + ViewTileMax);
+		float3 ViewTileExtent = ViewTileMax - ViewTileMin;
+		uint LightNum = 10;
+		LightViewSpacePositionAndRadius1.GetDimensions(LightNum);
+		LOOP
+		for (uint LocalLightIndex = 0; LocalLightIndex < LightNum; ++LocalLightIndex)
+		{
+			float4 ViewSpacePositionAndRadius = LightViewSpacePositionAndRadius1[LocalLightIndex];
+			float3 ViewSpaceLightPos = ViewSpacePositionAndRadius.xyz;
+			float LightRadius = ViewSpacePositionAndRadius.w;
+			float BoxDistanceSq = ComputeSquaredDistanceFromBoxToPoint(ViewTileCenter, ViewTileExtent, ViewSpaceLightPos);
+
+			BRANCH
+			if (BoxDistanceSq < LightRadius * LightRadius)
+			{
+				bool bPassSpotLight = true;
+				float4 ViewSpaceDirAndPreprocAngle = LightViewSpaceDirAndPreprocAngle[LocalLightIndex];
+				float TanConeAngle = ViewSpaceDirAndPreprocAngle.w;
+				if (TanConeAngle > 0.f)
+				{
+					bPassSpotLight = !IsAabbOutsideInfiniteAcuteConeApprox(ViewSpaceLightPos, ViewSpaceDirAndPreprocAngle.xyz, TanConeAngle, ViewTileCenter, ViewTileExtent);
+				}
+				
+				if (bPassSpotLight)
+				{
+					uint MaxLinkIndex = LightGridSize.x * LightGridSize.y * LightGridSize.z * LightGridSize.w * 2;
+					uint NextLink = 0;
+					
+					InterlockedAdd(RWTestA[0], 1U, NextLink);
+					
+					uint PrvLink;
+					InterlockedExchange(RWTestB[GridIndex], NextLink, PrvLink);
+					RWTestC[NextLink * 2 + 0] = LocalLightIndex;
+					RWTestC[NextLink * 2 + 1] = PrvLink;
+				}
+			}
+		}
+	}
+}
+
+RWBuffer<uint> RWNumCulledLightsGrid;
+RWBuffer<uint> RWCulledLightDataGrid;
+RWBuffer<uint> RWNextCulledLightData;
+Buffer<uint> StartOffsetGrid;
+Buffer<uint> CulledLightLinks;
+
+void CompactReverseLinkedList(uint GridIndex, uint SceneMax)
+{
+	uint NumCulledLights = 0;
+	uint StartLinkOffset = StartOffsetGrid[GridIndex];
+	uint LinkOffset = StartLinkOffset;
+	
+	// Get culled light count
+	while(LinkOffset != 0xffffffff && NumCulledLights < SceneMax)
+	{
+		NumCulledLights++;
+		LinkOffset = CulledLightLinks[LinkOffset * 2 + 1];
+	}
+	uint CulledLightDataStart;
+	InterlockedAdd(RWNextCulledLightData[0], NumCulledLights, CulledLightDataStart);
+	RWNumCulledLightsGrid[GridIndex * 2 + 0] = NumCulledLights;
+	RWNumCulledLightsGrid[GridIndex * 2 + 1] = CulledLightDataStart;
+
+	LinkOffset = StartLinkOffset;
+	uint CulledLightIndex = 0;
+	LOOP
+	for (; CulledLightIndex < NumCulledLights; ++CulledLightIndex)
+	{
+		RWCulledLightDataGrid[CulledLightDataStart + NumCulledLights - CulledLightIndex - 1] = CulledLightLinks[LinkOffset * 2 + 0];
+		LinkOffset = CulledLightLinks[LinkOffset * 2 + 1];
+	}
+
+}
+
+[numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, THREADGROUP_SIZE)]
+void ClusterDataCompactCS(
+	uint3 GroupId : SV_GroupID,
+	uint3 DispatchThreadId : SV_DispatchThreadID,
+	uint3 GroupThreadId : SV_GroupThreadID)
+{
+	uint3 GridCoord = DispatchThreadId;
+	if (all(GridCoord < LightGridSize.xyz))
+	{
+		uint GridIndex = (GridCoord.z * LightGridSize.y + GridCoord.y) * LightGridSize.x + GridCoord.x;
+		CompactReverseLinkedList(GridIndex, LightGridSize.w);
+	}
+}
