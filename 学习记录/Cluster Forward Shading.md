@@ -163,3 +163,6 @@ UE4也为Forward管线实现了一个Cluster Shading，下面内容就是UE4中�
     * $(1-\frac{F}{N})\times O=2^{\frac{M-1}{S}}-\frac{F}{N}$
     * $O=\frac{2^{\frac{M-1}{S}}-\frac{F}{N}}{1-\frac{F}{N}}=\frac{F-2^{\frac{M-1}{S}}}{F-N}$
 * 在参数都设置完之后就可以调度ComputerShader，这里是在RenderGraph里调度的。
+
+
+在UE4中移动端添加Cluster Forward时，opengles3.1需要添加拓展*GL_OES_shader_image_atomic*，在*GlslBackend.cpp*文件中。

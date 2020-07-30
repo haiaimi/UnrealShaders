@@ -111,7 +111,7 @@ void ComputeClusterCS(
 	uint3 GridCoord = DispatchThreadId;
 	if (all(GridCoord < LightGridSize.xyz))
 	{
-		uint GridIndex = (GridCoord.z * (uint)LightGridSize.y + GridCoord.y) * LightGridSize.x + GridCoord.x;
+		uint GridIndex = (GridCoord.z * LightGridSize.y + GridCoord.y) * LightGridSize.x + GridCoord.x;
 		float3 ViewTileMin, ViewTileMax;
 		ComputeCellViewAABB(GridCoord, ViewTileMin, ViewTileMax);
 		
@@ -182,7 +182,6 @@ void CompactReverseLinkedList(uint GridIndex, uint SceneMax)
 		RWCulledLightDataGrid[CulledLightDataStart + NumCulledLights - CulledLightIndex - 1] = CulledLightLinks[LinkOffset * 2 + 0];
 		LinkOffset = CulledLightLinks[LinkOffset * 2 + 1];
 	}
-
 }
 
 [numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, THREADGROUP_SIZE)]
@@ -192,7 +191,7 @@ void ClusterDataCompactCS(
 	uint3 GroupThreadId : SV_GroupThreadID)
 {
 	uint3 GridCoord = DispatchThreadId;
-	//if (all(GridCoord < LightGridSize.xyz))
+	if (all(GridCoord < LightGridSize.xyz))
 	{
 		uint GridIndex = (GridCoord.z * LightGridSize.y + GridCoord.y) * LightGridSize.x + GridCoord.x;
 		CompactReverseLinkedList(GridIndex, LightGridSize.w);

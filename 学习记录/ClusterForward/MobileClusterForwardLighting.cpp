@@ -795,14 +795,14 @@ void OnlyUpdateLightDataBuffer(uint32 CellNum = 1)
 	auto& RWNumCulledLightsData = ClusterResources->RWNumCulledLightsGrid;
 	auto& RWCulledLightDataGrid = ClusterResources->RWCulledLightDataGrid;
 
-	if (RWNumCulledLightsData.GetMaxSizeBytes() < CellNum * 2 * sizeof(FNumCulledDataType))
+	if (RWNumCulledLightsData.GetMaxSizeBytes() < CellNum * 2 * sizeof(uint32))
 	{
-		RWNumCulledLightsData.Initialize(sizeof(FNumCulledDataType), CellNum * 2, EPixelFormat::PF_R16_UINT);
+		RWNumCulledLightsData.Initialize(sizeof(uint32), CellNum * 2 * sizeof(uint32), EPixelFormat::PF_R32_UINT);
 	}
 
-	if (RWCulledLightDataGrid.GetMaxSizeBytes() < CellNum * GMobileMaxCulledLightsPerCell * sizeof(FCulledDataType))
+	if (RWCulledLightDataGrid.GetMaxSizeBytes() < CellNum * GMobileMaxCulledLightsPerCell * sizeof(uint32))
 	{
-		RWCulledLightDataGrid.Initialize(sizeof(FCulledDataType), CellNum * GMobileMaxCulledLightsPerCell, EPixelFormat::PF_R8_UINT);
+		RWCulledLightDataGrid.Initialize(sizeof(uint32), CellNum * GMobileMaxCulledLightsPerCell * sizeof(uint32), EPixelFormat::PF_R32_UINT);
 	}
 }
 
@@ -870,7 +870,7 @@ void MobileComputeLightGrid_GPU(const FViewInfo& View, FRHICommandListImmediate&
 		PassParametersCompact->RWNextCulledLightData = GraphBuilder.CreateUAV(NextCulledLightDataBuffer, PF_R32_UINT);
 		PassParametersCompact->StartOffsetGrid = GraphBuilder.CreateSRV(StartOffsetGridBuffer, PF_R32_UINT);
 		PassParametersCompact->CulledLightLinks = GraphBuilder.CreateSRV(CulledLightLinkBuffer, PF_R32_UINT);
-		AddClearUAVPass(GraphBuilder, PassParametersCompact->RWNextCulledLightData, 0);
+		//AddClearUAVPass(GraphBuilder, PassParametersCompact->RWNextCulledLightData, 0);
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("CompactDataCS"), CompactCS, PassParametersCompact, NumGroups);
 	}
 
