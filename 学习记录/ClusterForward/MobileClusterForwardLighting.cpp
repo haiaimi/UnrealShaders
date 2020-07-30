@@ -797,12 +797,12 @@ void OnlyUpdateLightDataBuffer(uint32 CellNum = 1)
 
 	if (RWNumCulledLightsData.GetMaxSizeBytes() < CellNum * 2 * sizeof(uint32))
 	{
-		RWNumCulledLightsData.Initialize(sizeof(uint32), CellNum * 2 * sizeof(uint32), EPixelFormat::PF_R32_UINT);
+		RWNumCulledLightsData.Initialize(sizeof(uint32), CellNum * sizeof(uint32), EPixelFormat::PF_R32_UINT);
 	}
 
 	if (RWCulledLightDataGrid.GetMaxSizeBytes() < CellNum * GMobileMaxCulledLightsPerCell * sizeof(uint32))
 	{
-		RWCulledLightDataGrid.Initialize(sizeof(uint32), CellNum * GMobileMaxCulledLightsPerCell * sizeof(uint32), EPixelFormat::PF_R32_UINT);
+		RWCulledLightDataGrid.Initialize(sizeof(uint32), CellNum * GMobileMaxCulledLightsPerCell, EPixelFormat::PF_R32_UINT);
 	}
 }
 
