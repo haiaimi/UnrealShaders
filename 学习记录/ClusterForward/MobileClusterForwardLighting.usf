@@ -143,8 +143,8 @@ void ComputeClusterCS(
 					
 					uint PrvLink;
 					InterlockedExchange(RWStartOffsetGrid[GridIndex], NextLink, PrvLink);
-					RWCulledLightLinks[NextLink * 2 + 0] = LocalLightIndex;
-					RWCulledLightLinks[NextLink * 2 + 1] = PrvLink;
+					uint LinkPack = LocalLightIndex << 16 | PrvLink;
+					RWCulledLightLinks[NextLink] = LinkPack;
 				}
 			}
 		}
@@ -167,20 +167,28 @@ void CompactReverseLinkedList(uint GridIndex, uint SceneMax)
 	while(LinkOffset != 0xffffffff && NumCulledLights < SceneMax)
 	{
 		NumCulledLights++;
-		LinkOffset = CulledLightLinks[LinkOffset * 2 + 1];  //Pre Index
+		LinkOffset = CulledLightLinks[LinkOffset] & 0x0000ffff; //Pre Index
 	}
 	uint CulledLightDataStart;
-	InterlockedAdd(RWNextCulledLightData[0], NumCulledLights, CulledLightDataStart);
-	RWNumCulledLightsGrid[GridIndex * 2 + 0] = NumCulledLights;
-	RWNumCulledLightsGrid[GridIndex * 2 + 1] = CulledLightDataStart;
+	uint RoundupSize = (NumCulledLights >> 2) + sign(NumCulledLights % 4);
+	InterlockedAdd(RWNextCulledLightData[0], RoundupSize, CulledLightDataStart);
+	RWNumCulledLightsGrid[GridIndex] = (NumCulledLights << 16) | CulledLightDataStart;
 
 	LinkOffset = StartLinkOffset;
 	uint CulledLightIndex = 0;
+	uint PackedData = 0;
+	uint MoveIndex = 0;
 	LOOP
 	for (; CulledLightIndex < NumCulledLights; ++CulledLightIndex)
 	{
-		RWCulledLightDataGrid[CulledLightDataStart + NumCulledLights - CulledLightIndex - 1] = CulledLightLinks[LinkOffset * 2 + 0];
-		LinkOffset = CulledLightLinks[LinkOffset * 2 + 1];
+		MoveIndex = MoveIndex % 4;
+		PackedData *= sign(MoveIndex);
+		uint PackedIndex = RoundupSize + (NumCulledLights - CulledLightIndex - 1) >> 2;
+		uint CurIndex = CulledLightLinks[LinkOffset] >> 16;
+		PackedData |= CurIndex << (MoveIndex * 8);
+		RWCulledLightDataGrid[PackedIndex] = PackedData;
+		LinkOffset = CulledLightLinks[LinkOffset] & 0x0000ffff;
+		MoveIndex++;
 	}
 }
 
