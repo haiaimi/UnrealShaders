@@ -103,12 +103,20 @@ void SetupMobileClusterLightingUniformBuffer(FRHICommandListImmediate& RHICmdLis
 			ClusterLightingParameters.MobileLocalLightBuffer = ClusterLightRes->MobileLocalLight.SRV;
 			ClusterLightingParameters.NumCulledLightsGrid = ClusterLightRes->RWNumCulledLightsGrid.MipBuffers[0].SRV;
 			ClusterLightingParameters.CulledLightDataGrid = ClusterLightRes->RWCulledLightDataGrid.MipBuffers[0].SRV;
+			if (ClusterLightRes->MobileLocalLight.SRV && ClusterLightRes->RWNumCulledLightsGrid.MipBuffers[0].SRV && ClusterLightRes->RWCulledLightDataGrid.MipBuffers[0].SRV)
+			{
+				UE_LOG(LogTemp, Log, TEXT("Set cluster resource success"));
+			}
 		}
 		else
 		{
 			ClusterLightingParameters.MobileLocalLightBuffer = ClusterLightRes->MobileLocalLight.SRV;
 			ClusterLightingParameters.NumCulledLightsGrid = ClusterLightRes->NumCulledLightsGrid.GetCurLevelBuffer().SRV;
 			ClusterLightingParameters.CulledLightDataGrid = ClusterLightRes->CulledLightDataGrid.GetCurLevelBuffer().SRV;
+			if (ClusterLightRes->MobileLocalLight.SRV && ClusterLightRes->NumCulledLightsGrid.GetCurLevelBuffer().SRV && ClusterLightRes->CulledLightDataGrid.GetCurLevelBuffer().SRV)
+			{
+				UE_LOG(LogTemp, Log, TEXT("Set cluster resource success"));
+			}
 		}
 	}
 	ClusterLightingParameters.LightGridZParams = MobileGetLightGridZParams(View.NearClippingDistance, MaxCullDistance);
@@ -143,13 +151,13 @@ void UpdateClusterLightingBufferData(uint32 CulledDataSize, uint32 NumCulledData
 	if (ClusterLightRes->NumCulledLightsGrid.MipBuffers[0].NumBytes < NumRequired)
 	{
 		ClusterLightRes->NumCulledLightsGrid.Release();
-		ClusterLightRes->NumCulledLightsGrid.Initialize(sizeof(FNumCulledDataType), NumRequired, EPixelFormat::PF_R16_UINT, BUF_Dynamic);
+		ClusterLightRes->NumCulledLightsGrid.Initialize(sizeof(uint32), NumRequired, EPixelFormat::PF_R32_UINT, BUF_Dynamic);
 	}
 	NumRequired = GCulledLightGridData.Num() * GCulledLightGridData.GetTypeSize();
 	if (ClusterLightRes->CulledLightDataGrid.MipBuffers[0].NumBytes < NumRequired)
 	{
 		ClusterLightRes->CulledLightDataGrid.Release();
-		ClusterLightRes->CulledLightDataGrid.Initialize(sizeof(FCulledDataType), NumRequired, EPixelFormat::PF_R8_UINT, BUF_Dynamic);
+		ClusterLightRes->CulledLightDataGrid.Initialize(sizeof(uint32), NumRequired, EPixelFormat::PF_R32_UINT, BUF_Dynamic);
 	}
 	
 	ClusterLightRes->MobileLocalLight.Lock();
@@ -180,11 +188,11 @@ public:
 		LightingResources.ViewSpacePosAndRadiusData.Initialize(sizeof(FVector4), 1, EPixelFormat::PF_A32B32G32R32F, BUF_Dynamic);
 		LightingResources.ViewSpaceDirAndPreprocAngleData.Initialize(sizeof(FVector4), 1, EPixelFormat::PF_A32B32G32R32F, BUF_Dynamic);
 
-		LightingResources.NumCulledLightsGrid.Initialize(sizeof(FNumCulledDataType), 1, EPixelFormat::PF_R16_UINT, BUF_Dynamic);
-		LightingResources.CulledLightDataGrid.Initialize(sizeof(FCulledDataType), 1, EPixelFormat::PF_R8_UINT, BUF_Dynamic);		
+		LightingResources.NumCulledLightsGrid.Initialize(sizeof(uint32), 1, EPixelFormat::PF_R32_UINT, BUF_Dynamic);
+		LightingResources.CulledLightDataGrid.Initialize(sizeof(uint32), 1, EPixelFormat::PF_R32_UINT, BUF_Dynamic);		
 
-		LightingResources.RWNumCulledLightsGrid.Initialize(sizeof(FCulledDataType), 1, EPixelFormat::PF_R8_UINT);
-		LightingResources.RWCulledLightDataGrid.Initialize(sizeof(FNumCulledDataType), 1, PF_R16_UINT);
+		LightingResources.RWNumCulledLightsGrid.Initialize(sizeof(uint32), 1, EPixelFormat::PF_R32_UINT);
+		LightingResources.RWCulledLightDataGrid.Initialize(sizeof(uint32), 1, EPixelFormat::PF_R32_UINT);
 	}
 
 	virtual void ReleaseRHI()
@@ -294,8 +302,8 @@ public:
 		// #TODO Compact data
 		if (GAllCLusterTaskContext.Num() <= 0)return;
 		FCulledDataType* CpyStartDataPtr = GAllCLusterTaskContext[0].CulledLightDataGrid;
-		uint32 NumStart = GAllCLusterTaskContext[0].CulledNum;
-		uint32 MaxZ = 0, NumCulledDataSize = 0, CulledDataSize = 0;
+		uint32 NumStart = GAllCLusterTaskContext[0].CulledNum / 4;
+		uint32 MaxZ = 0, NumCulledDataSize = 0, CulledDataSize = GAllCLusterTaskContext[0].CulledNum;
 		for (uint32 i = 1; i < (uint32)GAllCLusterTaskContext.Num(); ++i)
 		{
 			if (GAllCLusterTaskContext[i].CulledNum > 0)
@@ -310,7 +318,7 @@ public:
 				{
 					*(GAllCLusterTaskContext[i].NumCulledLightData - GridNumXY * 2 + j * 2 + 1) += NumStart;
 				}
-				NumStart += GAllCLusterTaskContext[i].CulledNum;
+				NumStart += GAllCLusterTaskContext[i].CulledNum / 4;
 			}
 		}
 		
@@ -597,7 +605,8 @@ uint32 ComputeSingleLightGrid(const FViewInfo& View, const FIntVector& GridCoord
 		}
 	}
 	*(NumCulledDataPtr++) = PerGridCulledLightNum;
-	*(NumCulledDataPtr++) = StartOffset;
+	*(NumCulledDataPtr++) = StartOffset / 4;
+	PerGridCulledLightNum = (PerGridCulledLightNum / 4 + FMath::Sign(PerGridCulledLightNum % 4)) * 4;
 	StartOffset += PerGridCulledLightNum;
 
 	return PerGridCulledLightNum;
@@ -795,12 +804,12 @@ void OnlyUpdateLightDataBuffer(uint32 CellNum = 1)
 	auto& RWNumCulledLightsData = ClusterResources->RWNumCulledLightsGrid;
 	auto& RWCulledLightDataGrid = ClusterResources->RWCulledLightDataGrid;
 
-	if (RWNumCulledLightsData.GetMaxSizeBytes() < CellNum * 2 * sizeof(uint32))
+	if (RWNumCulledLightsData.GetMaxSizeBytes() < CellNum * sizeof(uint32))
 	{
 		RWNumCulledLightsData.Initialize(sizeof(uint32), CellNum * sizeof(uint32), EPixelFormat::PF_R32_UINT);
 	}
 
-	if (RWCulledLightDataGrid.GetMaxSizeBytes() < CellNum * GMobileMaxCulledLightsPerCell * sizeof(uint32))
+	if (RWCulledLightDataGrid.GetMaxSizeBytes() < CellNum * GMobileMaxCulledLightsPerCell)
 	{
 		RWCulledLightDataGrid.Initialize(sizeof(uint32), CellNum * GMobileMaxCulledLightsPerCell, EPixelFormat::PF_R32_UINT);
 	}
