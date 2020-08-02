@@ -279,6 +279,12 @@ void FMobileSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdList)
 
 	PostVisibilityFrameSetup(ILCTaskData);
 
+	// #change by wh, 2020/8/2
+	SCOPE_CYCLE_COUNTER(STAT_MobileComputeGrid);
+	// After Post Visibility Frame Setup, because wu need light visible info
+	MobileComputeLightGrid(RHICmdList);
+	// end
+
 	// Find out whether custom depth pass should be rendered.
 	{
 		const bool bGammaSpace = !IsMobileHDR();
@@ -352,7 +358,7 @@ void FMobileSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdList)
 	// #change by wh, 2020/7/26
 	if (ComputeClusterTaskEventRef.IsValid())
 	{
-		FTaskGraphInterface::Get().WaitUntilTaskCompletes(ComputeClusterTaskEventRef);
+		FTaskGraphInterface::Get().WaitUntilTaskCompletes(ComputeClusterTaskEventRef, ENamedThreads::GetRenderThread_Local());
 	}
 	// end
 
@@ -475,11 +481,6 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	//make sure all the targets we're going to use will be safely writable.
 	GRenderTargetPool.TransitionTargetsWritable(RHICmdList);
-
-	// #change by wh, 2020/7/23
-	SCOPE_CYCLE_COUNTER(STAT_MobileComputeGrid);
-	MobileComputeLightGrid();
-	// end
 
 	// Find the visible primitives.
 	InitViews(RHICmdList);

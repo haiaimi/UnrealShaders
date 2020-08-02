@@ -749,66 +749,69 @@ void Main(
 
 #if MAX_DYNAMIC_POINT_LIGHTS > 0 && !MATERIAL_SHADINGMODEL_SINGLELAYERWATER
 	// #change by wh, 2020/7/23
-	Color = ComputeClusterLight(MaterialParameters, ShadingModelContext, ResolvedView.ViewRectMin.xy, Color);
-	//end
-	//#if VARIABLE_NUM_DYNAMIC_POINT_LIGHTS
-	//#if VULKAN_PROFILE
-	// webgl and ES2 needs a constant loop counter
-	//UNROLL
-	//for (int i = 0; i < MAX_DYNAMIC_POINT_LIGHTS; i++)
-	//{
-	//	if (i < NumDynamicPointLights)
-	//	{
-	//#else
+	#if ENABLE_CLUSTER_FORWARD_LIGHTING
+		Color = ComputeClusterLight(MaterialParameters, ShadingModelContext, ResolvedView.ViewRectMin.xy, Color);
+	#else
+		#if VARIABLE_NUM_DYNAMIC_POINT_LIGHTS
+		#if VULKAN_PROFILE
+		 webgl and ES2 needs a constant loop counter
+		UNROLL
+		for (int i = 0; i < MAX_DYNAMIC_POINT_LIGHTS; i++)
+		{
+			if (i < NumDynamicPointLights)
+			{
+		#else
 	
-	//for (int i = 0; i < NumDynamicPointLights; i++)
-	//{
-	//#endif
-	//#else
-	//for (int i = 0; i < NUM_DYNAMIC_POINT_LIGHTS; i++)
-	//{
-	//#endif
-	//	float3 ToLight = LightPositionAndInvRadius[i].xyz - MaterialParameters.AbsoluteWorldPosition;
-	//	float DistanceSqr = dot(ToLight, ToLight);
-	//	float3 L = ToLight * rsqrt(DistanceSqr);
-	//	float3 PointH = normalize(MaterialParameters.CameraVector + L);
+		for (int i = 0; i < NumDynamicPointLights; i++)
+		{
+		#endif
+		#else
+		for (int i = 0; i < NUM_DYNAMIC_POINT_LIGHTS; i++)
+		{
+		#endif
+			float3 ToLight = LightPositionAndInvRadius[i].xyz - MaterialParameters.AbsoluteWorldPosition;
+			float DistanceSqr = dot(ToLight, ToLight);
+			float3 L = ToLight * rsqrt(DistanceSqr);
+			float3 PointH = normalize(MaterialParameters.CameraVector + L);
 
-	//	float PointNoL = max(0, dot(MaterialParameters.WorldNormal, L));
-	//	float PointRoL = max(0, dot(MaterialParameters.ReflectionVector, L));
-	//	float PointNoH = max(0, dot(MaterialParameters.WorldNormal, PointH));
+			float PointNoL = max(0, dot(MaterialParameters.WorldNormal, L));
+			float PointRoL = max(0, dot(MaterialParameters.ReflectionVector, L));
+			float PointNoH = max(0, dot(MaterialParameters.WorldNormal, PointH));
 
-	//	float Attenuation;
+			float Attenuation;
 
-	//	if (LightColorAndFalloffExponent[i].w == 0)
-	//	{
-	//		// Sphere falloff (technically just 1/d2 but this avoids inf)
-	//		Attenuation = 1 / ( DistanceSqr + 1 );
+			if (LightColorAndFalloffExponent[i].w == 0)
+			{
+				// Sphere falloff (technically just 1/d2 but this avoids inf)
+				Attenuation = 1 / ( DistanceSqr + 1 );
 	
-	//		float LightRadiusMask = Square(saturate(1 - Square(DistanceSqr * (LightPositionAndInvRadius[i].w * LightPositionAndInvRadius[i].w))));
-	//		Attenuation *= LightRadiusMask;
-	//	}
-	//	else
-	//	{
-	//		Attenuation = RadialAttenuation(ToLight * LightPositionAndInvRadius[i].w, LightColorAndFalloffExponent[i].w);		
-	//	}
+				float LightRadiusMask = Square(saturate(1 - Square(DistanceSqr * (LightPositionAndInvRadius[i].w * LightPositionAndInvRadius[i].w))));
+				Attenuation *= LightRadiusMask;
+			}
+			else
+			{
+				Attenuation = RadialAttenuation(ToLight * LightPositionAndInvRadius[i].w, LightColorAndFalloffExponent[i].w);		
+			}
 				
-	//	#if PROJECT_MOBILE_ENABLE_MOVABLE_SPOTLIGHTS
-	//	if(SpotLightAngles[i].w > 0.0)
-	//	{
-	//		Attenuation *= SpotAttenuation(L, -SpotLightDirectionAndSpecularScale[i].xyz, SpotLightAngles[i].xy);
-	//	}
-	//	#endif
+			#if PROJECT_MOBILE_ENABLE_MOVABLE_SPOTLIGHTS
+			if(SpotLightAngles[i].w > 0.0)
+			{
+				Attenuation *= SpotAttenuation(L, -SpotLightDirectionAndSpecularScale[i].xyz, SpotLightAngles[i].xy);
+			}
+			#endif
 
-	//	#if !FULLY_ROUGH
-	//		FMobileDirectLighting Lighting = MobileIntegrateBxDF(ShadingModelContext, PointNoL, PointRoL, MaterialParameters.CameraVector, MaterialParameters.WorldNormal, PointH, PointNoH);
-	//		Color += min(65000.0, (Attenuation * PointNoL) * LightColorAndFalloffExponent[i].rgb * (1.0/PI) * (Lighting.Diffuse + Lighting.Specular * SpotLightDirectionAndSpecularScale[i].w));
-	//	#else
-	//		Color += (Attenuation * PointNoL) * LightColorAndFalloffExponent[i].rgb * (1.0/PI) * ShadingModelContext.DiffuseColor;
-	//	#endif
-	//#if VARIABLE_NUM_DYNAMIC_POINT_LIGHTS && ( VULKAN_PROFILE )
-	//	}
-	//#endif
-	//}
+			#if !FULLY_ROUGH
+				FMobileDirectLighting Lighting = MobileIntegrateBxDF(ShadingModelContext, PointNoL, PointRoL, MaterialParameters.CameraVector, MaterialParameters.WorldNormal, PointH, PointNoH);
+				Color += min(65000.0, (Attenuation * PointNoL) * LightColorAndFalloffExponent[i].rgb * (1.0/PI) * (Lighting.Diffuse + Lighting.Specular * SpotLightDirectionAndSpecularScale[i].w));
+			#else
+				Color += (Attenuation * PointNoL) * LightColorAndFalloffExponent[i].rgb * (1.0/PI) * ShadingModelContext.DiffuseColor;
+			#endif
+			#if VARIABLE_NUM_DYNAMIC_POINT_LIGHTS && ( VULKAN_PROFILE )
+				}
+			#endif
+			}
+		#endif
+		//end
 #endif
 	// end
 

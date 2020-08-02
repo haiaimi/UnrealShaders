@@ -84,6 +84,10 @@ enum EOutputFormat
 
 #define MAX_BASEPASS_DYNAMIC_POINT_LIGHTS 4
 
+// #change by wh, 2020/8/2
+#define  MOBILE_OPEN_CLUSTER_LIGHTS_COUNT (MAX_BASEPASS_DYNAMIC_POINT_LIGHTS + 1)
+// end
+
 /* Info for dynamic point or spot lights rendered in base pass */
 class FMobileBasePassMovableLightInfo
 {
@@ -395,17 +399,21 @@ public:
 
 		// Only compile skylight version for lit materials on ES2 (Metal) or higher
 		const bool bShouldCacheBySkylight = !bEnableSkyLight || !bIsUnlit;
-
+		
 		// Only compile skylight permutations when they are enabled
 		if (!bIsUnlit && !UseSkylightPermutation(bEnableSkyLight, MobileSkyLightPermutationOptions))
 		{
 			return false;
 		}
-
+		// #change by wh, 2020/8/3
+		static auto* MobileEnableClusterLightingCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.EnableClusterLighting"));
+		const bool bSupportClusterLighting = MobileEnableClusterLightingCVar->GetValueOnAnyThread() == 1;
 		const bool bShouldCacheByNumDynamicPointLights =
 			(NumMovablePointLights == 0 ||
 			(!bIsUnlit && NumMovablePointLights == INT32_MAX && bMobileDynamicPointLightsUseStaticBranch && MobileNumDynamicPointLights > 0) ||	// single shader for variable number of point lights
-				(!bIsUnlit && NumMovablePointLights <= MobileNumDynamicPointLights && !bMobileDynamicPointLightsUseStaticBranch));				// unique 1...N point light shaders
+				(!bIsUnlit && (NumMovablePointLights <= MobileNumDynamicPointLights) && !bMobileDynamicPointLightsUseStaticBranch) ||
+				(!bIsUnlit && NumMovablePointLights == MOBILE_OPEN_CLUSTER_LIGHTS_COUNT && bSupportClusterLighting));				// unique 1...N point light shaders
+		// end
 
 		return TMobileBasePassPSBaseType<LightMapPolicyType>::ShouldCompilePermutation(Parameters) && ShouldCacheShaderByPlatformAndOutputFormat(Parameters.Platform, OutputFormat) && bShouldCacheBySkylight && bShouldCacheByNumDynamicPointLights;
 	}
@@ -424,6 +432,13 @@ public:
 			OutEnvironment.SetDefine(TEXT("MAX_DYNAMIC_POINT_LIGHTS"), (uint32)MAX_BASEPASS_DYNAMIC_POINT_LIGHTS);
 			OutEnvironment.SetDefine(TEXT("VARIABLE_NUM_DYNAMIC_POINT_LIGHTS"), (uint32)1);
 		}
+		// #change by wh, 2020/8/2
+		else if (NumMovablePointLights == MOBILE_OPEN_CLUSTER_LIGHTS_COUNT)
+		{
+			OutEnvironment.SetDefine(TEXT("MAX_DYNAMIC_POINT_LIGHTS"), (uint32)MAX_BASEPASS_DYNAMIC_POINT_LIGHTS);
+			OutEnvironment.SetDefine(TEXT("ENABLE_CLUSTER_FORWARD_LIGHTING"), (uint32)1);
+		}
+		// end
 		else
 		{
 			OutEnvironment.SetDefine(TEXT("MAX_DYNAMIC_POINT_LIGHTS"), (uint32)NumMovablePointLights);

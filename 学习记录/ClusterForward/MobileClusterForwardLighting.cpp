@@ -6,6 +6,14 @@
 #include "Stats/Stats.h"
 #include "DrawDebugHelpers.h"
 
+int32 GMobileEnableClusterLighting = 1;
+static TAutoConsoleVariable<int32> CVarMobileEnableClusterLighting(
+	TEXT("r.Mobile.EnableClusterLighting"),
+	GMobileEnableClusterLighting,
+	TEXT("Weather support cluster lighting."),
+	ECVF_Scalability | ECVF_RenderThreadSafe
+);
+
 int32 GMobileLightGridPixel = 64;
 FAutoConsoleVariableRef CVarMobileLightGridPixelSize(
 	TEXT("r.Mobile.LightGridPixelSize"),
@@ -378,8 +386,13 @@ void GatherLocalLightInfo(FScene* Scene, const FViewInfo& View)
 	GLightViewSpaceDirAndPreprocAngle.Reset();
 	GLightViewSpacePosAndRadius.Reset();
 	float MaxZ = 0.f, Radius = 0.f;
+	if (View.VisibleLightInfos.Num() <= 0)return;
 	for (TSparseArray<FLightSceneInfoCompact>::TConstIterator LightIt(Scene->Lights); LightIt; ++LightIt)
 	{
+		const FVisibleLightViewInfo& VisibleLightViewInfo = View.VisibleLightInfos[LightIt.GetIndex()];
+		if (!VisibleLightViewInfo.bInViewFrustum)
+			continue;
+
 		const FLightSceneInfoCompact& LightSceneInfoCompact = *LightIt;
 		const FLightSceneInfo* const LightSceneInfo = LightSceneInfoCompact.LightSceneInfo;
 
@@ -405,6 +418,7 @@ void GatherLocalLightInfo(FScene* Scene, const FViewInfo& View)
 			GLightViewSpacePosAndRadius.Add(FVector4(LightPosInView, 1 / LightParameters.InvRadius));
 		}
 	}
+	UE_LOG(LogTemp, Log, TEXT("Light in view space: %d "), GLightViewSpacePosAndRadius.Num());
 	//MaxCullDistance = MaxZ;
 }
 
@@ -890,6 +904,9 @@ void MobileComputeLightGrid_GPU(const FViewInfo& View, FRHICommandListImmediate&
 /// End
 void FMobileSceneRenderer::MobileComputeLightGrid(FRHICommandListImmediate& RHICmdList)
 {
+	if (CVarMobileEnableClusterLighting.GetValueOnAnyThread() != 1)
+		return;
+
 	for (auto& View : Views)
 	{
 		GatherLocalLightInfo(Scene, View);
