@@ -220,7 +220,7 @@ int32 MobileBasePass::CalcNumMovablePointLights(const FMaterial& InMaterial, con
 	int32 NumMobileMovableLights = InPrimitiveSceneProxy ? InPrimitiveSceneProxy->GetPrimitiveSceneInfo()->NumMobileMovablePointLights : 0;
 	static auto* MobileEnableClusterLightingCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.EnableClusterLighting"));
 	const bool bSupportClusterLighting = MobileEnableClusterLightingCVar->GetValueOnAnyThread() == 1;
-	if (NumMobileMovableLights >= MOBILE_OPEN_CLUSTER_LIGHTS_COUNT && !bIsUnlit && bSupportClusterLighting)
+	if (/*NumMobileMovableLights >= MOBILE_OPEN_CLUSTER_LIGHTS_COUNT && */!bIsUnlit && bSupportClusterLighting)
 		return MOBILE_OPEN_CLUSTER_LIGHTS_COUNT;
 	// end
 	int32 OutNumMovablePointLights = (InPrimitiveSceneProxy && !bIsUnlit) ? FMath::Min<int32>(NumMobileMovableLights, ReadOnlyCVARCache.NumMobileMovablePointLights) : 0;

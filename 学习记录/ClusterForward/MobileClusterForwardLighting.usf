@@ -131,7 +131,7 @@ void ComputeClusterCS(
 				float TanConeAngle = ViewSpaceDirAndPreprocAngle.w;
 				if (TanConeAngle > 0.f)
 				{
-					bPassSpotLight = !IsAabbOutsideInfiniteAcuteConeApprox(ViewSpaceLightPos, ViewSpaceDirAndPreprocAngle.xyz, TanConeAngle, ViewTileCenter, ViewTileExtent);
+					bPassSpotLight = !IsAabbOutsideInfiniteAcuteConeApprox(ViewSpaceLightPos, -ViewSpaceDirAndPreprocAngle.xyz, TanConeAngle, ViewTileCenter, ViewTileExtent);
 				}
 				BRANCH
 				if (bPassSpotLight)

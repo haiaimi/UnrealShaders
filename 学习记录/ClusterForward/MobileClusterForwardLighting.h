@@ -11,6 +11,7 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileClusterLightingUniformParameters, )
 	SHADER_PARAMETER(FUintVector4, CulledGridSizeParams)
 	SHADER_PARAMETER(FVector, LightGridZParams)
 	SHADER_PARAMETER_SRV(Buffer<float4>, MobileLocalLightBuffer)
+	SHADER_PARAMETER_SRV(Buffer<float4>, MobileSpotLightBuffer)
 	SHADER_PARAMETER_SRV(Buffer<uint>, NumCulledLightsGrid)
 	SHADER_PARAMETER_SRV(Buffer<uint>, CulledLightDataGrid)
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
@@ -18,6 +19,8 @@ END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 #define MAX_BUFFER_MIP_LEVEL 4u
 #define BUFFER_MIP_LEVEL_SCALE 2u
+
+DECLARE_CYCLE_STAT_EXTERN(TEXT("Mobile Compute Grid"), STAT_MobileComputeGrid, STATGROUP_SceneRendering, RENDERCORE_API);
 
 template<class BufferType>
 struct FMobileClusterMipBuffer
@@ -58,6 +61,7 @@ class FMobileClusterLightingResources
 {
 public:
 	FDynamicReadBuffer MobileLocalLight;
+	FDynamicReadBuffer MobileSpotLight;
 	FDynamicReadBuffer ViewSpacePosAndRadiusData;
 	FDynamicReadBuffer ViewSpaceDirAndPreprocAngleData;
 
@@ -70,6 +74,7 @@ public:
 	void Release()
 	{
 		MobileLocalLight.Release();
+		MobileSpotLight.Release();
 		ViewSpacePosAndRadiusData.Release();
 		ViewSpaceDirAndPreprocAngleData.Release();
 		NumCulledLightsGrid.Release();
