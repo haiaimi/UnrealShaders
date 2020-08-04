@@ -1833,7 +1833,7 @@ protected:
 	void BuildCSMVisibilityState(FLightSceneInfo* LightSceneInfo);
 
 	// #change by wh, 2020/7/23 
-	void MobileComputeLightGrid();
+	void MobileComputeLightGrid(FRHICommandListImmediate& RHICmdList);
 	// end
 
 	void InitViews(FRHICommandListImmediate& RHICmdList);

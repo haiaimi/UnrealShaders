@@ -84,10 +84,6 @@ static TAutoConsoleVariable<int32> CVarMobileCustomDepthForTranslucency(
 
 DECLARE_GPU_STAT_NAMED(MobileSceneRender, TEXT("Mobile Scene Render"));
 
-// #change by wh, 2020/7/23
-//DECLARE_CYCLE_STAT(TEXT("MobileComputeGrid"), STAT_CLMM_MobileComputeGrid, STATGROUP_CommandListMarkers);
-// end
-
 DECLARE_CYCLE_STAT(TEXT("SceneStart"), STAT_CLMM_SceneStart, STATGROUP_CommandListMarkers);
 DECLARE_CYCLE_STAT(TEXT("SceneEnd"), STAT_CLMM_SceneEnd, STATGROUP_CommandListMarkers);
 DECLARE_CYCLE_STAT(TEXT("InitViews"), STAT_CLMM_InitViews, STATGROUP_CommandListMarkers);
@@ -280,7 +276,6 @@ void FMobileSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdList)
 	PostVisibilityFrameSetup(ILCTaskData);
 
 	// #change by wh, 2020/8/2
-	SCOPE_CYCLE_COUNTER(STAT_MobileComputeGrid);
 	// After Post Visibility Frame Setup, because wu need light visible info
 	MobileComputeLightGrid(RHICmdList);
 	// end

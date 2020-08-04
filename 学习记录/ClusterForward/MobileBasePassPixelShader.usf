@@ -443,10 +443,10 @@ half3 ComputeClusterLight(FMaterialPixelParameters MaterialParameters, FMobileSh
 		{
 			Attenuation = RadialAttenuation(ToLight * LightPositionAndInvRadius.w, LightColorAndFalloffExponent.w);
 		}
-				
+		float4 SpotLightAngles = MobileClusterLighting.MobileSpotLightBuffer[LightIndex * 2 + 0];
+		float4 SpotLightDirectionAndSpecularScale = MobileClusterLighting.MobileSpotLightBuffer[LightIndex * 2 + 1];
+		
 		#if PROJECT_MOBILE_ENABLE_MOVABLE_SPOTLIGHTS
-			float4 SpotLightAngles = MobileClusterLighting.MobileSpotLightBuffer[LightIndex * 2 + 0];
-			float4 SpotLightDirectionAndSpecularScale = MobileClusterLighting.MobileSpotLightBuffer[LightIndex * 2 + 1];
 			if(SpotLightAngles.w > 0.0)
 			{
 				Attenuation *= SpotAttenuation(L, -SpotLightDirectionAndSpecularScale.xyz, SpotLightAngles.xy);
