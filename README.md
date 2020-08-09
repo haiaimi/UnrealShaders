@@ -21,3 +21,10 @@
   ![image](https://github.com/haiaimi/UnrealShaders/blob/master/RenderPictures/ShadowFakery/MergedDistanceField.png)
 
   这个距离场包含4通道，每个通道代表每个方向剪影的距离场，有了这个距离场就可以进形平滑插值，所以可以模拟阴影的变化，原理和字体距离场相似。
+
+### 4、Cluster Lighting多光源方案
+  对视锥空间进行分块并计算每一块所包含的光照信息，用于后面着色阶段的使用，可以CPU计算也可以GPU计算，GPU计算并不会消耗太多时间，会节省很多CPU消耗，下面是835机型上的测试，同屏50+个光源：
+  
+  ![image](https://github.com/haiaimi/UnrealShaders/blob/master/RenderPictures/Cluster%20Forward%20Shading/ClusterLighting_835.gif)
+  
+  ![image](https://github.com/haiaimi/UnrealShaders/blob/master/RenderPictures/Cluster%20Forward%20Shading/ClusterLighting_SceneRendering.jpg)
