@@ -385,3 +385,49 @@ vel_step(N, u, v, u_prev, v_prev, visc, dt);
 dens_step(N, dens, dens_prev, u, v, diff, dt);
 draw_dens(N, dens);
 ```
+
+# GPU Gems
+
+GPU Gems中有篇对应的二维流体模拟文章，描述的更加详细一些，并且更适合GPU计算。
+
+## 涉及公式
+
+### Equation 1
+$\frac{\partial u}{\partial t}=-(u\cdot\nabla)u-\frac{1}{\rho}\nabla p + \nu{\nabla}^2u+F$
+
+这里$F$为外力了，同时这里实际上是两个式子，因为这里的速度有两个分量。
+
+$(u\cdot\nabla)u$：*Advection*（对流）项。
+
+$\frac{1}{\rho}\nabla p$：*Pressure*（压力项），当有力施加到流体时，就会推动施力点的附近的分子，所以会产生压力，导致流体的加速度发生变化，从而导致流体速度的变化。这里的$\nabla$表示求梯度。
+
+$\nu{\nabla}^2u$：*Diffusion*（扩散）项，不同流体的粘度不一样，扩散速度也会不一样。$\nabla ^2u$为$u$的[拉普拉斯算子](https://zh.wikipedia.org/wiki/%E6%8B%89%E6%99%AE%E6%8B%89%E6%96%AF%E7%AE%97%E5%AD%90)。
+
+$F$：*External Forces*，施加到流体的外力项。
+
+上面$\nabla$符号有三个不同的用法，分别是$gradient$（梯度），$divergence$（散度），$Laplacian$（拉普拉斯算子）,定义分别如下：
+
+  | Operator | Definition | Finite Difference form |
+  |:------------:|:--------------:|:-----------:|
+  | Gradient   | $\nabla p=\lbrace \frac{\partial p}{\partial x}, \frac{\partial p}{\partial y} \rbrace$  |$\frac{p_{i+1,j}-p_{i-1,j}}{2\partial x}, \frac{p_{i,j+1}-p_{i,j-1}}{2\partial y}$ |
+  | Divergence | $\nabla \cdot u=\frac{\partial p}{\partial x}+\frac{\partial p}{\partial y}$ | $\frac{u_{i+1,j}-u_{i-1,j}}{2\partial x}+ \frac{v_{i,j+1}-v_{i,j-1}}{2\partial y}$ |
+  | Laplacian  | $\nabla ^2p=\frac{\partial ^2 p}{\partial x^2}+\frac{\partial ^2 p}{\partial y^2}$| $\frac{p_{i+1,j}-2p_{i,j}+p_{i-1,j}}{(\partial x)^2}+ \frac{p_{i,j+1}-2p_{i,j}+p_{i,j-1}}{(\partial y)^2}$ |
+
+散度是比较重要的物理量，表示在一定密度下离开指定区域的速率。在NS等式中被应用到流体的速度上。
+
+标量场的梯度是向量场，向量场的散度是标量。把散度应用到梯度结果上就是*拉普拉斯*算子。
+
+### Equation 2
+$\nabla \cdot u=0$
+表示$u$的散度为0。由于是模拟不可压缩流体，所以等式2右侧为0。
+
+### Equation 3
+ $\nabla ^2p=\frac{p_{i+1,j}+p_{i-1,j}+p_{i,j+1}+p_{i,j-1}-4p_{i,j}}{(\partial x)^2}$
+
+ 这里假设网格单元为正方形（$d_x=d_y$），这样就可以把拉普拉斯算子简化成这样。
+
+
+ ### Equation 4
+
+$w=u+\nabla p$     
+霍齐分解, 定义$D$为模拟流体的空间区域（这里为平平面），$n$为该区域的法线方向，$w$为该空间上的一个向量场，$u$散度为0，并且和$\partial D$平行，所以$u \cdot n=0$。所以任何一个向量场可以被分解为两个向量场之和，分别是无散度向量场和标量场的梯度（向量场）。
