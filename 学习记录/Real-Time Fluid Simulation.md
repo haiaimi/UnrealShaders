@@ -428,6 +428,38 @@ $\nabla \cdot u=0$
 
 
  ### Equation 4
-
 $w=u+\nabla p$     
 霍齐分解, 定义$D$为模拟流体的空间区域（这里为平平面），$n$为该区域的法线方向，$w$为该空间上的一个向量场，$u$散度为0，并且和$\partial D$平行，所以$u \cdot n=0$。所以任何一个向量场可以被分解为两个向量场之和，分别是无散度向量场和标量场的梯度（向量场）。
+
+### Equation 5
+$u=w-\nabla p$       
+要解连续方程，需要保证每一个Time Step速度是零散度，所以就转化成上面的式子。
+
+### Equation 6
+$\nabla \cdot w=\nabla \cdot (u+\nabla p)=\nabla \cdot u+\nabla ^2p$      
+对两边进行散度计算
+
+### Equation 7
+$\nabla ^2p=\nabla \cdot w$    
+由于$u$的散度是0，即$\nabla \cdot u=0$，所以可以化简如上。
+
+### Equation 8
+$\frac{\partial u}{\partial t}=P(-(u\cdot \nabla)u+v\nabla ^2u+F)$
+
+这里的$P$表示投影操作，上式就是对NS等式两边进行投影操作，可见经过投影后，压力项消去。
+要求出$u$，首先需要求出$w$，这里引入投影的概念，主要是把非0散度向量场投影到自身0散度向量中。所以可得：
+
+$Pw=Pu+P(\nabla p)$，由于根据定义投影是把非0散度投到0散度上，所以$Pw=Pu=u$，因此$P(\nabla p)=0$。并且散度为0的向量场，其导数也是。
+
+### Equation 9
+$q(x, t+\partial t)=q(x-u(x,t)\partial t, t)$        
+这是对流计算公式，一般正常计算流体中粒子位置的方法就是通过步进的方法，如下：$r(t+\partial t)=r(t)+u(t)\partial t$，$r$表示位置，可见就是常规的根据的速度及deltaTime求位置的方法，但是这种方法不够稳定，也不适合在GPU上实现。所以使用上式，$q$代表数量，可以是速度、密度、温度等等，就是回到之前粒子在每个网格单元，然后复制到当前网格进行计算，一个比较取巧的方法。
+
+### Equation 10
+$\frac{\partial u}{\partial t}=v\nabla^2u$  
+粘性方程
+
+### Equation 11
+$(I-v\partial t\nabla ^2)u(x, t+\nabla t)=u(x,t)$         
+*Equation 10*是粘性方程，它会影响流体速度，可以表示如下：      
+$u(x, t+\partial t)=u(x,t)+v\partial t\nabla ^2u(x,t)$，但是同样这种方法不稳定，所以依然需要像*Equation 9*的方法，得出方程如上。$I$是单位矩阵
