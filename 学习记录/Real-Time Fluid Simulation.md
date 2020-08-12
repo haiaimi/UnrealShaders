@@ -462,4 +462,12 @@ $\frac{\partial u}{\partial t}=v\nabla^2u$
 ### Equation 11
 $(I-v\partial t\nabla ^2)u(x, t+\nabla t)=u(x,t)$         
 *Equation 10*是粘性方程，它会影响流体速度，可以表示如下：      
-$u(x, t+\partial t)=u(x,t)+v\partial t\nabla ^2u(x,t)$，但是同样这种方法不稳定，所以依然需要像*Equation 9*的方法，得出方程如上。$I$是单位矩阵
+$u(x, t+\partial t)=u(x,t)+v\partial t\nabla ^2u(x,t)$，但是同样这种方法不稳定，所以依然需要像*Equation 9*的方法，得出方程如上。$I$是单位矩阵。
+
+### Equation 12
+$x_{i,j}^{(k+1)}=\frac{x_{i-1,j}^{(k)}+x_{i+1,j}^{(k)}+x_{i,j-1}^{(k)}+x_{i,j+1}^{(k)}+\alpha b_{i,j}}{\beta}$    
+上式用于解泊松等式，我们有两个泊松等式需要解，并且都可以用上式表示，1是*泊松-压力*等式（Equation 7），2是*粘性*等式（Equation 10），这里主要是使用迭代法求得近似解。在*泊松-压力*等式中，$x$表示$p$，$b$表示$\nabla \cdot w$，$\alpha =-(x)^2$， $\beta = 4。在*粘性*等式中，$x$,$b$表示$u$，$\alpha = \frac{x^2}{t}$，$\beta = 4$。
+
+泊松等式是一个$Ax=b$形式的矩阵等式，$x$是我们需要求的值，这里是$p$或者$u$，$b$是一个常量向量，$A$是一个矩阵，这里隐式的表示*拉普拉斯算子*$\nabla ^2$，所以这里不需要存储完整的矩阵。
+
+迭代初始的值$x^{[0]}$一般取一个大致猜想的值，$x^{[k]}$会逐渐接近准确值，最简单的迭代方式就是雅可比迭代。
