@@ -466,8 +466,91 @@ $u(x, t+\partial t)=u(x,t)+v\partial t\nabla ^2u(x,t)$，但是同样这种方�
 
 ### Equation 12
 $x_{i,j}^{(k+1)}=\frac{x_{i-1,j}^{(k)}+x_{i+1,j}^{(k)}+x_{i,j-1}^{(k)}+x_{i,j+1}^{(k)}+\alpha b_{i,j}}{\beta}$    
-上式用于解泊松等式，我们有两个泊松等式需要解，并且都可以用上式表示，1是*泊松-压力*等式（Equation 7），2是*粘性*等式（Equation 10），这里主要是使用迭代法求得近似解。在*泊松-压力*等式中，$x$表示$p$，$b$表示$\nabla \cdot w$，$\alpha =-(x)^2$， $\beta = 4。在*粘性*等式中，$x$,$b$表示$u$，$\alpha = \frac{x^2}{t}$，$\beta = 4$。
+上式用于解泊松等式，我们有两个泊松等式需要解，并且都可以用上式表示，1是*泊松-压力*等式（Equation 7），2是*粘性*等式（Equation 10），这里主要是使用迭代法求得近似解。在*泊松-压力*等式中，$x$表示$p$，$b$表示$\nabla \cdot w$，$\alpha =-(x)^2$， $\beta = 4。在*粘性*等式中，$x$,$b$表示$u$。$$\alpha=\frac{x^2}{t}$，$\beta = 4$。
 
 泊松等式是一个$Ax=b$形式的矩阵等式，$x$是我们需要求的值，这里是$p$或者$u$，$b$是一个常量向量，$A$是一个矩阵，这里隐式的表示*拉普拉斯算子*$\nabla ^2$，所以这里不需要存储完整的矩阵。
 
 迭代初始的值$x^{[0]}$一般取一个大致猜想的值，$x^{[k]}$会逐渐接近准确值，最简单的迭代方式就是雅可比迭代。
+
+泊松压力方程的正确解需要纯*诺伊曼边界条件*：$\frac{\partial p}{\partial n}=0$，在边界处垂直于边界的压力的变化率为0。
+
+### Equation 13
+$S=P \circ F\circ D\circ A$      
+定义S为等式的解，A为*Advect*，D为*Diffusion*，F为*Force*，P为*Projection*。
+大致流程如下：
+```cpp
+  u=advect(u);
+  u=diffuse(u);
+  u=addForce(u);
+
+  //Apply projection operator to the result
+  p=computePressure(u);
+  u=subtractPressureGradient(u, p);
+```
+
+```cpp
+// Advection
+void advect(float2 coords   : WPOS,   // grid coordinates     
+            out float4 xNew : COLOR,  // advected qty     
+            uniform float timestep,             
+            uniform    float rdx,        // 1 / grid scale     
+            uniform    samplerRECT u,    // input velocity     
+            uniform    samplerRECT x)    // qty to advect
+{  
+  // follow the velocity field "back in time"     
+  float2 pos = coords - timestep * rdx * f2texRECT(u, coords); 
+  // interpolate and write to the output fragment  
+  // f4texRECTbilerp is bilinear lerp function 
+  xNew = f4texRECTbilerp(x, pos); 
+} 
+```
+
+```cpp
+// Viscous Diffusion
+void jacobi(half2 coords   : WPOS,   // grid coordinates     
+            out half4 xNew : COLOR,  // result 
+            uniform    half alpha,            
+            uniform    half rBeta,   // reciprocal beta     
+            uniform samplerRECT x,   // x vector (Ax = b)     
+            uniform samplerRECT b)   // b vector (Ax = b) 
+  {    // left, right, bottom, and top x samples    
+        half4 xL = h4texRECT(x, coords - half2(1, 0));   
+        half4 xR = h4texRECT(x, coords + half2(1, 0));   
+        half4 xB = h4texRECT(x, coords - half2(0, 1));   
+        half4 xT = h4texRECT(x, coords + half2(0, 1)); // b sample, from center     
+        half4 bC = h4texRECT(b, coords); 
+        // evaluate Jacobi iteration  
+        xNew = (xL + xR + xB + xT + alpha * bC) * rBeta; 
+  } 
+```
+
+```cpp
+// Projection
+
+// Divergence 
+void divergence(half2 coords : WPOS,   // grid coordinates     
+                out half4 div : COLOR,  // divergence     
+                uniform half halfrdx,   // 0.5 / gridscale     
+                uniform samplerRECT w)  // vector field
+ {   
+        half4 wL = h4texRECT(w, coords - half2(1, 0));   
+        half4 wR = h4texRECT(w, coords + half2(1, 0));   
+        half4 wB = h4texRECT(w, coords - half2(0, 1));   
+        half4 wT = h4texRECT(w, coords + half2(0, 1)); 
+        div = halfrdx * ((wR.x - wL.x) + (wT.y - wB.y)); 
+ } 
+ // Gradient Subtraction 
+ void gradient(half2 coords   : WPOS,   // grid coordinates     
+               out half4 uNew : COLOR,  // new velocity    
+               uniform half halfrdx,    // 0.5 / gridscale     
+               uniform samplerRECT p,   // pressure     
+               uniform samplerRECT w)   // velocity 
+  {  
+        half pL = h1texRECT(p, coords - half2(1, 0));   
+        half pR = h1texRECT(p, coords + half2(1, 0));  
+        half pB = h1texRECT(p, coords - half2(0, 1));   
+        half pT = h1texRECT(p, coords + half2(0, 1)); 
+        uNew = h4texRECT(w, coords);   
+        uNew.xy -= halfrdx * half2(pR - pL, pT - pB);
+  } 
+```
