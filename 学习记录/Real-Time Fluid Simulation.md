@@ -466,7 +466,7 @@ $u(x, t+\partial t)=u(x,t)+v\partial t\nabla ^2u(x,t)$，但是同样这种方�
 
 ### Equation 12
 $x_{i,j}^{(k+1)}=\frac{x_{i-1,j}^{(k)}+x_{i+1,j}^{(k)}+x_{i,j-1}^{(k)}+x_{i,j+1}^{(k)}+\alpha b_{i,j}}{\beta}$    
-上式用于解泊松等式，我们有两个泊松等式需要解，并且都可以用上式表示，1是*泊松-压力*等式（Equation 7），2是*粘性*等式（Equation 10），这里主要是使用迭代法求得近似解。在*泊松-压力*等式中，$x$表示$p$，$b$表示$\nabla \cdot w$，$\alpha =-(x)^2$， $\beta = 4。在*粘性*等式中，$x$,$b$表示$u$。$$\alpha=\frac{x^2}{t}$，$\beta = 4$。
+上式用于解泊松等式，我们有两个泊松等式需要解，并且都可以用上式表示，1是*泊松-压力*等式（Equation 7），2是*粘性* 等式（Equation 10），这里主要是使用迭代法求得近似解。在*泊松-压力*等式中，$x$表示$p$，$b$表示$\nabla \cdot w$，$\alpha =-(x)^2$， $\beta = 4。在*粘性*等式中，$x$,$b$表示$u$。$$\alpha=\frac{x^2}{t}$，$\beta = 4+\alpha$。
 
 泊松等式是一个$Ax=b$形式的矩阵等式，$x$是我们需要求的值，这里是$p$或者$u$，$b$是一个常量向量，$A$是一个矩阵，这里隐式的表示*拉普拉斯算子*$\nabla ^2$，所以这里不需要存储完整的矩阵。
 
@@ -554,3 +554,46 @@ void divergence(half2 coords : WPOS,   // grid coordinates
         uNew.xy -= halfrdx * half2(pR - pL, pT - pB);
   } 
 ```
+
+### Equation 14
+$\frac{u_{0,j}+u_{1,j}}{2}=0, j \in [0,N]$
+
+用于流体速度边界计算，$N$是流体网格尺寸，为了满足等式，需要使$u_{0,j}=-u_{1,j}$。
+
+### Equation 15
+$\frac{p_{1,j}-p_{0,j}}{\delta x}=0$
+
+流体压力边界等式，
+
+```cpp
+void boundary(half2 coords : WPOS,    // grid coordinates     
+              half2 offset : TEX1,    // boundary offset     
+              out half4 bv : COLOR,   // output value     
+              uniform half scale,     // scale parameter     
+              uniform samplerRECT x)  // state field, velocity or pressure field
+{   
+  bv = scale * h4texRECT(x, coords + offset);
+} 
+```
+
+*offset*参数用于将纹理坐标调整到边界内的坐标。*scale*参数用于缩放复制到边界的值，对于速度来说，*scale*设为-1，对于*pressure*来说，设为1。
+
+### Equation 16
+$\frac{\partial d}{\partial t}=-(u \cdot \nabla)d$
+
+要更好的表现模拟的流体，需要添加一些东西使其更加明显，如颜料，用标量表示其浓度。上面把对流加到标量场。
+
+### Equation 17
+$\frac{\partial d}{\partial t}=-(u \cdot \nabla)d+\nu \nabla ^2d+S$
+
+把扩散加入到上述标量场中。
+
+### Equation 18
+$f_{buoy}=\sigma (T-T_0)\hat{j}$
+
+为了模拟温度的影响，可以加入浮力因素，$T$是温度场，$T_0$是环境温度。
+
+### Equation 19
+$f_{buoy}=(-kd+\sigma (T-T_0))\hat{j}$
+
+模拟烟和云，上式涉及两个变量，$d$烟的密度，$T$温度。
