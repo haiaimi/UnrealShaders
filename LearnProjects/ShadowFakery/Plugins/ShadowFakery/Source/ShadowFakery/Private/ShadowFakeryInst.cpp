@@ -47,7 +47,6 @@ void AShadowFakeryInst::BeginPlay()
 {
 	Super::BeginPlay();
 	
-	
 }
 
 #if WITH_EDITOR
@@ -55,16 +54,7 @@ void AShadowFakeryInst::PostEditChangeProperty(FPropertyChangedEvent& PropertyCh
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 }
-
 #endif
-
-void AShadowFakeryInst::EndPlay(const EEndPlayReason::Type EndPlayReason)
-{
-	if (EndPlayReason == EEndPlayReason::EndPlayInEditor && ShadowFakeryStaticMesh)
-	{
-		ShadowFakeryStaticMesh->ClearInstances();
-	}
-}
 
 // Called every frame
 void AShadowFakeryInst::Tick(float DeltaTime)
@@ -73,7 +63,7 @@ void AShadowFakeryInst::Tick(float DeltaTime)
 
 	AInstancedFoliageActor* FoliageActor = AInstancedFoliageActor::GetInstancedFoliageActorForCurrentLevel(GetWorld(), true);
 	TUniqueObj<FFoliageInfo>* CurFoliageInfo = FoliageActor->FoliageInfos.Find(CurFoliageType);
-
+	
 	if (CurFoliageInfo && !bHasInit && ShadowMeshCompentType)
 	{
 		FBox Box(FVector(-25200.f, -25200.f, 0.f), FVector(25200.f, 25200.f, 10000.f));
@@ -81,16 +71,12 @@ void AShadowFakeryInst::Tick(float DeltaTime)
 		FoliageActor->GetOverlappingBoxTransforms(CurFoliageType, Box, OutTransforms);
 		ShadowFakeryStaticMesh = NewObject<UShadowFakeryStaticMeshComponent>(this, ShadowMeshCompentType);
 		ShadowFakeryStaticMesh->RegisterComponent();
+		ShadowFakeryStaticMesh->NumCustomDataFloats = 5;
 		ShadowFakeryStaticMesh->SetWorldLocationAndRotation(FVector::ZeroVector, FRotator::ZeroRotator);
-		ShadowFakeryStaticMesh->CustomInstanceDataNum = 1;
 
 		for (auto& Iter : OutTransforms)
 		{
-			ShadowFakeryStaticMesh->AddInstance_ShadowFakery(FTransform(Iter.GetRotation(), Iter.GetLocation() + FVector::UpVector * 20.f), { FVector4(3.f, 0, 45.f, 1500.f) });
-			/*UShadowFakeryStaticMeshComponent* ShadowFakeryStaticMesh = NewObject<UShadowFakeryStaticMeshComponent>(this, ShadowMeshCompentType);
-			ShadowFakeryStaticMesh->RegisterComponent();
-			ShadowFakeryStaticMesh->SetWorldLocationAndRotation(Iter.GetLocation() + FVector::UpVector * 20.f, Iter.GetRotation());
-			AllShadowStaticMesh.Add(ShadowFakeryStaticMesh);*/
+			ShadowFakeryStaticMesh->AddInstance(FTransform(Iter.GetRotation(), Iter.GetLocation() + FVector::UpVector * 20.f));
 		}
 		bHasInit = true;
 	}
@@ -111,7 +97,8 @@ void AShadowFakeryInst::Tick(float DeltaTime)
 			CurFoliage->bCastDynamicShadow = false;
 		}
 		bSwitchShadowFakery = CVarUseShadowFakery.GetValueOnGameThread();
-		ShadowFakeryStaticMesh->SetVisibility(bSwitchShadowFakery);
+		for (auto Iter : AllShadowStaticMesh)
+			Iter->SetVisibility(bSwitchShadowFakery);
 	}
 
 	//UMaterialInstanceDynamic* MaterialInst = ShadowMeshCompent->CreateDynamicMaterialInstance(0);
@@ -145,14 +132,17 @@ void AShadowFakeryInst::Tick(float DeltaTime)
 		const FVector LightSize = LightDir.GetSafeNormal2D() * FMath::Abs(FMath::Tan(FMath::DegreesToRadians(90.f - FMath::Abs(SunYaw))));
 		//ShadowMeshCompent->UpdateShadowState(LightSize, 1500, 1500);
 
-		GSunYaw = SunYaw;
-		GLightDirWithSize = LightSize;
-
+		const TArray<float> CustomData = { LightSize.X, LightSize.Y, SunYaw, 3000.f, 0 };
 		if (ShadowFakeryStaticMesh)
 		{
-			ShadowFakeryStaticMesh->BatchUpdateInstancesShadowFakeryParam(0, ShadowFakeryStaticMesh->GetInstanceCount(), { FVector4(LightSize.X, LightSize.Y, SunYaw, 2000.f) }, false, true);
+			for (int32 i = 0; i < ShadowFakeryStaticMesh->GetInstanceCount(); ++i)
+			{
+				ShadowFakeryStaticMesh->SetCustomData(i, CustomData, true);
+			}
 		}
-			
+		
+		GSunYaw = SunYaw;
+		GLightDirWithSize = LightSize;
 		/*MaterialInst->SetScalarParameterValue(SunYawParam, SunYaw);
 		MaterialInst->SetVectorParameterValue(SunDirectionParam, FLinearColor(LightDir.GetSafeNormal2D()) * FMath::Abs(1.f / FMath::Tan(FMath::DegreesToRadians(FMath::Abs(SunYaw)))));*/
 		//MaterialInst->SetVectorParameterValue(SunDirectionParam, FLinearColor(LightDir.GetSafeNormal2D()) * (1.f - FMath::Abs(SunYaw) / 90.f) * 5.f);

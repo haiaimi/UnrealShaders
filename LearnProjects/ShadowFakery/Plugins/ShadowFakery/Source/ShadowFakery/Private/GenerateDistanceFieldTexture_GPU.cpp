@@ -139,7 +139,7 @@ void DrawQuadWithPSParams(FRHICommandList& RHICmdList, ERHIFeatureLevel::Type Fe
 	FRHIRenderPassInfo RPInfo(RTCounts, ResultRTs, ERenderTargetActions::Load_Store);
 	RHICmdList.BeginRenderPass(RPInfo, PassName);
 
-	TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
+	FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 	TShaderMapRef<VertexShaderType> VertexShader(GlobalShaderMap);
 	TShaderMapRef<PixelShaderType> PixelShader(GlobalShaderMap);    
 
@@ -153,8 +153,8 @@ void DrawQuadWithPSParams(FRHICommandList& RHICmdList, ERHIFeatureLevel::Type Fe
 	GraphicPSPoint.RasterizerState = TStaticRasterizerState<>::GetRHI();
 	GraphicPSPoint.PrimitiveType = PT_TriangleList;
 	GraphicPSPoint.BoundShaderState.VertexDeclarationRHI = VertexDeclaration.VertexDeclarationRHI;
-	GraphicPSPoint.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-	GraphicPSPoint.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+	GraphicPSPoint.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+	GraphicPSPoint.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 	SetGraphicsPipelineState(RHICmdList, GraphicPSPoint);
 
 	FVertexInput Vertices[4];
@@ -211,20 +211,12 @@ public:
 		const FMatrix& ViewProjMat
 	)
 	{
-		SetShaderValue(RHICmdList, GetVertexShader(), ViewProjMatrix, ViewProjMat);
-	}
-
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-
-		Ar << ViewProjMatrix;
-
-		return bShaderHasOutdatedParameters;
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), ViewProjMatrix, ViewProjMat);
 	}
 
 private:
-	FShaderParameter ViewProjMatrix;
+	LAYOUT_FIELD(FShaderParameter, ViewProjMatrix);
+	//FShaderParameter ViewProjMatrix;
 };
 
 class FGenerateMeshMaskShaderPS : public FGlobalShader
@@ -260,20 +252,20 @@ public:
 		float InTextureSize
 	)
 	{
-		SetShaderValue(RHICmdList, GetPixelShader(), TextureSize, InTextureSize);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), TextureSize, InTextureSize);
 	}
 
-	virtual bool Serialize(FArchive& Ar) override
+	/*virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 
 		Ar << TextureSize;
 
 		return bShaderHasOutdatedParameters;
-	}
+	}*/
 
 private:
-	FShaderParameter TextureSize;
+	LAYOUT_FIELD(FShaderParameter, TextureSize);
 };
 
 IMPLEMENT_SHADER_TYPE(, FGenerateMeshMaskShaderVS, TEXT("/Plugins/Shaders/ShadowFakery.usf"), TEXT("GenerateMeshMaskShaderVS"), SF_Vertex)
@@ -313,11 +305,11 @@ public:
 	{
 	}
 
-	virtual bool Serialize(FArchive& Ar) override
+	/*virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 		return bShaderHasOutdatedParameters;
-	}
+	}*/
 
 private:
 };
@@ -366,13 +358,13 @@ public:
 		FRHITexture* InMaskTexture1
 	)
 	{
-		SetShaderValue(RHICmdList, GetPixelShader(), CurLevel, InLevel);
-		SetShaderValue(RHICmdList, GetPixelShader(), DistanceFieldDimension, DFDimension);
-		SetTextureParameter(RHICmdList, GetPixelShader(), MaskTexture0, TextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InMaskTexture0);
-		SetTextureParameter(RHICmdList, GetPixelShader(), MaskTexture1, InMaskTexture1);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), CurLevel, InLevel);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), DistanceFieldDimension, DFDimension);
+		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), MaskTexture0, TextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InMaskTexture0);
+		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), MaskTexture1, InMaskTexture1);
 	}
 
-	virtual bool Serialize(FArchive& Ar) override
+	/*virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 
@@ -383,14 +375,14 @@ public:
 		Ar << TextureSampler;
 
 		return bShaderHasOutdatedParameters;
-	}
+	}*/
 
 private:
-	FShaderParameter CurLevel;
-	FShaderParameter DistanceFieldDimension;
-	FShaderResourceParameter MaskTexture0;
-	FShaderResourceParameter MaskTexture1;
-	FShaderResourceParameter TextureSampler;
+	LAYOUT_FIELD(FShaderParameter, CurLevel);
+	LAYOUT_FIELD(FShaderParameter, DistanceFieldDimension);
+	LAYOUT_FIELD(FShaderResourceParameter, MaskTexture0);
+	LAYOUT_FIELD(FShaderResourceParameter, MaskTexture1);
+	LAYOUT_FIELD(FShaderResourceParameter, TextureSampler);
 };
 
 //IMPLEMENT_SHADER_TYPE(, FGeneralShaderVS, TEXT("/Shaders/ShadowFakery.usf"), TEXT("GeneralShaderVS"), SF_Vertex)
@@ -432,11 +424,11 @@ public:
 		FRHITexture* InTexture1 
 	)
 	{
-		SetTextureParameter(RHICmdList, GetPixelShader(), MaskTexture0, TextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InTexture0);
-		SetTextureParameter(RHICmdList, GetPixelShader(), MaskTexture1, InTexture1);
+		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), MaskTexture0, TextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InTexture0);
+		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), MaskTexture1, InTexture1);
 	}
 
-	virtual bool Serialize(FArchive& Ar) override
+	/*virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 
@@ -445,12 +437,12 @@ public:
 		Ar << TextureSampler;
 
 		return bShaderHasOutdatedParameters;
-	}
+	}*/
 
 private:
-	FShaderResourceParameter MaskTexture0;
-	FShaderResourceParameter MaskTexture1;
-	FShaderResourceParameter TextureSampler;
+	LAYOUT_FIELD(FShaderResourceParameter, MaskTexture0);
+	LAYOUT_FIELD(FShaderResourceParameter, MaskTexture1);
+	LAYOUT_FIELD(FShaderResourceParameter, TextureSampler);
 };
 
 IMPLEMENT_SHADER_TYPE(, FRevertToDistanceFieldShaderPS, TEXT("/Plugins/Shaders/ProcessShadowFakery.usf"), TEXT("RevertToDistanceFieldShaderPS"), SF_Pixel)
@@ -491,11 +483,11 @@ public:
 		FRHITexture* InUnSignedDistanceField
 	)
 	{
-		SetShaderValue(RHICmdList, GetPixelShader(), DistanceOffset, InDistanceOffset);
-		SetTextureParameter(RHICmdList, GetPixelShader(), UnsignedDistanceField, TextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InUnSignedDistanceField);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), DistanceOffset, InDistanceOffset);
+		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), UnsignedDistanceField, TextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InUnSignedDistanceField);
 	}
 
-	virtual bool Serialize(FArchive& Ar) override
+	/*virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 
@@ -504,29 +496,32 @@ public:
 		Ar << TextureSampler;
 
 		return bShaderHasOutdatedParameters;
-	}
+	}*/
 
 private:
-	FShaderParameter DistanceOffset;
-	FShaderResourceParameter UnsignedDistanceField;
-	FShaderResourceParameter TextureSampler;
+	LAYOUT_FIELD(FShaderParameter, DistanceOffset);
+	LAYOUT_FIELD(FShaderResourceParameter, UnsignedDistanceField);
+	LAYOUT_FIELD(FShaderResourceParameter, TextureSampler);
 };
 
 IMPLEMENT_SHADER_TYPE(, FReconstructAndReverseDistanceFieldShaderPS, TEXT("/Plugins/Shaders/ProcessShadowFakery.usf"), TEXT("ReconstructDistanceFieldShaderPS"), SF_Pixel)
 
-class FMergeDistanceFieldShaderPS : public FGlobalShader
+#define THREADGROUP_SIZE 32u
+
+class FMergeToAtlasCS : public FGlobalShader
 {
-	DECLARE_SHADER_TYPE(FMergeDistanceFieldShaderPS, Global)
+	DECLARE_SHADER_TYPE(FMergeToAtlasCS, Global)
 
 public:
-	FMergeDistanceFieldShaderPS() {};
+	FMergeToAtlasCS() {};
 
-	FMergeDistanceFieldShaderPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
+	FMergeToAtlasCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
 		FGlobalShader(Initializer)
 	{
+		TileIndex.Bind(Initializer.ParameterMap, TEXT("TileIndex"));
 		SignedDistanceField.Bind(Initializer.ParameterMap, TEXT("SignedDistanceField"));
 		UnsignedDistanceField.Bind(Initializer.ParameterMap, TEXT("UnsignedDistanceField"));
-		TextureSampler.Bind(Initializer.ParameterMap, TEXT("TextureSampler"));
+		RWAtlasTexture.Bind(Initializer.ParameterMap, TEXT("RWAtlasTexture"));
 	}
 
 	static bool ShouldCache(EShaderPlatform Platform)
@@ -542,39 +537,45 @@ public:
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), THREADGROUP_SIZE);
 	}
 
 	void SetParameters(
 		FRHICommandList& RHICmdList,
+		uint32 InTileIndex,
 		FRHITexture* InSignedDistanceField,
-		FRHITexture* InUnSignedDistanceField
+		FRHITexture* InUnSignedDistanceField,
+		FRHIUnorderedAccessView* AtlasTex
 	)
 	{
-		SetTextureParameter(RHICmdList, GetPixelShader(), SignedDistanceField, TextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InSignedDistanceField);
-		SetTextureParameter(RHICmdList, GetPixelShader(), UnsignedDistanceField, InUnSignedDistanceField);
+		FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
+
+		SetShaderValue(RHICmdList, ShaderRHI, TileIndex, InTileIndex);
+		SetTextureParameter(RHICmdList, ShaderRHI, SignedDistanceField, InSignedDistanceField);
+		SetTextureParameter(RHICmdList, ShaderRHI, UnsignedDistanceField, InUnSignedDistanceField);
+		SetUAVParameter(RHICmdList, ShaderRHI, RWAtlasTexture, AtlasTex);
 	}
 
-	virtual bool Serialize(FArchive& Ar) override
+	void UnsetParameters(FRHICommandList& RHICmdList)
 	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
 
-		Ar << SignedDistanceField;
-		Ar << UnsignedDistanceField;
-		Ar << TextureSampler;
-
-		return bShaderHasOutdatedParameters;
+		SetUAVParameter(RHICmdList, ShaderRHI, RWAtlasTexture, 0);
 	}
 
 private:
-	FShaderResourceParameter SignedDistanceField;
-	FShaderResourceParameter UnsignedDistanceField;
-	FShaderResourceParameter TextureSampler;
+
+	LAYOUT_FIELD(FShaderParameter, TileIndex);
+	LAYOUT_FIELD(FShaderResourceParameter, SignedDistanceField);
+	LAYOUT_FIELD(FShaderResourceParameter, UnsignedDistanceField);
+	LAYOUT_FIELD(FShaderResourceParameter, RWAtlasTexture);
 };
 
-IMPLEMENT_SHADER_TYPE(, FMergeDistanceFieldShaderPS, TEXT("/Plugins/Shaders/ProcessShadowFakery.usf"), TEXT("MergeToFinalSignedDistanceField"), SF_Pixel)
+IMPLEMENT_SHADER_TYPE(, FMergeToAtlasCS, TEXT("/Plugins/Shaders/ProcessShadowFakery.usf"), TEXT("MergeToAtlasCS"), SF_Compute)
 #endif
 
-void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, class UStaticMesh* StaticMesh, FRHITexture*& MergedDistanceFieldTexture, class UTextureRenderTarget* OutputRenderTarget, float StartDegree, uint32 TextureSize)
+void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, class UStaticMesh* StaticMesh, FRHITexture*& MergedDistanceFieldTexture, class UTextureRenderTarget* OutputRenderTarget, uint32 TileIndex, float StartDegree, uint32 TextureSize)
 {
 	check(IsInRenderingThread());
 	
@@ -662,8 +663,8 @@ void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLe
 	GraphicPSPoint.RasterizerState = TStaticRasterizerState<>::GetRHI();
 	GraphicPSPoint.PrimitiveType = PT_TriangleList;
 	GraphicPSPoint.BoundShaderState.VertexDeclarationRHI = VertexDeclaration.VertexDeclarationRHI;
-	GraphicPSPoint.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-	GraphicPSPoint.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+	GraphicPSPoint.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+	GraphicPSPoint.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 	SetGraphicsPipelineState(RHICmdList, GraphicPSPoint);
 
 	VertexShader->SetParameters(RHICmdList, ViewProjMatrix);
@@ -733,12 +734,27 @@ void GenerateMeshMaskTexture(FRHICommandListImmediate& RHICmdList, ERHIFeatureLe
 	//Merge two distance field 
 	TRefCountPtr<IPooledRenderTarget> MergedDistanceFieldRT;
 	{
-		FPooledRenderTargetDesc MDesc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(TextureSize, TextureSize), /*PF_A32B32G32R32F*/ PF_R32_UINT, FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable, false));
+		FPooledRenderTargetDesc MDesc(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(TextureSize * 4, TextureSize * 4), /*PF_A32B32G32R32F*/ PF_R32_UINT, FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_UAV, false));
 		GRenderTargetPool.FindFreeElement(RHICmdList, MDesc, MergedDistanceFieldRT, TEXT("MergedDistanceFieldRT"));
-		FRHITexture* FinalRenderTargets[] = { MergedDistanceFieldRT->GetRenderTargetItem().TargetableTexture };
-		DrawQuadWithPSParams<FGeneralShaderVS, FMergeDistanceFieldShaderPS>(RHICmdList, FeatureLevel, TEXT("MergeDistanceFieldPass"), FIntPoint(TextureSize, TextureSize), 1, FinalRenderTargets, SignedDistanceFieldRT->GetRenderTargetItem().TargetableTexture, UnsignedDistanceFieldRT->GetRenderTargetItem().TargetableTexture);
+		//FRHITexture* FinalRenderTargets[] = { MergedDistanceFieldRT->GetRenderTargetItem().TargetableTexture };
+
+		RHICmdList.BeginComputePass(TEXT("MergeToAtlas"));
+		TShaderMapRef<FMergeToAtlasCS> MergeCS(GetGlobalShaderMap(FeatureLevel));
+		FRHIComputeShader* ShaderRHI = MergeCS.GetComputeShader();
+		RHICmdList.SetComputeShader(ShaderRHI);
+
+		//RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, SignedDistanceFieldRT->GetRenderTargetItem().TargetableTexture);
+		auto AtlasUAV = RHICreateUnorderedAccessView(MergedDistanceFieldRT->GetRenderTargetItem().TargetableTexture, 0);
+		MergeCS->SetParameters(RHICmdList, TileIndex, SignedDistanceFieldRT->GetRenderTargetItem().TargetableTexture, UnsignedDistanceFieldRT->GetRenderTargetItem().TargetableTexture, AtlasUAV);
+		DispatchComputeShader(RHICmdList, MergeCS, FMath::DivideAndRoundUp(TextureSize, THREADGROUP_SIZE), FMath::DivideAndRoundUp(TextureSize, THREADGROUP_SIZE), 1);
+		MergeCS->UnsetParameters(RHICmdList);
+		RHICmdList.EndComputePass();
+		//DrawQuadWithPSParams<FGeneralShaderVS, FMergeDistanceFieldShaderPS>(RHICmdList, FeatureLevel, TEXT("MergeDistanceFieldPass"), FIntPoint(TextureSize, TextureSize), 1, FinalRenderTargets, SignedDistanceFieldRT->GetRenderTargetItem().TargetableTexture, UnsignedDistanceFieldRT->GetRenderTargetItem().TargetableTexture);
+
 		MergedDistanceFieldTexture = MergedDistanceFieldRT->GetRenderTargetItem().TargetableTexture;
 	}
+	
+	//
 
 	FRHICopyTextureInfo CopyInfo;
 	if (OutputRenderTarget)

@@ -23,6 +23,9 @@ void RevertToDistanceFieldShaderPS(
 }
 
 float DistanceOffset;
+
+uint TileIndex;
+Texture2D<float4> SignedDistanceField;
 Texture2D<float4> UnsignedDistanceField;
 
 void ReconstructDistanceFieldShaderPS(
@@ -35,11 +38,15 @@ void ReconstructDistanceFieldShaderPS(
 	OutColor1 = float4(sign(saturate(DFData.z - DistanceOffset)) * InUV, sign(saturate(DFData.w - DistanceOffset)) * InUV);
 }
 
-Texture2D<float4> SignedDistanceField;
+#ifndef THREADGROUP_SIZE
+	#define THREADGROUP_SIZE 32
+#endif
 
-void MergeToFinalSignedDistanceField(
-	in float2 InUV : TEXCOORD0,
-	out uint OutColor : SV_Target)
+RWTexture2D<uint> RWAtlasTexture;
+
+[numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
+void MergeToAtlasCS(
+	uint3 DispatchThreadID : SV_DispatchThreadID)
 {
 	//float4 UnsignedSampele = UnsignedDistanceField.Sample(TextureSampler, InUV);
 	//float4 SignedSampele = SignedDistanceField.Sample(TextureSampler, InUV);
@@ -47,11 +54,21 @@ void MergeToFinalSignedDistanceField(
 										//SignedSampele.y > 0.02f ? 1 - SignedSampele.y : SignedSampele.y,
 										//SignedSampele.z > 0.02f ? 1 - SignedSampele.z : SignedSampele.z,
 										//SignedSampele.w > 0.02f ? 1 - SignedSampele.w : SignedSampele.w);
-	float4 CurColor = 1.f - 0.5f * (UnsignedDistanceField.Sample(TextureSampler, InUV) + (-SignedDistanceField.Sample(TextureSampler, InUV)) + 1.f);
-	OutColor = 0;
+	float4 CurColor = 1.f - 0.5f * (UnsignedDistanceField[DispatchThreadID.xy] + (-SignedDistanceField[DispatchThreadID.xy]) + 1.f);
+	uint OutColor = 0;
 	
 	OutColor |= uint(CurColor.z * 255.f);
 	OutColor |= uint(CurColor.y * 255.f) << 8;
 	OutColor |= uint(CurColor.x * 255.f) << 16;
 	OutColor |= uint(CurColor.w * 255.f) << 24;
+	
+	uint2 AtlasSize, TileSize;
+	RWAtlasTexture.GetDimensions(AtlasSize.x, AtlasSize.y);
+	SignedDistanceField.GetDimensions(TileSize.x, TileSize.y);
+	
+	uint TileCountX = AtlasSize.x / TileSize.x;
+	uint TileCountY = AtlasSize.y / TileSize.y;
+	
+	uint2 DestCoord = uint2((TileIndex % TileCountX) * TileSize.x + DispatchThreadID.x, TileIndex / TileCountY * TileSize.y + DispatchThreadID.y);
+	RWAtlasTexture[DestCoord] = OutColor;
 }

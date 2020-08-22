@@ -4,7 +4,7 @@
 #include "ShadowFakeryFoliageSMComponent.h"
 #include "ShadowFakeryStaticMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
-#include "ConstructorHelpers.h"
+//#include "ConstructorHelpers.h"
 #include "Engine/StaticMesh.h"
 
 extern float GSunYaw;
