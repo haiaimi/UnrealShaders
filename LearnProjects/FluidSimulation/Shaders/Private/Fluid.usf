@@ -1,0 +1,52 @@
+
+Texture2D VelocityField;
+SamplerState BilinerSampler;
+
+float TimeStep;
+float Dissipation;
+float rdx;
+
+void Boundary(float2 Coords : UV,
+                float2 Offset,
+                out float4 OutColor : SV_TARGET)
+{
+    
+}
+
+void Advect(out float4 OutColor : SV_TARGET)
+{
+    
+}
+
+void AddImpluse()
+{
+
+}
+
+void VortForce()
+{
+
+}
+
+void Diffuse()
+{
+    
+}
+
+// Compute divergence of velocity field
+void Divergence()
+{
+
+}
+
+// Solve pressture disturbance
+void Pressure()
+{
+
+}
+
+// Subtract gradient(p) from u, get divergence free velocity field
+void SubstractGradient()
+{
+
+}
