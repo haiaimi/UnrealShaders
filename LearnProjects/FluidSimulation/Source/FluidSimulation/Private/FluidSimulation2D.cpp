@@ -3,22 +3,32 @@
 
 #include "FluidSimulation2D.h"
 #include "GlobalShader.h"
+#include <ShaderParameterMacros.h>
+#include "UniformBuffer.h"
+#include "Stats/Stats.h"
+#include "Shader.h"
+#include "RenderGraphResources.h"
+#include "RenderGraphBuilder.h"
+#include "ShaderPermutation.h"
+
+#define THREAD_GROUP_SIZE 4
 
 class FComputeBoundaryShaderCS : public FGlobalShader
 {
-	DECLARE_SHADER_TYPE(FComputeBoundaryShaderCS, Global)
+	DECLARE_GLOBAL_SHADER(FComputeBoundaryShaderCS);
+	SHADER_USE_PARAMETER_STRUCT(FComputeBoundaryShaderCS, FGlobalShader);
+
+	class FIsVerticalBoundary : SHADER_PERMUTATION_BOOL("VERTICAL_BOUNDARY");
+	using FPermutationDomain = TShaderPermutationDomain<FIsVerticalBoundary>;
+public:
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(float, ValueScale)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, SrcTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWDstTexture)
+	END_SHADER_PARAMETER_STRUCT()
 
 public:
-	FComputeBoundaryShaderCS(){};
-
-	FComputeBoundaryShaderCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
-		FGlobalShader(Initializer)
-	{
-		ValueScale.Bind(Initializer.ParameterMap, TEXT("ValueScale"));
-		Offset.Bind(Initializer.ParameterMap, TEXT("Offset"));
-		SrcTexture.Bind(Initializer.ParameterMap, TEXT("SrcTexture"));
-		DstTexture.Bind(Initializer.ParameterMap, TEXT("DstTexture"));
-	}
 
 	static bool ShouldCache(EShaderPlatform Platform)
 	{
@@ -33,20 +43,131 @@ public:
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), THREAD_GROUP_SIZE);
+	}
+};
+
+class FFluid2DAdvectCS : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FFluid2DAdvectCS);
+	SHADER_USE_PARAMETER_STRUCT(FFluid2DAdvectCS, FGlobalShader);
+	
+public:
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(float, TimeStep)
+		SHADER_PARAMETER(float, Dissipation)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, SrcTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWDstTexture)
+		END_SHADER_PARAMETER_STRUCT()
+
+public:
+
+	static bool ShouldCache(EShaderPlatform Platform)
+	{
+		return true;
 	}
 
-private:
-	LAYOUT_FIELD(FShaderParameter, ValueScale);
-	LAYOUT_FIELD(FShaderParameter, Offset);
-	LAYOUT_FIELD(FShaderResourceParameter, SrcTexture);
-	LAYOUT_FIELD(FRWShaderParameter, DstTexture);
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Paramers)
+	{
+		return true;
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), THREAD_GROUP_SIZE);
+	}
+};
+
+class FJacobiSolverCS : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FJacobiSolverCS);
+	SHADER_USE_PARAMETER_STRUCT(FJacobiSolverCS, FGlobalShader);
+
+public:
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(float, Alpha)
+		SHADER_PARAMETER(float, rBeta)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, x)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, b)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWDstTexture)
+		END_SHADER_PARAMETER_STRUCT()
+
+public:
+
+	static bool ShouldCache(EShaderPlatform Platform)
+	{
+		return true;
+	}
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Paramers)
+	{
+		return true;
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), THREAD_GROUP_SIZE);
+	}
+};
+
+IMPLEMENT_SHADER_TYPE(, FJacobiSolverCS, TEXT("/Shaders/Private/Fluid.usf"), TEXT("Jacobi"), SF_Compute)
+
+void ComputeBoundary(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, float Scale, FRDGTextureSRVRef SrcTexure, FRDGTextureUAVRef DstTexture)
+{
+	FComputeBoundaryShaderCS::FPermutationDomain PermutationVector;
+	PermutationVector.Set<FComputeBoundaryShaderCS::FIsVerticalBoundary>(true);
+	TShaderMapRef<FComputeBoundaryShaderCS> BoundaryVert_CS(ShaderMap, PermutationVector);
+	FComputeBoundaryShaderCS::FParameters* PassParameters = RDG.AllocParameters<FComputeBoundaryShaderCS::FParameters>();
+	PassParameters->ValueScale = Scale;
+	PassParameters->SrcTexture = SrcTexure;
+	PassParameters->RWDstTexture = DstTexture;
+
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Vertical_CS"), BoundaryVert_CS, PassParameters);
+
+	PermutationVector.Set<FComputeBoundaryShaderCS::FIsVerticalBoundary>(false);
+	TShaderMapRef<FComputeBoundaryShaderCS> BoundaryHori_CS(ShaderMap, PermutationVector);
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Horizontal_CS"), BoundaryHori_CS, PassParameters);
 }
 
-IMPLEMENT_SHADER_TYPE(, FComputeBoundaryShaderCS, TEXT("/Shaders/Private/Fluid.usf"), TEXT("Boundary"), SF_Compute)
+void ComputeAdvect(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, float TimeStep, float Dissipation, FRDGTextureSRVRef SrcTexure, FRDGTextureUAVRef DstTexture)
+{
+	TShaderMapRef<FFluid2DAdvectCS> AdvectCS(ShaderMap);
+	FFluid2DAdvectCS::FParameters* PassParameters = RDG.AllocParameters<FFluid2DAdvectCS::FParameters>();
+	PassParameters->TimeStep = TimeStep;
+	PassParameters->Dissipation = Dissipation;
+	PassParameters->SrcTexture = SrcTexure;
+	PassParameters->RWDstTexture = DstTexture;
 
-void ComputeBoundary()
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("ComputeAdvect"), AdvectCS, PassParameters);
+}
+
+// used to solve poisson equation
+void Jacobi(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, float Alpha, float Beta, FRDGTextureSRVRef x, FRDGTextureSRVRef b, FRDGTextureUAVRef DstTexture)
 {
 
+}
+
+void UpdateFluid(FRHICommandListImmediate& RHICmdList, float DeltaTime, FIntPoint FluidSurfaceSize, ERHIFeatureLevel::Type FeatureLevel)
+{
+	float Dissipation = 1.f;
+	FRDGBuilder GraphBuilder(RHICmdList);
+	{
+		FPooledRenderTargetDesc TexDesc = FPooledRenderTargetDesc::Create2DDesc(FluidSurfaceSize, EPixelFormat::PF_A32B32G32R32F, FClearValueBinding::None, TexCreate_None, TexCreate_ShaderResource | TexCreate_UAV, false);
+		FRDGTextureRef VelocityFieldSwap0 = GraphBuilder.CreateTexture(TexDesc, TEXT("VelocityFieldSwap0"), ERDGResourceFlags::MultiFrame);
+		FRDGTextureRef VelocityFieldSwap1 = GraphBuilder.CreateTexture(TexDesc, TEXT("VelocityFieldSwap1"), ERDGResourceFlags::MultiFrame);
+		
+		FRDGTextureSRVRef VelocityFieldSRV0 = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(VelocityFieldSwap0));
+		FRDGTextureUAVRef VelocityFieldUAV1 = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(VelocityFieldSwap1));
+
+		FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(FeatureLevel);
+		ComputeBoundary(GraphBuilder, ShaderMap, -1.f, VelocityFieldSRV0, VelocityFieldUAV1);
+
+		ComputeAdvect(GraphBuilder, ShaderMap, DeltaTime, Dissipation, VelocityFieldSRV0, VelocityFieldUAV1);
+	}
 }
 
 FluidSimulation2D::FluidSimulation2D()
