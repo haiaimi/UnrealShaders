@@ -146,9 +146,23 @@ void ComputeAdvect(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, float TimeStep
 }
 
 // used to solve poisson equation
-void Jacobi(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, float Alpha, float Beta, FRDGTextureSRVRef x, FRDGTextureSRVRef b, FRDGTextureUAVRef DstTexture)
+void Jacobi(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, uint32 IterationCount, float Alpha, float Beta, FRDGTextureSRVRef x_SRVs[2], FRDGTextureUAVRef x_UAVs[2], FRDGTextureSRVRef b)
 {
+	TShaderMapRef<FJacobiSolverCS> JacobiCS(ShaderMap);
+	FJacobiSolverCS::FParameters* PassParameters = RDG.AllocParameters<FJacobiSolverCS::FParameters>();
+	PassParameters->Alpha = Alpha;
+	PassParameters->rBeta = 1.f / Beta;
+	PassParameters->b = b;
 
+	uint8 Switcher = 0;
+	for (int32 i = 0; i < IterationCount; ++i)
+	{
+		PassParameters->x = x_SRVs[Switcher];
+		PassParameters->RWDstTexture = x_UAVs[(Switcher + 1) & 1];
+		FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("JacobiIteration"), JacobiCS, PassParameters);
+		Switcher ^= 1;
+	}
+	
 }
 
 void UpdateFluid(FRHICommandListImmediate& RHICmdList, float DeltaTime, FIntPoint FluidSurfaceSize, ERHIFeatureLevel::Type FeatureLevel)
