@@ -10,13 +10,15 @@
 #include "RenderGraphResources.h"
 #include "RenderGraphBuilder.h"
 #include "ShaderPermutation.h"
+#include "ShaderParameterStruct.h"
+#include "RenderGraphUtils.h"
 
 #define THREAD_GROUP_SIZE 4
 
 class FComputeBoundaryShaderCS : public FGlobalShader
 {
 	DECLARE_GLOBAL_SHADER(FComputeBoundaryShaderCS);
-	SHADER_USE_PARAMETER_STRUCT(FComputeBoundaryShaderCS, FGlobalShader);
+	SHADER_USE_PARAMETER_STRUCT(FComputeBoundaryShaderCS, FGlobalShader)
 
 	class FIsVerticalBoundary : SHADER_PERMUTATION_BOOL("VERTICAL_BOUNDARY");
 	using FPermutationDomain = TShaderPermutationDomain<FIsVerticalBoundary>;
@@ -46,6 +48,8 @@ public:
 		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), THREAD_GROUP_SIZE);
 	}
 };
+
+IMPLEMENT_SHADER_TYPE(, FComputeBoundaryShaderCS, TEXT("/Shaders/Private/Fluid.usf"), TEXT("Boundary"), SF_Compute)
 
 class FFluid2DAdvectCS : public FGlobalShader
 {
@@ -79,6 +83,8 @@ public:
 		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), THREAD_GROUP_SIZE);
 	}
 };
+
+IMPLEMENT_SHADER_TYPE(, FFluid2DAdvectCS, TEXT("/Shaders/Private/Fluid.usf"), TEXT("Advect"), SF_Compute)
 
 class FJacobiSolverCS : public FGlobalShader
 {
@@ -126,11 +132,11 @@ void ComputeBoundary(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, float Scale,
 	PassParameters->SrcTexture = SrcTexure;
 	PassParameters->RWDstTexture = DstTexture;
 
-	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Vertical_CS"), BoundaryVert_CS, PassParameters);
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Vertical_CS"), BoundaryVert_CS, PassParameters, FIntVector());
 
 	PermutationVector.Set<FComputeBoundaryShaderCS::FIsVerticalBoundary>(false);
 	TShaderMapRef<FComputeBoundaryShaderCS> BoundaryHori_CS(ShaderMap, PermutationVector);
-	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Horizontal_CS"), BoundaryHori_CS, PassParameters);
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Horizontal_CS"), BoundaryHori_CS, PassParameters, FIntVector());
 }
 
 void ComputeAdvect(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, float TimeStep, float Dissipation, FRDGTextureSRVRef SrcTexure, FRDGTextureUAVRef DstTexture)
@@ -142,7 +148,7 @@ void ComputeAdvect(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, float TimeStep
 	PassParameters->SrcTexture = SrcTexure;
 	PassParameters->RWDstTexture = DstTexture;
 
-	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("ComputeAdvect"), AdvectCS, PassParameters);
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("ComputeAdvect"), AdvectCS, PassParameters, FIntVector());
 }
 
 // used to solve poisson equation
@@ -155,11 +161,11 @@ void Jacobi(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, uint32 IterationCount
 	PassParameters->b = b;
 
 	uint8 Switcher = 0;
-	for (int32 i = 0; i < IterationCount; ++i)
+	for (uint32 i = 0; i < IterationCount; ++i)
 	{
 		PassParameters->x = x_SRVs[Switcher];
 		PassParameters->RWDstTexture = x_UAVs[(Switcher + 1) & 1];
-		FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("JacobiIteration"), JacobiCS, PassParameters);
+		FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("JacobiIteration"), JacobiCS, PassParameters, FIntVector());
 		Switcher ^= 1;
 	}
 	

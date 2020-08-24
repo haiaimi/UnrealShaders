@@ -13,5 +13,6 @@ class FLUIDSIMULATION_API FluidSimulation2D
 public:
 	FluidSimulation2D();
 	~FluidSimulation2D();
-	uint8 A:1;
 };
+
+
