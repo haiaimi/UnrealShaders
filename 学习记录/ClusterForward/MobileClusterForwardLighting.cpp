@@ -117,6 +117,8 @@ void SetupMobileClusterLightingUniformBuffer(FRHICommandListImmediate& RHICmdLis
 	const FViewInfo& View,
 	FMobileClusterLightingUniformParameters& ClusterLightingParameters)
 {
+	if(CVarMobileEnableClusterLighting.GetValueOnRenderThread() <= 0)
+		return;
 	FMobileClusterLightingResources* ClusterLightRes = GetMobileClusterLightingResources();
 	if (ClusterLightRes)
 	{
@@ -530,6 +532,7 @@ void ComputeCellViewAABB(const FViewInfo& ViewInfo, const FVector& ZParam, const
 	VectorRegister Max = VectorMax(VectorMax(ViewMinDepthCorner0_1, ViewMinDepthCorner2_3), VectorMax(ViewMaxDepthCorner0_1, ViewMaxDepthCorner2_3));
 	Max = VectorMax(Max, VectorSwizzle(Max, 2, 3, 0, 0));
 	
+#if WITH_EDITOR
 	if (GMobileShowClusterDebug == 1)
 	{
 		FVector4 MinCorner0, MinCorner1, MinCorner2, MinCorner3;
@@ -574,6 +577,7 @@ void ComputeCellViewAABB(const FViewInfo& ViewInfo, const FVector& ZParam, const
 	{
 		GInvViewMatrix = ViewMats.GetInvViewMatrix();
 	}
+#endif
 
 	VectorStoreFloat3(Min, &OutMin);
 	VectorStoreFloat3(Max, &OutMax);
@@ -798,7 +802,6 @@ public:
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), MOBILE_CLUSTER_LIGHT_GROUP_SIZE);
-		FForwardLightingParameters::ModifyCompilationEnvironment(Parameters.Platform, OutEnvironment);
 	}
 };
 
@@ -829,7 +832,6 @@ public:
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), MOBILE_CLUSTER_LIGHT_GROUP_SIZE);
-		FForwardLightingParameters::ModifyCompilationEnvironment(Parameters.Platform, OutEnvironment);
 	}
 };
 

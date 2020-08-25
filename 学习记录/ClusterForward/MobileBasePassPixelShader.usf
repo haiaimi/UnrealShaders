@@ -404,8 +404,8 @@ half3 ComputeClusterLight(FMaterialPixelParameters MaterialParameters, FMobileSh
 {
 	uint ClusterIndex = ComputeLightClusterIndex(MaterialParameters.SvPosition.xy - RectMin, MaterialParameters.SvPosition.w, 0);
 	uint NumData = MobileClusterLighting.NumCulledLightsGrid[ClusterIndex];
-	uint NumLocalLights = min(NumData & 0x0000ffff, 100u);
-	uint DataStartOffset = NumData >> 16;
+	uint NumLocalLights = min(NumData >> 16, 100u);
+	uint DataStartOffset = NumData & 0x0000ffff;
 	//uint NumLocalLights = 1;// = min(MobileBasePass.ClusterTest.Load(int3(ClusterIndex * 2, 0, 0)), 100);
 	//uint DataStartOffset = 1;//MobileBasePass.ClusterTest.Load(int3(ClusterIndex * 2, 0, 0));
 	//Color = half3((half) ClusterIndex, (half) ClusterIndex, (half) ClusterIndex);
@@ -415,7 +415,7 @@ half3 ComputeClusterLight(FMaterialPixelParameters MaterialParameters, FMobileSh
 	for (uint i = 0; i < NumLocalLights; i++)
 	{
 		uint CulledLightData = MobileClusterLighting.CulledLightDataGrid[DataStartOffset + (i >> 2)];
-		uint LightIndex = (CulledLightData >> (((i % 4)) * 8)) & 0x000000ff;
+		uint LightIndex = (CulledLightData >> ((i & 0x3) * 8)) & 0x000000ff;
 		//uint LightIndex = MobileClusterLighting.CulledLightDataGrid[DataStartOffset + i];
 		float4 LightPositionAndInvRadius = MobileClusterLighting.MobileLocalLightBuffer[LightIndex * 2 + 0];
 		float4 LightColorAndFalloffExponent = MobileClusterLighting.MobileLocalLightBuffer[LightIndex * 2 + 1];
@@ -748,7 +748,7 @@ void Main(
 	#else
 		#if VARIABLE_NUM_DYNAMIC_POINT_LIGHTS
 		#if VULKAN_PROFILE
-		 webgl and ES2 needs a constant loop counter
+		 //webgl and ES2 needs a constant loop counter
 		UNROLL
 		for (int i = 0; i < MAX_DYNAMIC_POINT_LIGHTS; i++)
 		{

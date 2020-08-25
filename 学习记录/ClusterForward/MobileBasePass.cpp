@@ -220,7 +220,7 @@ int32 MobileBasePass::CalcNumMovablePointLights(const FMaterial& InMaterial, con
 	int32 NumMobileMovableLights = InPrimitiveSceneProxy ? InPrimitiveSceneProxy->GetPrimitiveSceneInfo()->NumMobileMovablePointLights : 0;
 	static auto* MobileEnableClusterLightingCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.EnableClusterLighting"));
 	const bool bSupportClusterLighting = MobileEnableClusterLightingCVar->GetValueOnAnyThread() == 1;
-	if (/*NumMobileMovableLights >= MOBILE_OPEN_CLUSTER_LIGHTS_COUNT && */!bIsUnlit && bSupportClusterLighting)
+	if (/*NumMobileMovableLights >= MOBILE_OPEN_CLUSTER_LIGHTS_COUNT && */ NumMobileMovableLights > MAX_BASEPASS_DYNAMIC_POINT_LIGHTS && !bIsUnlit && bSupportClusterLighting)
 		return MOBILE_OPEN_CLUSTER_LIGHTS_COUNT;
 	// end
 	int32 OutNumMovablePointLights = (InPrimitiveSceneProxy && !bIsUnlit) ? FMath::Min<int32>(NumMobileMovableLights, ReadOnlyCVARCache.NumMobileMovablePointLights) : 0;
@@ -400,17 +400,26 @@ void MobileBasePass::SetTranslucentRenderState(FMeshPassProcessorRenderState& Dr
 			{
 				DrawRenderState.SetBlendState(TStaticBlendState<CW_ALPHA, BO_Add, BF_Zero, BF_Zero, BO_Add, BF_One, BF_Zero>::GetRHI());
 			}
-			else
+			else if(Material.IsMobileDownSampleSeparateTranslucencyEnabled())
 			{
+				DrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha>::GetRHI()); 
+			}
+			else {
 				DrawRenderState.SetBlendState(TStaticBlendState<CW_RGB, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_InverseSourceAlpha>::GetRHI());
 			}
 			break;
 		case BLEND_Additive:
-			// Add to the existing scene color
-			DrawRenderState.SetBlendState(TStaticBlendState<CW_RGB, BO_Add, BF_One, BF_One, BO_Add, BF_Zero, BF_InverseSourceAlpha>::GetRHI());
+			// Add to the existing scene color 
+			if (Material.IsMobileDownSampleSeparateTranslucencyEnabled()) {
+				DrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_Zero, BF_InverseSourceAlpha>::GetRHI());
+			}
+			else {
+				DrawRenderState.SetBlendState(TStaticBlendState<CW_RGB, BO_Add, BF_One, BF_One, BO_Add, BF_Zero, BF_InverseSourceAlpha>::GetRHI());
+			}			
 			break;
 		case BLEND_Modulate:
 			// Modulate with the existing scene color
+			// #TODO 
 			DrawRenderState.SetBlendState(TStaticBlendState<CW_RGB, BO_Add, BF_DestColor, BF_Zero>::GetRHI());
 			break;
 		case BLEND_AlphaComposite:
@@ -600,6 +609,7 @@ void FMobileBasePassMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshB
 		bool bShouldDraw = (bIsTranslucent || bUsesWaterMaterial) &&
 		(TranslucencyPassType == ETranslucencyPass::TPT_AllTranslucency
 		|| (TranslucencyPassType == ETranslucencyPass::TPT_StandardTranslucency && !Material.IsMobileSeparateTranslucencyEnabled())
+		|| (TranslucencyPassType == ETranslucencyPass::TPT_TranslucencyDownSampleSeparate)
 		|| (TranslucencyPassType == ETranslucencyPass::TPT_TranslucencyAfterDOF && Material.IsMobileSeparateTranslucencyEnabled()));
 
 		if (bShouldDraw)
@@ -747,6 +757,19 @@ FMeshPassProcessor* CreateMobileTranslucencyStandardPassProcessor(const FScene* 
 	return new(FMemStack::Get()) FMobileBasePassMeshProcessor(Scene, Scene->GetFeatureLevel(), InViewIfDynamicMeshCommand, PassDrawRenderState, InDrawListContext, Flags, ETranslucencyPass::TPT_StandardTranslucency);
 }
 
+FMeshPassProcessor* CreateMobileTranslucencyDownSampleSeparatePassProcessor(const FScene* Scene, const FSceneView* InViewIfDynamicMeshCommand, FMeshPassDrawListContext* InDrawListContext)
+{
+	FMeshPassProcessorRenderState PassDrawRenderState(Scene->UniformBuffers.ViewUniformBuffer, Scene->UniformBuffers.MobileTranslucentBasePassUniformBuffer);
+	PassDrawRenderState.SetInstancedViewUniformBuffer(Scene->UniformBuffers.InstancedViewUniformBuffer);
+	PassDrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI());
+	PassDrawRenderState.SetDepthStencilAccess(FExclusiveDepthStencil::DepthRead_StencilRead);
+
+	const FMobileBasePassMeshProcessor::EFlags Flags = FMobileBasePassMeshProcessor::EFlags::CanUseDepthStencil;
+
+	return new(FMemStack::Get()) FMobileBasePassMeshProcessor(Scene, Scene->GetFeatureLevel(), InViewIfDynamicMeshCommand, PassDrawRenderState, InDrawListContext, Flags, ETranslucencyPass::TPT_TranslucencyDownSampleSeparate);
+}
+
+
 FMeshPassProcessor* CreateMobileTranslucencyAfterDOFProcessor(const FScene* Scene, const FSceneView* InViewIfDynamicMeshCommand, FMeshPassDrawListContext* InDrawListContext)
 {
 	FMeshPassProcessorRenderState PassDrawRenderState(Scene->UniformBuffers.ViewUniformBuffer, Scene->UniformBuffers.MobileTranslucentBasePassUniformBuffer);
@@ -771,9 +794,15 @@ FMeshPassProcessor* CreateMobileTranslucencyAllPassProcessor(const FScene* Scene
 	return new(FMemStack::Get()) FMobileBasePassMeshProcessor(Scene, Scene->GetFeatureLevel(), InViewIfDynamicMeshCommand, PassDrawRenderState, InDrawListContext, Flags, ETranslucencyPass::TPT_AllTranslucency);
 }
 
+
+
+
 FRegisterPassProcessorCreateFunction RegisterMobileBasePass(&CreateMobileBasePassProcessor, EShadingPath::Mobile, EMeshPass::BasePass, EMeshPassFlags::CachedMeshCommands | EMeshPassFlags::MainView);
 FRegisterPassProcessorCreateFunction RegisterMobileBasePassCSM(&CreateMobileBasePassCSMProcessor, EShadingPath::Mobile, EMeshPass::MobileBasePassCSM, EMeshPassFlags::CachedMeshCommands | EMeshPassFlags::MainView);
 FRegisterPassProcessorCreateFunction RegisterMobileTranslucencyAllPass(&CreateMobileTranslucencyAllPassProcessor, EShadingPath::Mobile, EMeshPass::TranslucencyAll, EMeshPassFlags::CachedMeshCommands | EMeshPassFlags::MainView);
 FRegisterPassProcessorCreateFunction RegisterMobileTranslucencyStandardPass(&CreateMobileTranslucencyStandardPassProcessor, EShadingPath::Mobile, EMeshPass::TranslucencyStandard, EMeshPassFlags::CachedMeshCommands | EMeshPassFlags::MainView);
+//YJH Created By 2020-7-25
+FRegisterPassProcessorCreateFunction RegisterMobileTranslucencyDownSampleSeparatePass(&CreateMobileTranslucencyDownSampleSeparatePassProcessor, EShadingPath::Mobile, EMeshPass::TranslucencyDownSampleSeparate, EMeshPassFlags::CachedMeshCommands | EMeshPassFlags::MainView);
+//End
 FRegisterPassProcessorCreateFunction RegisterMobileTranslucencyAfterDOFPass(&CreateMobileTranslucencyAfterDOFProcessor, EShadingPath::Mobile, EMeshPass::TranslucencyAfterDOF, EMeshPassFlags::CachedMeshCommands | EMeshPassFlags::MainView);
 // Skipping EMeshPass::TranslucencyAfterDOFModulate because dual blending is not supported on mobile
