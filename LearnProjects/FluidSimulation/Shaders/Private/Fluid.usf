@@ -91,10 +91,20 @@ void Diffuse()
     
 }
 
-// Compute divergence of velocity field
-void Divergence()
-{
+float Halfrdx;
 
+// Compute divergence of velocity field
+[numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
+void Divergence(uint3 GroupId : SV_GroupID,
+				uint3 DispatchThreadId : SV_DispatchThreadID,
+				uint3 GroupThreadId : SV_GroupThreadID)
+{
+	float4 Left = SrcTexture[DispatchThreadId.xy - uint2(1, 0)];
+	float4 Top = SrcTexture[DispatchThreadId.xy - uint2(0, 1)];
+	float4 Right = SrcTexture[DispatchThreadId.xy + uint2(1, 0)];
+	float4 Bottom = SrcTexture[DispatchThreadId.xy + uint2(0, 1)];
+	
+	RWDstTexture[DispatchThreadId.xy] = Halfrdx * (Right.x - Left.x + Top.y - Bottom.y);
 }
 
 // Solve pressture disturbance
