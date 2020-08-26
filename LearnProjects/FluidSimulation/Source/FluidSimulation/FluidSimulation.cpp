@@ -3,4 +3,16 @@
 #include "FluidSimulation.h"
 #include "Modules/ModuleManager.h"
 
-IMPLEMENT_PRIMARY_GAME_MODULE( FDefaultGameModuleImpl, FluidSimulation, "FluidSimulation" );
+void FFluidSimulationModule::StartupModule()
+{
+	FString ProjectShaderDir = FPaths::Combine(FPaths::GetProjectFilePath(), TEXT("Shaders"));
+	AddShaderSourceDirectoryMapping(TEXT("/Shaders/Private"), ProjectShaderDir);
+}
+
+void FFluidSimulationModule::ShutdownModule()
+{
+
+}
+
+
+IMPLEMENT_PRIMARY_GAME_MODULE( FFluidSimulationModule, FluidSimulation, "FluidSimulation" );

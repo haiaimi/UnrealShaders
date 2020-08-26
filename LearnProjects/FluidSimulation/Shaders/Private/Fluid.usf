@@ -1,6 +1,4 @@
-
-Texture2D VelocityField;
-SamplerState BilinerSampler;
+#include "Common.ush"
 
 #ifndef THREADGROUP_SIZE
 	#define THREADGROUP_SIZE 4
@@ -51,7 +49,14 @@ void Advect(uint3 GroupId : SV_GroupID,
 	RWDstTexture[DispatchThreadId.xy + 1] = lerp(lerp(SrcTexture[floorCoord].xy, SrcTexture[uint2(roundCoord.x, floorCoord.y)].xy, FracX), 
 											lerp(SrcTexture[uint2(floorCoord.x, roundCoord.y)].xy, SrcTexture[roundCoord].xy, FracX), 
 											FracY);
+}
 
+void LoadTextureNeighbors(Texture2D<float4> InTexure, uint2 SampleCoord, out float4 Left, out float4 Top, out float4 Right, out float4 Bottom)
+{
+	Left = InTexure[SampleCoord - uint2(1, 0)];
+	Top = InTexure[SampleCoord - uint2(0, 1)];
+	Right = InTexure[SampleCoord + uint2(1, 0)];
+	Bottom = InTexure[SampleCoord + uint2(0, 1)];
 }
 
 float Alpha;
@@ -65,18 +70,17 @@ void Jacobi(uint3 GroupId : SV_GroupID,
 			uint3 DispatchThreadId : SV_DispatchThreadID,
 			uint3 GroupThreadId : SV_GroupThreadID)
 {
-	float4 xLeft = Jacobi_x[DispatchThreadId.xy - uint2(1, 0)];
-	float4 xTop = Jacobi_x[DispatchThreadId.xy - uint2(0, 1)];
-	float4 xRight = Jacobi_x[DispatchThreadId.xy + uint2(1, 0)];
-	float4 xBottom = Jacobi_x[DispatchThreadId.xy + uint2(0, 1)];
-	float4 b = Jacobi_b[DispatchThreadId.xy];
+	float4 xLeft, xTop, xRight, xBottom;
+	LoadTextureNeighbors(Jacobi_x, DispatchThreadId.xy + 1, xLeft, xTop, xRight, xBottom);
+	float4 b = Jacobi_b[DispatchThreadId.xy + 1];
 	
-	RWDstTexture[DispatchThreadId.xy] = (xLeft + xRight + xTop + xBottom + Alpha * b) * rBeta;
-	
+	RWDstTexture[DispatchThreadId.xy + 1] = (xLeft + xRight + xTop + xBottom + Alpha * b) * rBeta;
 }
 
 [numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
-void AddImpluse()
+void AddImpluse(uint3 GroupId : SV_GroupID,
+				uint3 DispatchThreadId : SV_DispatchThreadID,
+				uint3 GroupThreadId : SV_GroupThreadID)
 {
 
 }
@@ -86,12 +90,8 @@ void VortForce()
 
 }
 
-void Diffuse()
-{
-    
-}
-
 float Halfrdx;
+RWTexture2D<float4> RWDivergence;
 
 // Compute divergence of velocity field
 [numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
@@ -99,22 +99,24 @@ void Divergence(uint3 GroupId : SV_GroupID,
 				uint3 DispatchThreadId : SV_DispatchThreadID,
 				uint3 GroupThreadId : SV_GroupThreadID)
 {
-	float4 Left = SrcTexture[DispatchThreadId.xy - uint2(1, 0)];
-	float4 Top = SrcTexture[DispatchThreadId.xy - uint2(0, 1)];
-	float4 Right = SrcTexture[DispatchThreadId.xy + uint2(1, 0)];
-	float4 Bottom = SrcTexture[DispatchThreadId.xy + uint2(0, 1)];
-	
-	RWDstTexture[DispatchThreadId.xy] = Halfrdx * (Right.x - Left.x + Top.y - Bottom.y);
+	float4 Left, Top, Right, Bottom;
+	LoadTextureNeighbors(SrcTexture, DispatchThreadId.xy + 1, Left, Top, Right, Bottom);
+	RWDivergence[DispatchThreadId.xy + 1] = Halfrdx * (Right.x - Left.x + Top.y - Bottom.y);
 }
 
-// Solve pressture disturbance
-void Pressure()
-{
-
-}
+Texture2D<float4> VelocityField;
+Texture2D<float4> PressureField;
+RWTexture2D<float4> RWVelocityField;
 
 // Subtract gradient(p) from u, get divergence free velocity field
-void SubstractGradient()
+[numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
+void SubstractGradient(uint3 GroupId : SV_GroupID,
+					   uint3 DispatchThreadId : SV_DispatchThreadID,
+					   uint3 GroupThreadId : SV_GroupThreadID)
 {
+	float4 Left, Top, Right, Bottom;
+	LoadTextureNeighbors(PressureField, DispatchThreadId.xy + 1, Left, Top, Right, Bottom);
+	float2 Gradient = (Right.x - Left.x + Top.y - Bottom.y) * Halfrdx;
+	RWVelocityField = VelocityField[DispatchThreadId.xy + 1] - float4(Gradient, 0.f, 0.f);
 
 }
