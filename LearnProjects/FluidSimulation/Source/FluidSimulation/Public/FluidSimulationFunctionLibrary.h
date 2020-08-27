@@ -9,6 +9,6 @@ class UFluidSimulationFunctionLibrary : public UObject
 	GENERATED_BODY()
 
 public:
-	UFUNCTION(BlueprintCallable)
-	void SimulateFluid2D(float DeltaTime, FIntPoint FluidSurfaceSize);
+	UFUNCTION(BlueprintCallable, meta=(WorldContext="WorldContextObject"))
+	static void SimulateFluid2D(const UObject* WorldContextObject, float DeltaTime, FIntPoint FluidSurfaceSize);
 };

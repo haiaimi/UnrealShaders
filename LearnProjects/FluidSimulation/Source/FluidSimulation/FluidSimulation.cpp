@@ -5,7 +5,7 @@
 
 void FFluidSimulationModule::StartupModule()
 {
-	FString ProjectShaderDir = FPaths::Combine(FPaths::GetProjectFilePath(), TEXT("Shaders"));
+	FString ProjectShaderDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("Shaders/Private"));
 	AddShaderSourceDirectoryMapping(TEXT("/Shaders/Private"), ProjectShaderDir);
 }
 
