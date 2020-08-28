@@ -79,12 +79,18 @@ void Jacobi(uint3 GroupId : SV_GroupID,
 	RWDstTexture[DispatchThreadId.xy + 1] = (xLeft + xRight + xTop + xBottom + Alpha * b) * rBeta;
 }
 
+float4 ForceParam;
+int2 ForcePos;
+float Radius;
+
 [numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
 void AddImpluse(uint3 GroupId : SV_GroupID,
 				uint3 DispatchThreadId : SV_DispatchThreadID,
 				uint3 GroupThreadId : SV_GroupThreadID)
 {
-
+	uint2 DeltaPos = (uint2)ForcePos - DispatchThreadId.xy;
+	float c = exp(-dot(DeltaPos, DeltaPos) / Radius);
+	RWDstTexture[DispatchThreadId.xy + 1] = SrcTexture[DispatchThreadId.xy + 1] + ForceParam * c;
 }
 
 void VortForce()

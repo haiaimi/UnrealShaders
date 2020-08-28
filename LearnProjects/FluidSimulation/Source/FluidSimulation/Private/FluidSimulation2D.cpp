@@ -11,6 +11,7 @@
 #include "ShaderPermutation.h"
 #include "ShaderParameterStruct.h"
 #include "RenderGraphUtils.h"
+#include "RenderTargetPool.h"
 
 #define THREAD_GROUP_SIZE 4
 
@@ -85,6 +86,42 @@ public:
 };
 
 IMPLEMENT_SHADER_TYPE(, FFluid2DAdvectCS, TEXT("/Shaders/Private/Fluid.usf"), TEXT("Advect"), SF_Compute)
+
+class FAddImpluseCS : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FAddImpluseCS);
+	SHADER_USE_PARAMETER_STRUCT(FAddImpluseCS, FGlobalShader);
+
+public:
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FVector4, ForceParam)
+		SHADER_PARAMETER(FIntPoint, ForcePos)
+		SHADER_PARAMETER(float, Radius)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, SrcTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWDstTexture)
+		END_SHADER_PARAMETER_STRUCT()
+
+public:
+
+	static bool ShouldCache(EShaderPlatform Platform)
+	{
+		return true;
+	}
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Paramers)
+	{
+		return true;
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), THREAD_GROUP_SIZE);
+	}
+};
+
+IMPLEMENT_SHADER_TYPE(, FAddImpluseCS, TEXT("/Shaders/Private/Fluid.usf"), TEXT("AddImpluse"), SF_Compute)
 
 class FJacobiSolverCS : public FGlobalShader
 {
@@ -191,7 +228,7 @@ public:
 
 IMPLEMENT_SHADER_TYPE(, FSubstractGradientCS, TEXT("/Shaders/Private/Fluid.usf"), TEXT("SubstractGradient"), SF_Compute)
 
-void ComputeBoundary(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint FluidSurfaceSize, float Scale, FRDGTextureRef Textures[2], FRDGTextureSRVRef SrcTexure, FRDGTextureUAVRef RWDstTexture)
+void ComputeBoundary(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint FluidSurfaceSize, float Scale, FRDGTextureRef Textures[2], FRDGTextureSRVRef SrcTexure[2], FRDGTextureUAVRef RWDstTexture[2])
 {
 	AddCopyTexturePass(RDG, Textures[0], Textures[1], FIntPoint(1, 1), FIntPoint(1, 1), FluidSurfaceSize - 1);
 	FComputeBoundaryShaderCS::FPermutationDomain PermutationVector;
@@ -199,13 +236,30 @@ void ComputeBoundary(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint Fl
 	TShaderMapRef<FComputeBoundaryShaderCS> BoundaryVert_CS(ShaderMap, PermutationVector);
 	FComputeBoundaryShaderCS::FParameters* PassParameters = RDG.AllocParameters<FComputeBoundaryShaderCS::FParameters>();
 	PassParameters->ValueScale = Scale;
-	PassParameters->SrcTexture = SrcTexure;
-	PassParameters->RWDstTexture = RWDstTexture;
+	PassParameters->SrcTexture = SrcTexure[0];
+	PassParameters->RWDstTexture = RWDstTexture[1];
+
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Vertical_CS"), BoundaryVert_CS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 1, THREAD_GROUP_SIZE), 1, 1));
+
+	PassParameters = RDG.AllocParameters<FComputeBoundaryShaderCS::FParameters>();
+	PassParameters->ValueScale = Scale;
+	PassParameters->SrcTexture = SrcTexure[1];
+	PassParameters->RWDstTexture = RWDstTexture[0];
 
 	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Vertical_CS"), BoundaryVert_CS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 1, THREAD_GROUP_SIZE), 1, 1));
 
 	PermutationVector.Set<FComputeBoundaryShaderCS::FIsVerticalBoundary>(false);
 	TShaderMapRef<FComputeBoundaryShaderCS> BoundaryHori_CS(ShaderMap, PermutationVector);
+	PassParameters = RDG.AllocParameters<FComputeBoundaryShaderCS::FParameters>();
+	PassParameters->ValueScale = Scale;
+	PassParameters->SrcTexture = SrcTexure[0];
+	PassParameters->RWDstTexture = RWDstTexture[1];
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Horizontal_CS"), BoundaryHori_CS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 1, THREAD_GROUP_SIZE), 1, 1));
+
+	PassParameters = RDG.AllocParameters<FComputeBoundaryShaderCS::FParameters>();
+	PassParameters->ValueScale = Scale;
+	PassParameters->SrcTexture = SrcTexure[1];
+	PassParameters->RWDstTexture = RWDstTexture[0];
 	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Horizontal_CS"), BoundaryHori_CS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 1, THREAD_GROUP_SIZE), 1, 1));
 }
 
@@ -222,24 +276,39 @@ void ComputeAdvect(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint Flui
 	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("ComputeAdvect"), AdvectCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 1, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 1, THREAD_GROUP_SIZE), 1));
 }
 
+void AddImpluse(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint FluidSurfaceSize, FVector4 ForceParam, FIntPoint ForcePos, float ForceRadius, FRDGTextureSRVRef SrcTexture, FRDGTextureUAVRef DstTexture)
+{
+	TShaderMapRef<FAddImpluseCS> AddImpluseCS(ShaderMap);
+	FAddImpluseCS::FParameters* PassParameters = RDG.AllocParameters<FAddImpluseCS::FParameters>();
+	PassParameters->ForceParam = ForceParam;
+	PassParameters->ForcePos = ForcePos;
+	PassParameters->Radius = ForceRadius;
+	PassParameters->SrcTexture = SrcTexture;
+	PassParameters->RWDstTexture = DstTexture;
+
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("AddImpluse"), AddImpluseCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 1, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 1, THREAD_GROUP_SIZE), 1));
+}
+
+
 // used to solve poisson equation
-void Jacobi(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint FluidSurfaceSize, uint32 IterationCount, float Alpha, float Beta, FRDGTextureSRVRef x_SRVs[2], FRDGTextureUAVRef x_UAVs[2], FRDGTextureSRVRef b_SRVs[2], bool bUpdateBoundary = false, float Scale = 1.f)
+void Jacobi(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint FluidSurfaceSize, uint32 IterationCount, float Alpha, float Beta, FRDGTextureSRVRef x_SRVs[], FRDGTextureUAVRef x_UAVs[], FRDGTextureSRVRef b_SRVs[], bool bUpdateBoundary = false, float Scale = 1.f)
 {
 	TShaderMapRef<FJacobiSolverCS> JacobiCS(ShaderMap);
-	FJacobiSolverCS::FParameters* PassParameters = RDG.AllocParameters<FJacobiSolverCS::FParameters>();
-	PassParameters->Alpha = Alpha;
-	PassParameters->rBeta = 1.f / Beta;
-
 	uint8 Switcher = 0;
 	for (uint32 i = 0; i < IterationCount; ++i)
 	{
 		if (bUpdateBoundary)
 		{
 			FRDGTextureRef Textures[2] = {x_SRVs[Switcher]->GetParent(), x_UAVs[(Switcher + 1)]->GetParent()};
-			ComputeBoundary(RDG, ShaderMap, FluidSurfaceSize, Scale, Textures, x_SRVs[Switcher], x_UAVs[(Switcher + 1) & 1]);
+			FRDGTextureSRVRef SRVs[2] = {x_SRVs[Switcher], x_SRVs[(Switcher + 1) & 1]};
+			FRDGTextureUAVRef UAVs[2] = {x_UAVs[Switcher], x_UAVs[(Switcher + 1) & 1]};
+			ComputeBoundary(RDG, ShaderMap, FluidSurfaceSize, Scale, Textures, SRVs, UAVs);
 			Switcher ^= 1;
 		}
 
+		FJacobiSolverCS::FParameters* PassParameters = RDG.AllocParameters<FJacobiSolverCS::FParameters>();
+		PassParameters->Alpha = Alpha;
+		PassParameters->rBeta = 1.f / Beta;
 		PassParameters->Jacobi_x = x_SRVs[Switcher];
 		PassParameters->Jacobi_b = b_SRVs[Switcher];
 		PassParameters->RWDstTexture = x_UAVs[(Switcher + 1) & 1];
@@ -273,25 +342,33 @@ void SubstarctPressureGradient(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FI
 	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("SubstarctPressureGradient"), SubstractGradientCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 1, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 1, THREAD_GROUP_SIZE), 1));
 }
 
-void UpdateFluid(FRHICommandListImmediate& RHICmdList, float DeltaTime, FIntPoint FluidSurfaceSize, ERHIFeatureLevel::Type FeatureLevel)
+void UpdateFluid(FRHICommandListImmediate& RHICmdList, float DeltaTime, FIntPoint FluidSurfaceSize, float Viscosity, ERHIFeatureLevel::Type FeatureLevel)
 {
+	check(IsInRenderingThread());
+
 	float Dissipation = 1.f;
 	const uint32 IterationCount = 20;
 
+	// First we should create all texture that will used in RenderGraph 
+	FRDGTextureDesc TexDesc = FRDGTextureDesc::Create2DDesc(FluidSurfaceSize, PF_A32B32G32R32F, FClearValueBinding(FLinearColor::Black), TexCreate_None, TexCreate_UAV | TexCreate_ShaderResource, false);
+	TRefCountPtr<IPooledRenderTarget> PooledVelocityFieldSwap0, PooledVelocityFieldSwap1, PooledDensityFieldSwap0, PooledDensityFieldSwap1, PooledDivregenceField, PooledPressureFieldSwap0, PooledPressureFieldSwap1;
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledVelocityFieldSwap0, TEXT("VelocityFieldSwap0"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledVelocityFieldSwap1, TEXT("VelocityFieldSwap0"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledDensityFieldSwap0, TEXT("VelocityFieldSwap0"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledDensityFieldSwap1, TEXT("VelocityFieldSwap0"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledDivregenceField, TEXT("VelocityFieldSwap0"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledPressureFieldSwap0, TEXT("VelocityFieldSwap0"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledPressureFieldSwap1, TEXT("VelocityFieldSwap0"));
+
 	FRDGBuilder GraphBuilder(RHICmdList);
 	{
-	
-		FRDGTextureDesc TexDesc = FRDGTextureDesc::Create2DDesc(FluidSurfaceSize, PF_A32B32G32R32F, FClearValueBinding(FLinearColor::Black), TexCreate_None, TexCreate_UAV | TexCreate_ShaderResource, false);
-		//FPooledRenderTargetDesc TexDesc = FPooledRenderTargetDesc::Create2DDesc(FluidSurfaceSize, EPixelFormat::PF_A32B32G32R32F, FClearValueBinding::None, TexCreate_None, TexCreate_ShaderResource | TexCreate_UAV, false);
-		FRDGTextureRef VelocityFieldSwap0 = GraphBuilder.CreateTexture(TexDesc, TEXT("VelocityFieldSwap0"), ERDGResourceFlags::MultiFrame);
-		FRDGTextureRef VelocityFieldSwap1 = GraphBuilder.CreateTexture(TexDesc, TEXT("VelocityFieldSwap1"), ERDGResourceFlags::MultiFrame);
-		FRDGTextureRef DensityFieldSwap0 = GraphBuilder.CreateTexture(TexDesc, TEXT("DensityFieldSwap0"), ERDGResourceFlags::MultiFrame);
-		FRDGTextureRef DensityFieldSwap1 = GraphBuilder.CreateTexture(TexDesc, TEXT("DensityFieldSwap1"), ERDGResourceFlags::MultiFrame);
-		FRDGTextureRef DivregenceField = GraphBuilder.CreateTexture(TexDesc, TEXT("DivregenceField"), ERDGResourceFlags::MultiFrame);
-		FRDGTextureRef PressureFieldSwap0 = GraphBuilder.CreateTexture(TexDesc, TEXT("PressureFieldSwap0"), ERDGResourceFlags::MultiFrame);
-		FRDGTextureRef PressureFieldSwap1 = GraphBuilder.CreateTexture(TexDesc, TEXT("PressureFieldSwap1"), ERDGResourceFlags::MultiFrame);
-
-		//FRDGTextureRef SceneDepthTexture = GraphBuilder.RegisterExternalTexture(HairViewTransmittanceTexture, TEXT("SceneDepthTexture"));
+		FRDGTextureRef VelocityFieldSwap0 = GraphBuilder.RegisterExternalTexture(PooledVelocityFieldSwap0, TEXT("VelocityFieldSwap0"), ERDGResourceFlags::MultiFrame);
+		FRDGTextureRef VelocityFieldSwap1 = GraphBuilder.RegisterExternalTexture(PooledVelocityFieldSwap1, TEXT("VelocityFieldSwap1"), ERDGResourceFlags::MultiFrame);
+		FRDGTextureRef DensityFieldSwap0 = GraphBuilder.RegisterExternalTexture(PooledDensityFieldSwap0, TEXT("DensityFieldSwap0"), ERDGResourceFlags::MultiFrame);
+		FRDGTextureRef DensityFieldSwap1 = GraphBuilder.RegisterExternalTexture(PooledDensityFieldSwap1, TEXT("DensityFieldSwap1"), ERDGResourceFlags::MultiFrame);
+		FRDGTextureRef DivregenceField = GraphBuilder.RegisterExternalTexture(PooledDivregenceField, TEXT("DivregenceField"), ERDGResourceFlags::MultiFrame);
+		FRDGTextureRef PressureFieldSwap0 = GraphBuilder.RegisterExternalTexture(PooledPressureFieldSwap0, TEXT("PressureFieldSwap0"), ERDGResourceFlags::MultiFrame);
+		FRDGTextureRef PressureFieldSwap1 = GraphBuilder.RegisterExternalTexture(PooledPressureFieldSwap1, TEXT("PressureFieldSwap1"), ERDGResourceFlags::MultiFrame);
 		
 		FRDGTextureSRVRef VelocityFieldSRV0 = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(VelocityFieldSwap0));
 		FRDGTextureSRVRef VelocityFieldSRV1 = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(VelocityFieldSwap1));
@@ -311,8 +388,8 @@ void UpdateFluid(FRHICommandListImmediate& RHICmdList, float DeltaTime, FIntPoin
 		FRDGTextureUAVRef PressureFieldUAV0 = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(PressureFieldSwap0));
 		FRDGTextureUAVRef PressureFieldUAV1 = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(PressureFieldSwap1));
 
-		FRDGTextureSRVRef VelocityFiledSRVs[2] = { VelocityFieldSRV0, VelocityFieldSRV1 };
-		FRDGTextureUAVRef VelocityFiledUAVs[2] = { VelocityFieldUAV0, VelocityFieldUAV1 };
+		FRDGTextureSRVRef VelocityFieldSRVs[2] = { VelocityFieldSRV0, VelocityFieldSRV1 };
+		FRDGTextureUAVRef VelocityFieldUAVs[2] = { VelocityFieldUAV0, VelocityFieldUAV1 };
 
 		FRDGTextureSRVRef DensityFiledSRVs[2] = { DensityFieldSRV0, DensityFieldSRV1 };
 		FRDGTextureUAVRef DensityFiledUAVs[2] = { DensityFieldUAV0, DensityFieldUAV1 };
@@ -325,19 +402,28 @@ void UpdateFluid(FRHICommandListImmediate& RHICmdList, float DeltaTime, FIntPoin
 		// 1. Compute the boundary of the velocity field, the velocity of boundary is reverse to the velocity inside
 		// The compute the advect of velocity field
 		FRDGTextureRef VelocityTextures[2] = { VelocityFieldSwap0, VelocityFieldSwap1 };
-		ComputeBoundary(GraphBuilder, ShaderMap, FluidSurfaceSize, -1.f, VelocityTextures, VelocityFieldSRV0, VelocityFieldUAV1);
-		ComputeAdvect(GraphBuilder, ShaderMap, FluidSurfaceSize, DeltaTime, Dissipation, VelocityFieldSRV1, VelocityFieldSRV1, VelocityFieldUAV0);
+		ComputeBoundary(GraphBuilder, ShaderMap, FluidSurfaceSize, -1.f, VelocityTextures, VelocityFieldSRVs, VelocityFieldUAVs);
+		ComputeAdvect(GraphBuilder, ShaderMap, FluidSurfaceSize, DeltaTime, Dissipation, VelocityFieldSRV0, VelocityFieldSRV0, VelocityFieldUAV1);
 
 		// Compute for density, such as ink in fluid, make fluid more obviously
 		FRDGTextureRef DensityTextures[2] = { DensityFieldSwap0, DensityFieldSwap1 };
-		ComputeBoundary(GraphBuilder, ShaderMap, FluidSurfaceSize, 0.f, DensityTextures, DensityFieldSRV0, DensityFieldUAV1);
-		ComputeAdvect(GraphBuilder, ShaderMap, FluidSurfaceSize, DeltaTime, Dissipation, VelocityFieldSRV0, DensityFieldSRV1, DensityFieldUAV0);
+		ComputeBoundary(GraphBuilder, ShaderMap, FluidSurfaceSize, 0.f, DensityTextures, DensityFiledSRVs, DensityFiledUAVs);
+		ComputeAdvect(GraphBuilder, ShaderMap, FluidSurfaceSize, DeltaTime, Dissipation, VelocityFieldSRV0, DensityFieldSRV0, DensityFieldUAV1);
+
+		// Add Impluse
+		FVector4 ForceParam(2.f, 0.f, 0.f, 0.f);
+		FIntPoint ForcePos = FluidSurfaceSize / 2;
+		float ForceRadius = 20.f;
+		AddImpluse(GraphBuilder, ShaderMap, FluidSurfaceSize, ForceParam, ForcePos, ForceRadius, VelocityFieldSRV1, VelocityFieldUAV0);
+		// Add ink to field
+		FVector4 InkColor(1.f, 1.f, 1.f, 1.f);
+		AddImpluse(GraphBuilder, ShaderMap, FluidSurfaceSize, InkColor, ForcePos, ForceRadius, DensityFieldSRV1, DensityFieldUAV0);
 
 		// 2.
 		// #TODO Solve the velocity field possion equation for Viscous Diffusion, so that we can get a new velocity field
-		float Alpha = 1.f;
-		float Beta = 1.f;
-		Jacobi(GraphBuilder, ShaderMap, FluidSurfaceSize, IterationCount & ~0x1, Alpha, Beta,VelocityFiledSRVs, VelocityFiledUAVs, VelocityFiledSRVs);
+		float Alpha = 1.f / (Viscosity * DeltaTime);
+		float Beta = 4.f + Alpha;
+		Jacobi(GraphBuilder, ShaderMap, FluidSurfaceSize, IterationCount & ~0x1, Alpha, Beta, VelocityFieldSRVs, VelocityFieldUAVs, VelocityFieldSRVs);
 
 		// 3.
 		// #TODO Compute the divergence of the velocity field that compute from pre Jacobi pass, it will be used to compute pressure field, 
@@ -349,10 +435,12 @@ void UpdateFluid(FRHICommandListImmediate& RHICmdList, float DeltaTime, FIntPoin
 		//4.
 		// Compute the boundary of pressure field, the presure of boundary is equal to the inside so the scale is 1
 		FRDGTextureSRVRef DivregenceFieldSRVs[2] = { DivregenceFieldSRV, DivregenceFieldSRV };
+		Alpha = -1.f;
+		Beta = 4.f;
 		Jacobi(GraphBuilder, ShaderMap, FluidSurfaceSize, IterationCount, Alpha, Beta, PressureFieldSRVs, PressureFieldUAVs, DivregenceFieldSRVs, true, 1.f);
 		
 		// Set the boundary of velocity field
-		ComputeBoundary(GraphBuilder, ShaderMap, FluidSurfaceSize, -1.f, VelocityTextures, VelocityFieldSRV0, VelocityFieldUAV1);
+		ComputeBoundary(GraphBuilder, ShaderMap, FluidSurfaceSize, -1.f, VelocityTextures, VelocityFieldSRVs, VelocityFieldUAVs);
 
 		// 5. substract divergence velocityfield with gradient of pressure field 
 		SubstarctPressureGradient(GraphBuilder, ShaderMap, FluidSurfaceSize, Halfrdx, VelocityFieldSRV1, PressureFieldSRV0, VelocityFieldUAV0);
