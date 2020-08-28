@@ -342,23 +342,28 @@ void SubstarctPressureGradient(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FI
 	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("SubstarctPressureGradient"), SubstractGradientCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 1, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 1, THREAD_GROUP_SIZE), 1));
 }
 
-void UpdateFluid(FRHICommandListImmediate& RHICmdList, float DeltaTime, FIntPoint FluidSurfaceSize, float Viscosity, ERHIFeatureLevel::Type FeatureLevel)
+void UpdateFluid(FRHICommandListImmediate& RHICmdList, FTextureRenderTargetResource* TextureRenderTargetResource, float DeltaTime, FIntPoint FluidSurfaceSize, float Viscosity, ERHIFeatureLevel::Type FeatureLevel)
 {
 	check(IsInRenderingThread());
 
-	float Dissipation = 1.f;
+	FTexture2DRHIRef OutTexture = TextureRenderTargetResource->GetRenderTargetTexture();
+	float Dissipation = 0.5f;
 	const uint32 IterationCount = 20;
 
 	// First we should create all texture that will used in RenderGraph 
 	FRDGTextureDesc TexDesc = FRDGTextureDesc::Create2DDesc(FluidSurfaceSize, PF_A32B32G32R32F, FClearValueBinding(FLinearColor::Black), TexCreate_None, TexCreate_UAV | TexCreate_ShaderResource, false);
 	TRefCountPtr<IPooledRenderTarget> PooledVelocityFieldSwap0, PooledVelocityFieldSwap1, PooledDensityFieldSwap0, PooledDensityFieldSwap1, PooledDivregenceField, PooledPressureFieldSwap0, PooledPressureFieldSwap1;
 	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledVelocityFieldSwap0, TEXT("VelocityFieldSwap0"));
-	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledVelocityFieldSwap1, TEXT("VelocityFieldSwap0"));
-	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledDensityFieldSwap0, TEXT("VelocityFieldSwap0"));
-	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledDensityFieldSwap1, TEXT("VelocityFieldSwap0"));
-	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledDivregenceField, TEXT("VelocityFieldSwap0"));
-	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledPressureFieldSwap0, TEXT("VelocityFieldSwap0"));
-	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledPressureFieldSwap1, TEXT("VelocityFieldSwap0"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledVelocityFieldSwap1, TEXT("VelocityFieldSwap1"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledDensityFieldSwap0, TEXT("DensityFieldSwap0"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledDensityFieldSwap1, TEXT("DensityFieldSwap1"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledDivregenceField, TEXT("DivregenceField"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledPressureFieldSwap0, TEXT("PressureFieldSwap0"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledPressureFieldSwap1, TEXT("PressureFieldSwap1"));
+
+	FRHICopyTextureInfo CopyInfo;
+	CopyInfo.Size = FIntVector(FluidSurfaceSize.X, FluidSurfaceSize.Y, 1);
+	RHICmdList.CopyTexture(PooledVelocityFieldSwap0->GetRenderTargetItem().TargetableTexture, OutTexture, CopyInfo);
 
 	FRDGBuilder GraphBuilder(RHICmdList);
 	{
@@ -369,7 +374,7 @@ void UpdateFluid(FRHICommandListImmediate& RHICmdList, float DeltaTime, FIntPoin
 		FRDGTextureRef DivregenceField = GraphBuilder.RegisterExternalTexture(PooledDivregenceField, TEXT("DivregenceField"), ERDGResourceFlags::MultiFrame);
 		FRDGTextureRef PressureFieldSwap0 = GraphBuilder.RegisterExternalTexture(PooledPressureFieldSwap0, TEXT("PressureFieldSwap0"), ERDGResourceFlags::MultiFrame);
 		FRDGTextureRef PressureFieldSwap1 = GraphBuilder.RegisterExternalTexture(PooledPressureFieldSwap1, TEXT("PressureFieldSwap1"), ERDGResourceFlags::MultiFrame);
-		
+
 		FRDGTextureSRVRef VelocityFieldSRV0 = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(VelocityFieldSwap0));
 		FRDGTextureSRVRef VelocityFieldSRV1 = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(VelocityFieldSwap1));
 		FRDGTextureUAVRef VelocityFieldUAV0 = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(VelocityFieldSwap0));
@@ -397,6 +402,15 @@ void UpdateFluid(FRHICommandListImmediate& RHICmdList, float DeltaTime, FIntPoin
 		FRDGTextureSRVRef PressureFieldSRVs[2] = { PressureFieldSRV0, PressureFieldSRV1 };
 		FRDGTextureUAVRef PressureFieldUAVs[2] = { PressureFieldUAV0, PressureFieldUAV1 };
 
+		// #TODO
+		/*AddClearUAVPass(GraphBuilder, VelocityFieldUAV0, FLinearColor::Black);
+		AddClearUAVPass(GraphBuilder, VelocityFieldUAV1, FLinearColor::Black);
+		AddClearUAVPass(GraphBuilder, DensityFieldUAV0, FLinearColor::Black);
+		AddClearUAVPass(GraphBuilder, DensityFieldUAV1, FLinearColor::Black);
+		AddClearUAVPass(GraphBuilder, DivregenceFieldUAV, FLinearColor::Black);
+		AddClearUAVPass(GraphBuilder, PressureFieldUAV0, FLinearColor::Black);
+		AddClearUAVPass(GraphBuilder, PressureFieldUAV1, FLinearColor::Black);*/
+
 		FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(FeatureLevel);
 
 		// 1. Compute the boundary of the velocity field, the velocity of boundary is reverse to the velocity inside
@@ -408,10 +422,10 @@ void UpdateFluid(FRHICommandListImmediate& RHICmdList, float DeltaTime, FIntPoin
 		// Compute for density, such as ink in fluid, make fluid more obviously
 		FRDGTextureRef DensityTextures[2] = { DensityFieldSwap0, DensityFieldSwap1 };
 		ComputeBoundary(GraphBuilder, ShaderMap, FluidSurfaceSize, 0.f, DensityTextures, DensityFiledSRVs, DensityFiledUAVs);
-		ComputeAdvect(GraphBuilder, ShaderMap, FluidSurfaceSize, DeltaTime, Dissipation, VelocityFieldSRV0, DensityFieldSRV0, DensityFieldUAV1);
+		ComputeAdvect(GraphBuilder, ShaderMap, FluidSurfaceSize, DeltaTime, Dissipation, VelocityFieldSRV1, DensityFieldSRV0, DensityFieldUAV1);
 
 		// Add Impluse
-		FVector4 ForceParam(2.f, 0.f, 0.f, 0.f);
+		FVector4 ForceParam(20.f, 0.f, 0.f, 0.f);
 		FIntPoint ForcePos = FluidSurfaceSize / 2;
 		float ForceRadius = 20.f;
 		AddImpluse(GraphBuilder, ShaderMap, FluidSurfaceSize, ForceParam, ForcePos, ForceRadius, VelocityFieldSRV1, VelocityFieldUAV0);

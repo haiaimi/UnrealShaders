@@ -43,7 +43,7 @@ void Advect(uint3 GroupId : SV_GroupID,
 	//PreCoord = clamp(PreCoord, 0.f, FieldSize);
 
 	uint2 floorCoord = (uint2)clamp(floor(PreCoord), 0.f, FieldSize);
-	uint2 roundCoord = floorCoord;
+	uint2 roundCoord = floorCoord + 1;
 	
 	float FracX = frac(PreCoord.x);
 	float FracY = frac(PreCoord.y);
@@ -88,7 +88,7 @@ void AddImpluse(uint3 GroupId : SV_GroupID,
 				uint3 DispatchThreadId : SV_DispatchThreadID,
 				uint3 GroupThreadId : SV_GroupThreadID)
 {
-	uint2 DeltaPos = (uint2)ForcePos - DispatchThreadId.xy;
+	float2 DeltaPos = float2(ForcePos - (int2)DispatchThreadId.xy);
 	float c = exp(-dot(DeltaPos, DeltaPos) / Radius);
 	RWDstTexture[DispatchThreadId.xy + 1] = SrcTexture[DispatchThreadId.xy + 1] + ForceParam * c;
 }
