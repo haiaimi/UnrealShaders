@@ -48,9 +48,9 @@ void Advect(uint3 GroupId : SV_GroupID,
 	float FracX = frac(PreCoord.x);
 	float FracY = frac(PreCoord.y);
 	
-	RWDstTexture[DispatchThreadId.xy + 1] = Dissipation * float4(lerp(lerp(SrcTexture[floorCoord].xy, SrcTexture[uint2(roundCoord.x, floorCoord.y)].xy, FracX),
-											lerp(SrcTexture[uint2(floorCoord.x, roundCoord.y)].xy, SrcTexture[roundCoord].xy, FracX),
-											FracY), 0.f, 0.f);
+	RWDstTexture[DispatchThreadId.xy + 1] = Dissipation * float4(lerp(lerp(SrcTexture[floorCoord], SrcTexture[uint2(roundCoord.x, floorCoord.y)], FracX),
+											lerp(SrcTexture[uint2(floorCoord.x, roundCoord.y)], SrcTexture[roundCoord], FracX),
+											FracY));
 }
 
 void LoadTextureNeighbors(Texture2D<float4> InTexure, uint2 SampleCoord, out float4 Left, out float4 Top, out float4 Right, out float4 Bottom)
@@ -93,12 +93,37 @@ void AddImpluse(uint3 GroupId : SV_GroupID,
 	RWDstTexture[DispatchThreadId.xy + 1] = SrcTexture[DispatchThreadId.xy + 1] + ForceParam * c;
 }
 
-void VortForce()
-{
+float Halfrdx;
 
+[numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
+void Vorticity(uint3 GroupId : SV_GroupID,
+			   uint3 DispatchThreadId : SV_DispatchThreadID,
+			   uint3 GroupThreadId : SV_GroupThreadID)
+{
+	float4 Left, Top, Right, Bottom;
+	LoadTextureNeighbors(VelocityField, DispatchThreadId.xy + 1, Left, Top, Right, Bottom);
+	RWDstTexture[DispatchThreadId.xy + 1] = Halfrdx * ((Right.y - Left.y) - (Top.x - Bottom.x));
 }
 
-float Halfrdx;
+Texture2D<float4> VorticityField;
+float dxScale;
+
+[numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
+void VorticityForce(uint3 GroupId : SV_GroupID,
+			        uint3 DispatchThreadId : SV_DispatchThreadID,
+			        uint3 GroupThreadId : SV_GroupThreadID)
+{
+	float4 Left, Top, Right, Bottom;
+	LoadTextureNeighbors(VorticityField, DispatchThreadId.xy + 1, Left, Top, Right, Bottom);
+	float4 VC = VorticityField[DispatchThreadId.xy + 1];
+	float2 Force = Halfrdx * float2(abs(Top.x) - abs(Bottom.x), abs(Right.x) - abs(Left.x));
+	// we can't use normalize() func directly, it is not safe, so we clamp to a min value 
+	static float EPSILON = 2.4414e-4;
+	float ForceMagSqr = max(EPSILON, dot(Force, Force));
+	Force = Force * rsqrt(ForceMagSqr) * dxScale * VC.x * float2(1.f, -1.f);
+	RWDstTexture[DispatchThreadId.xy + 1] = VelocityField[DispatchThreadId.xy + 1] + float4(Force * TimeStep, 0.f, 0.f);
+}
+
 RWTexture2D<float4> RWDivergence;
 
 // Compute divergence of velocity field

@@ -10,5 +10,5 @@ class UFluidSimulationFunctionLibrary : public UObject
 
 public:
 	UFUNCTION(BlueprintCallable, meta=(WorldContext="WorldContextObject"))
-	static void SimulateFluid2D(const UObject* WorldContextObject, class UTextureRenderTarget* OutputRenderTarget, int32 IterationCount, float Dissipation, float DeltaTime, FIntPoint FluidSurfaceSize);
+	static void SimulateFluid2D(const UObject* WorldContextObject, class UTextureRenderTarget* OutputRenderTarget, int32 IterationCount, float Dissipation, float Viscosity, float DeltaTime, FIntPoint FluidSurfaceSize, bool bApplyVorticityForce = false, float VorticityScale = 0.5f);
 };
