@@ -597,3 +597,13 @@ $f_{buoy}=\sigma (T-T_0)\hat{j}$
 $f_{buoy}=(-kd+\sigma (T-T_0))\hat{j}$
 
 模拟烟和云，上式涉及两个变量，$d$烟的密度，$T$温度。
+
+### Equation 20
+$f_{vc}=\xi (\Psi \times \omega)\delta x$
+
+这个公式用于Vorticity Confinement（涡流限制）：
+1. 首先需要计算涡流强度，也就是速度场的*旋度*，$\omega$。
+2. 然后通过旋度计算涡流强度向量场$\eta$，$\eta = \nabla|\omega|$，在实际中就是*float2(abs(Top.x) - abs(Bottom.x), abs(Right.x) - abs(Left.x))*注意上面4个不同位置值都是涡流强度标量。
+3. 求$\eta$的单位向量$\Psi$。
+4. 最后计算$f_{vc}$，$\xi$是自己设置的系数，该值越大，涡流也就越多越密集。
+5. 然后把$f_{vc}加到当前的速度场上，从而施加Vorticity Confinement。$
