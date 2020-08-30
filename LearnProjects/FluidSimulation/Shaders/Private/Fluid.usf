@@ -39,16 +39,16 @@ void Advect(uint3 GroupId : SV_GroupID,
 	float2 FieldSize;
 	VelocityField.GetDimensions(FieldSize.x, FieldSize.y);
 	float2 CurVelocity = VelocityField[DispatchThreadId.xy + 1].xy;
-	float2 PreCoord = float2(DispatchThreadId.xy + 1) - Dissipation * TimeStep * CurVelocity;
+	float2 PreCoord = float2(DispatchThreadId.xy + 1) - 1.f * TimeStep * CurVelocity;
 	//PreCoord = clamp(PreCoord, 0.f, FieldSize);
 
 	uint2 floorCoord = (uint2)clamp(floor(PreCoord), 0.f, FieldSize);
-	uint2 roundCoord = floorCoord + 1;
+	uint2 roundCoord = floorCoord + uint2(1, 1);
 	
 	float FracX = frac(PreCoord.x);
 	float FracY = frac(PreCoord.y);
 	
-	RWDstTexture[DispatchThreadId.xy + 1] = float4(lerp(lerp(SrcTexture[floorCoord].xy, SrcTexture[uint2(roundCoord.x, floorCoord.y)].xy, FracX),
+	RWDstTexture[DispatchThreadId.xy + 1] = Dissipation * float4(lerp(lerp(SrcTexture[floorCoord].xy, SrcTexture[uint2(roundCoord.x, floorCoord.y)].xy, FracX),
 											lerp(SrcTexture[uint2(floorCoord.x, roundCoord.y)].xy, SrcTexture[roundCoord].xy, FracX),
 											FracY), 0.f, 0.f);
 }
@@ -109,7 +109,7 @@ void Divergence(uint3 GroupId : SV_GroupID,
 {
 	float4 Left, Top, Right, Bottom;
 	LoadTextureNeighbors(SrcTexture, DispatchThreadId.xy + 1, Left, Top, Right, Bottom);
-	RWDivergence[DispatchThreadId.xy + 1] = Halfrdx * (Right.x - Left.x + Top.y - Bottom.y);
+	RWDivergence[DispatchThreadId.xy + 1] = Halfrdx * (Right.x - Left.x - Top.y + Bottom.y);
 }
 
 Texture2D<float4> PressureField;
@@ -123,7 +123,7 @@ void SubstractGradient(uint3 GroupId : SV_GroupID,
 {
 	float4 Left, Top, Right, Bottom;
 	LoadTextureNeighbors(PressureField, DispatchThreadId.xy + 1, Left, Top, Right, Bottom);
-	float2 Gradient = (Right.x - Left.x + Top.y - Bottom.y) * Halfrdx;
+	float2 Gradient = float2(Right.x - Left.x, Bottom.y - Top.y) * Halfrdx;
 	RWVelocityField[DispatchThreadId.xy + 1] = VelocityField[DispatchThreadId.xy + 1] - float4(Gradient, 0.f, 0.f);
 
 }
