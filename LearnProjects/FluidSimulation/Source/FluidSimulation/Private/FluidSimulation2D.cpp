@@ -520,18 +520,18 @@ void UpdateFluid(FRHICommandListImmediate& RHICmdList,
 		// The compute the advect of velocity field
 		FRDGTextureRef VelocityTextures[2] = { VelocityFieldSwap0, VelocityFieldSwap1 };
 		ComputeBoundary(GraphBuilder, ShaderMap, FluidSurfaceSize, -1.f, VelocityTextures, VelocityFieldSRVs, VelocityFieldUAVs);
-		ComputeAdvect(GraphBuilder, ShaderMap, FluidSurfaceSize, DeltaTime, Dissipation, VelocityFieldSRV1, VelocityFieldSRV1, VelocityFieldUAV0);
+		ComputeAdvect(GraphBuilder, ShaderMap, FluidSurfaceSize, DeltaTime, Dissipation, VelocityFieldSRV0, VelocityFieldSRV0, VelocityFieldUAV1);
 
 		// Compute for density, such as ink in fluid, make fluid more obviously
 		FRDGTextureRef DensityTextures[2] = { DensityFieldSwap0, DensityFieldSwap1 };
 		ComputeBoundary(GraphBuilder, ShaderMap, FluidSurfaceSize, 0.f, DensityTextures, DensityFiledSRVs, DensityFiledUAVs);
-		ComputeAdvect(GraphBuilder, ShaderMap, FluidSurfaceSize, DeltaTime, Dissipation, VelocityFieldSRV1, DensityFieldSRV0, DensityFieldUAV1);
+		ComputeAdvect(GraphBuilder, ShaderMap, FluidSurfaceSize, DeltaTime, Dissipation, VelocityFieldSRV0, DensityFieldSRV0, DensityFieldUAV1);
 
 		// Add Impluse
 		FVector4 ForceParam(100.f, 50.f, 0.f, 0.f);
 		FIntPoint ForcePos = FluidSurfaceSize / 10;
 		float ForceRadius = 100.f;
-		AddImpluse(GraphBuilder, ShaderMap, FluidSurfaceSize, ForceParam, ForcePos, ForceRadius, VelocityFieldSRV0, VelocityFieldUAV1);
+		AddImpluse(GraphBuilder, ShaderMap, FluidSurfaceSize, ForceParam, ForcePos, ForceRadius, VelocityFieldSRV1, VelocityFieldUAV0);
 		// Add ink to field
 		FVector4 InkColor(0.1f, 0.1f, 0.1f, 1.f);
 		AddImpluse(GraphBuilder, ShaderMap, FluidSurfaceSize, InkColor, ForcePos, ForceRadius, DensityFieldSRV1, DensityFieldUAV0);
@@ -539,9 +539,9 @@ void UpdateFluid(FRHICommandListImmediate& RHICmdList,
 		// Apply VorticityConfinement
 		if(bApplyVorticityForce)
 		{
-			ComputeVorticity(GraphBuilder, ShaderMap, FluidSurfaceSize, Halfrdx, VelocityFieldSRV1, VorticityFieldUAV);
-			FRDGTextureRef VelocityTextures1[2] = { VelocityFieldSwap1, VelocityFieldSwap0 };
-			ComputeBoundary(GraphBuilder, ShaderMap, FluidSurfaceSize, -1.f, VelocityTextures1, VelocityFieldSRVs, VelocityFieldUAVs);
+			ComputeVorticity(GraphBuilder, ShaderMap, FluidSurfaceSize, Halfrdx, VelocityFieldSRV0, VorticityFieldUAV);
+			//FRDGTextureRef VelocityTextures1[2] = { VelocityFieldSwap1, VelocityFieldSwap0 };
+			ComputeBoundary(GraphBuilder, ShaderMap, FluidSurfaceSize, -1.f, VelocityTextures, VelocityFieldSRVs, VelocityFieldUAVs);
 			ComputeVorticityForce(GraphBuilder, ShaderMap, FluidSurfaceSize, Halfrdx, DeltaTime, VorticityScale, VorticityFieldSRV, VelocityFieldSRV1, VelocityFieldUAV0);
 		}
 
