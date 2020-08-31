@@ -454,17 +454,18 @@ void UpdateFluid(FRHICommandListImmediate& RHICmdList,
 	FTexture2DRHIRef OutTexture = TextureRenderTargetResource->GetRenderTargetTexture();
 
 	// First we should create all texture that will used in RenderGraph 
-	FRDGTextureDesc TexDesc = FRDGTextureDesc::Create2DDesc(FluidSurfaceSize, PF_FloatRGBA, FClearValueBinding(FLinearColor::Black), TexCreate_None, TexCreate_UAV | TexCreate_ShaderResource, false);
+	FRDGTextureDesc TexDesc_F16 = FRDGTextureDesc::Create2DDesc(FluidSurfaceSize, PF_FloatRGBA, FClearValueBinding(FLinearColor::Black), TexCreate_None, TexCreate_UAV | TexCreate_ShaderResource, false);
+	FRDGTextureDesc TexDesc_F32 = FRDGTextureDesc::Create2DDesc(FluidSurfaceSize, PF_A32B32G32R32F, FClearValueBinding(FLinearColor::Black), TexCreate_None, TexCreate_UAV | TexCreate_ShaderResource, false);
 	TRefCountPtr<IPooledRenderTarget> PooledVelocityField, PooledVelocityFieldSwap0, PooledVelocityFieldSwap1, PooledVorticityField, PooledDensityFieldSwap0, PooledDensityFieldSwap1, PooledDivregenceField, PooledPressureFieldSwap0, PooledPressureFieldSwap1;
-	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledVelocityField, TEXT("VelocityField"));
-	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledVelocityFieldSwap0, TEXT("VelocityFieldSwap0"));
-	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledVelocityFieldSwap1, TEXT("VelocityFieldSwap1"));
-	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledVorticityField, TEXT("VorticityField"));
-	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledDensityFieldSwap0, TEXT("DensityFieldSwap0"));
-	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledDensityFieldSwap1, TEXT("DensityFieldSwap1"));
-	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledDivregenceField, TEXT("DivregenceField"));
-	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledPressureFieldSwap0, TEXT("PressureFieldSwap0"));
-	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledPressureFieldSwap1, TEXT("PressureFieldSwap1"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc_F16, PooledVelocityField, TEXT("VelocityField"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc_F16, PooledVelocityFieldSwap0, TEXT("VelocityFieldSwap0"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc_F16, PooledVelocityFieldSwap1, TEXT("VelocityFieldSwap1"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc_F16, PooledVorticityField, TEXT("VorticityField"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc_F16, PooledDensityFieldSwap0, TEXT("DensityFieldSwap0"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc_F16, PooledDensityFieldSwap1, TEXT("DensityFieldSwap1"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc_F32, PooledDivregenceField, TEXT("DivregenceField"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc_F16, PooledPressureFieldSwap0, TEXT("PressureFieldSwap0"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc_F16, PooledPressureFieldSwap1, TEXT("PressureFieldSwap1"));
 
 	FRHICopyTextureInfo CopyInfo;
 	CopyInfo.Size = FIntVector(FluidSurfaceSize.X, FluidSurfaceSize.Y, 1);
@@ -528,7 +529,7 @@ void UpdateFluid(FRHICommandListImmediate& RHICmdList,
 		ComputeAdvect(GraphBuilder, ShaderMap, FluidSurfaceSize, DeltaTime, Dissipation, VelocityFieldSRV0, DensityFieldSRV0, DensityFieldUAV1);
 
 		// Add Impluse
-		FVector4 ForceParam(100.f, 50.f, 0.f, 0.f);
+		FVector4 ForceParam(500.f, 50.f, 0.f, 0.f);
 		FIntPoint ForcePos = FluidSurfaceSize / 10;
 		float ForceRadius = 100.f;
 		AddImpluse(GraphBuilder, ShaderMap, FluidSurfaceSize, ForceParam, ForcePos, ForceRadius, VelocityFieldSRV1, VelocityFieldUAV0);

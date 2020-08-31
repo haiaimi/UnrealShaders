@@ -7,7 +7,13 @@
 		{
 			"Name": "FluidSimulation",
 			"Type": "Runtime",
-			"LoadingPhase": "Default"
+			"LoadingPhase": "PostConfigInit"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "RenderDocPlugin",
+			"Enabled": true
 		}
 	]
 }
