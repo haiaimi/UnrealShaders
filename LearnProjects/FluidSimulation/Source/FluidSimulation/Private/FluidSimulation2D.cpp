@@ -61,9 +61,9 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(float, TimeStep)
 		SHADER_PARAMETER(float, Dissipation)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, SrcTexture)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, VelocityField)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWDstTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D, SrcTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D, VelocityField)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D, RWDstTexture)
 		END_SHADER_PARAMETER_STRUCT()
 
 public:
@@ -98,8 +98,8 @@ public:
 		SHADER_PARAMETER(FVector4, ForceParam)
 		SHADER_PARAMETER(FIntPoint, ForcePos)
 		SHADER_PARAMETER(float, Radius)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, SrcTexture)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWDstTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D, SrcTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D, RWDstTexture)
 		END_SHADER_PARAMETER_STRUCT()
 
 public:
@@ -132,8 +132,8 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(float, Halfrdx)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, VelocityField)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWDstTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D, VelocityField)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D, RWDstTexture)
 		END_SHADER_PARAMETER_STRUCT()
 
 public:
@@ -168,9 +168,9 @@ public:
 		SHADER_PARAMETER(float, Halfrdx)
 		SHADER_PARAMETER(float, TimeStep)
 		SHADER_PARAMETER(float, dxScale)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, VorticityField)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, VelocityField)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWDstTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D, VorticityField)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D, VelocityField)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D, RWDstTexture)
 		END_SHADER_PARAMETER_STRUCT()
 
 public:
@@ -204,9 +204,9 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(float, Alpha)
 		SHADER_PARAMETER(float, rBeta)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, Jacobi_x)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, Jacobi_b)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWDstTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D, Jacobi_x)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D, Jacobi_b)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D, RWDstTexture)
 		END_SHADER_PARAMETER_STRUCT()
 
 public:
@@ -239,8 +239,8 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(float, Halfrdx)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, SrcTexture)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWDivergence)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D, SrcTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D, RWDivergence)
 	END_SHADER_PARAMETER_STRUCT()
 
 public:
@@ -273,9 +273,9 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(float, Halfrdx)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, VelocityField)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, PressureField)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWVelocityField)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D, VelocityField)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D, PressureField)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D, RWVelocityField)
 		END_SHADER_PARAMETER_STRUCT()
 
 public:
@@ -454,7 +454,7 @@ void UpdateFluid(FRHICommandListImmediate& RHICmdList,
 	FTexture2DRHIRef OutTexture = TextureRenderTargetResource->GetRenderTargetTexture();
 
 	// First we should create all texture that will used in RenderGraph 
-	FRDGTextureDesc TexDesc = FRDGTextureDesc::Create2DDesc(FluidSurfaceSize, PF_A32B32G32R32F, FClearValueBinding(FLinearColor::Black), TexCreate_None, TexCreate_UAV | TexCreate_ShaderResource, false);
+	FRDGTextureDesc TexDesc = FRDGTextureDesc::Create2DDesc(FluidSurfaceSize, PF_FloatRGBA, FClearValueBinding(FLinearColor::Black), TexCreate_None, TexCreate_UAV | TexCreate_ShaderResource, false);
 	TRefCountPtr<IPooledRenderTarget> PooledVelocityField, PooledVelocityFieldSwap0, PooledVelocityFieldSwap1, PooledVorticityField, PooledDensityFieldSwap0, PooledDensityFieldSwap1, PooledDivregenceField, PooledPressureFieldSwap0, PooledPressureFieldSwap1;
 	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledVelocityField, TEXT("VelocityField"));
 	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledVelocityFieldSwap0, TEXT("VelocityFieldSwap0"));
