@@ -5,9 +5,9 @@
 	#define THREADGROUP_SIZE 4
 #endif
 
-Texture2D<float4> VelocityField;
-Texture2D<float4> SrcTexture;
-RWTexture2D<float4> RWDstTexture;
+Texture2D<float2> VelocityField;
+Texture2D<float2> SrcTexture;
+RWTexture2D<float2> RWDstTexture;
 float ValueScale;
 
 [numthreads(THREADGROUP_SIZE, 1, 1)]
@@ -48,7 +48,7 @@ void Advect(uint3 GroupId : SV_GroupID,
 	float FracX = frac(PreCoord.x);
 	float FracY = frac(PreCoord.y);
 	
-	RWDstTexture[DispatchThreadId.xy + 1] = Dissipation * float4(lerp(lerp(SrcTexture[floorCoord], SrcTexture[uint2(roundCoord.x, floorCoord.y)], FracX),
+	RWDstTexture[DispatchThreadId.xy + 1] = Dissipation * float2(lerp(lerp(SrcTexture[floorCoord], SrcTexture[uint2(roundCoord.x, floorCoord.y)], FracX),
 											lerp(SrcTexture[uint2(floorCoord.x, roundCoord.y)], SrcTexture[roundCoord], FracX),
 											FracY));
 }
@@ -61,20 +61,28 @@ void LoadTextureNeighbors(Texture2D<float4> InTexure, uint2 SampleCoord, out flo
 	Bottom = InTexure[SampleCoord + uint2(0, 1)];
 }
 
+void LoadTextureNeighbors(Texture2D<float2> InTexure, uint2 SampleCoord, out float2 Left, out float2 Top, out float2 Right, out float2 Bottom)
+{
+	Left = InTexure[SampleCoord - uint2(1, 0)];
+	Top = InTexure[SampleCoord - uint2(0, 1)];
+	Right = InTexure[SampleCoord + uint2(1, 0)];
+	Bottom = InTexure[SampleCoord + uint2(0, 1)];
+}
+
 float Alpha;
 float rBeta;
 // Jacobi -> Ax=b, 
-Texture2D<float4> Jacobi_x;
-Texture2D<float4> Jacobi_b;
+Texture2D<float2> Jacobi_x;
+Texture2D<float2> Jacobi_b;
 
 [numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
 void Jacobi(uint3 GroupId : SV_GroupID,
 			uint3 DispatchThreadId : SV_DispatchThreadID,
 			uint3 GroupThreadId : SV_GroupThreadID)
 {
-	float4 xLeft, xTop, xRight, xBottom;
+	float2 xLeft, xTop, xRight, xBottom;
 	LoadTextureNeighbors(Jacobi_x, DispatchThreadId.xy + 1, xLeft, xTop, xRight, xBottom);
-	float4 b = Jacobi_b[DispatchThreadId.xy + 1];
+	float2 b = Jacobi_b[DispatchThreadId.xy + 1];
 	
 	RWDstTexture[DispatchThreadId.xy + 1] = (xLeft + xRight + xTop + xBottom + Alpha * b) * rBeta;
 }
@@ -90,7 +98,7 @@ void AddImpluse(uint3 GroupId : SV_GroupID,
 {
 	float2 DeltaPos = float2(ForcePos - (int2)DispatchThreadId.xy);
 	float c = exp(-dot(DeltaPos, DeltaPos) / Radius);
-	RWDstTexture[DispatchThreadId.xy + 1] = SrcTexture[DispatchThreadId.xy + 1] + ForceParam * c;
+	RWDstTexture[DispatchThreadId.xy + 1] = SrcTexture[DispatchThreadId.xy + 1] + ForceParam.xy * c;
 }
 
 float Halfrdx;
@@ -100,12 +108,12 @@ void Vorticity(uint3 GroupId : SV_GroupID,
 			   uint3 DispatchThreadId : SV_DispatchThreadID,
 			   uint3 GroupThreadId : SV_GroupThreadID)
 {
-	float4 Left, Top, Right, Bottom;
+	float2 Left, Top, Right, Bottom;
 	LoadTextureNeighbors(VelocityField, DispatchThreadId.xy + 1, Left, Top, Right, Bottom);
 	RWDstTexture[DispatchThreadId.xy + 1] = Halfrdx * ((Right.y - Left.y) - (Top.x - Bottom.x));
 }
 
-Texture2D<float4> VorticityField;
+Texture2D<float2> VorticityField;
 float dxScale;
 
 [numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
@@ -113,18 +121,18 @@ void VorticityForce(uint3 GroupId : SV_GroupID,
 			        uint3 DispatchThreadId : SV_DispatchThreadID,
 			        uint3 GroupThreadId : SV_GroupThreadID)
 {
-	float4 Left, Top, Right, Bottom;
+	float2 Left, Top, Right, Bottom;
 	LoadTextureNeighbors(VorticityField, DispatchThreadId.xy + 1, Left, Top, Right, Bottom);
-	float4 VC = VorticityField[DispatchThreadId.xy + 1];
+	float2 VC = VorticityField[DispatchThreadId.xy + 1];
 	float2 Force = Halfrdx * float2(abs(Top.x) - abs(Bottom.x), abs(Right.x) - abs(Left.x));
 	// we can't use normalize() func directly, it is not safe, so we clamp to a min value 
 	static float EPSILON = 2.4414e-4;
 	float ForceMagSqr = max(EPSILON, dot(Force, Force));
 	Force = Force * rsqrt(ForceMagSqr) * dxScale * VC.x * float2(1.f, -1.f);
-	RWDstTexture[DispatchThreadId.xy + 1] = VelocityField[DispatchThreadId.xy + 1] + float4(Force * TimeStep, 0.f, 0.f);
+	RWDstTexture[DispatchThreadId.xy + 1] = VelocityField[DispatchThreadId.xy + 1] + Force * TimeStep;
 }
 
-RWTexture2D<float4> RWDivergence;
+RWTexture2D<float2> RWDivergence;
 
 // Compute divergence of velocity field
 [numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
@@ -132,13 +140,13 @@ void Divergence(uint3 GroupId : SV_GroupID,
 				uint3 DispatchThreadId : SV_DispatchThreadID,
 				uint3 GroupThreadId : SV_GroupThreadID)
 {
-	float4 Left, Top, Right, Bottom;
+	float2 Left, Top, Right, Bottom;
 	LoadTextureNeighbors(SrcTexture, DispatchThreadId.xy + 1, Left, Top, Right, Bottom);
 	RWDivergence[DispatchThreadId.xy + 1] = Halfrdx * (Right.x - Left.x - Top.y + Bottom.y);
 }
 
-Texture2D<float4> PressureField;
-RWTexture2D<float4> RWVelocityField;
+Texture2D<float2> PressureField;
+RWTexture2D<float2> RWVelocityField;
 
 // Subtract gradient(p) from u, get divergence free velocity field
 [numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
@@ -146,9 +154,9 @@ void SubstractGradient(uint3 GroupId : SV_GroupID,
 					   uint3 DispatchThreadId : SV_DispatchThreadID,
 					   uint3 GroupThreadId : SV_GroupThreadID)
 {
-	float4 Left, Top, Right, Bottom;
+	float2 Left, Top, Right, Bottom;
 	LoadTextureNeighbors(PressureField, DispatchThreadId.xy + 1, Left, Top, Right, Bottom);
-	float2 Gradient = float2(Right.x - Left.x, Bottom.y - Top.y) * Halfrdx;
-	RWVelocityField[DispatchThreadId.xy + 1] = VelocityField[DispatchThreadId.xy + 1] - float4(Gradient, 0.f, 0.f);
+	float2 Gradient = float2(Right.x - Left.x, Bottom.x - Top.x) * Halfrdx;
+	RWVelocityField[DispatchThreadId.xy + 1] = VelocityField[DispatchThreadId.xy + 1] - Gradient;
 
 }

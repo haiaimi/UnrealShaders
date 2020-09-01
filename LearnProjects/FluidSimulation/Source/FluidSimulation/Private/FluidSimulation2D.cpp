@@ -454,7 +454,7 @@ void UpdateFluid(FRHICommandListImmediate& RHICmdList,
 	FTexture2DRHIRef OutTexture = TextureRenderTargetResource->GetRenderTargetTexture();
 
 	// First we should create all texture that will used in RenderGraph 
-	FRDGTextureDesc TexDesc = FRDGTextureDesc::Create2DDesc(FluidSurfaceSize, PF_A32B32G32R32F, FClearValueBinding(FLinearColor::Black), TexCreate_None, TexCreate_UAV | TexCreate_ShaderResource, false);
+	FRDGTextureDesc TexDesc = FRDGTextureDesc::Create2DDesc(FluidSurfaceSize, PF_G32R32F, FClearValueBinding(FLinearColor::Black), TexCreate_None, TexCreate_UAV | TexCreate_ShaderResource, false);
 	TRefCountPtr<IPooledRenderTarget> PooledVelocityField, PooledVelocityFieldSwap0, PooledVelocityFieldSwap1, PooledVorticityField, PooledDensityFieldSwap0, PooledDensityFieldSwap1, PooledDivregenceField, PooledPressureFieldSwap0, PooledPressureFieldSwap1;
 	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledVelocityField, TEXT("VelocityField"));
 	GRenderTargetPool.FindFreeElement(RHICmdList, TexDesc, PooledVelocityFieldSwap0, TEXT("VelocityFieldSwap0"));
