@@ -27,6 +27,31 @@ void Boundary(uint3 GroupId : SV_GroupID,
 #endif
 }
 
+//[numthreads(THREADGROUP_SIZE, 1, 1)]
+//void CopyBoundary(uint3 GroupId : SV_GroupID,
+//			    uint3 DispatchThreadId : SV_DispatchThreadID,
+//			    uint3 GroupThreadId : SV_GroupThreadID)
+//{
+//	uint2 SrcSize;
+//	SrcTexture.GetDimensions(SrcSize.x, SrcSize.y);
+//	uint2 BoundaryStart[4] = { uint2(0, 0), uint2(DispatchThreadId.x - 1, 0) }
+//	uint4 X = 0, Y = 0, Z = 0, W = 0;
+//	bool bTop = DispatchThreadId.x >= 0 && DispatchThreadId.x < SrcSize.x;
+//	bool bRight = DispatchThreadId.x >= SrcSize.x && DispatchThreadId.x < SrcSize.x + SrcSize.y;
+//	bool bBottom = DispatchThreadId.x >= SrcSize.x + SrcSize.y && DispatchThreadId.x < SrcSize.x * 2 + SrcSize.y;
+//	bool bLeft = DispatchThreadId.x >= SrcSize.x * 2 + SrcSize.y && DispatchThreadId.x < SrcSize.x * 2 + SrcSize.y * 2;
+	
+//	uint BoundaryMask = 0;
+//	BoundaryMask |= (uint) bTop << 0;
+//	BoundaryMask |= (uint) bRight << 1;
+//	BoundaryMask |= (uint) bBottom << 2;
+//	BoundaryMask |= (uint) bLeft << 3;
+
+//	BoundaryMask = log2(BoundaryMask);
+	
+//	const int2 Offsets[4] = { int2(0, -1), int2(1, 0), int2(0, 1), int2(-1, 0) };
+//}
+
 float TimeStep;
 float Dissipation;
 float rdx;

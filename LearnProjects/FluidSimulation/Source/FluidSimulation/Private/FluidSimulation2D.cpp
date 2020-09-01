@@ -26,8 +26,8 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(float, ValueScale)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, SrcTexture)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWDstTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float2>, SrcTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, RWDstTexture)
 	END_SHADER_PARAMETER_STRUCT()
 
 public:
@@ -61,9 +61,9 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(float, TimeStep)
 		SHADER_PARAMETER(float, Dissipation)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, SrcTexture)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, VelocityField)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWDstTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float2>, SrcTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float2>, VelocityField)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, RWDstTexture)
 		END_SHADER_PARAMETER_STRUCT()
 
 public:
@@ -98,8 +98,8 @@ public:
 		SHADER_PARAMETER(FVector4, ForceParam)
 		SHADER_PARAMETER(FIntPoint, ForcePos)
 		SHADER_PARAMETER(float, Radius)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, SrcTexture)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWDstTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float2>, SrcTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, RWDstTexture)
 		END_SHADER_PARAMETER_STRUCT()
 
 public:
@@ -132,8 +132,8 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(float, Halfrdx)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, VelocityField)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWDstTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float2>, VelocityField)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, RWDstTexture)
 		END_SHADER_PARAMETER_STRUCT()
 
 public:
@@ -168,9 +168,9 @@ public:
 		SHADER_PARAMETER(float, Halfrdx)
 		SHADER_PARAMETER(float, TimeStep)
 		SHADER_PARAMETER(float, dxScale)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, VorticityField)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, VelocityField)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWDstTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float2>, VorticityField)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float2>, VelocityField)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, RWDstTexture)
 		END_SHADER_PARAMETER_STRUCT()
 
 public:
@@ -204,9 +204,9 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(float, Alpha)
 		SHADER_PARAMETER(float, rBeta)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, Jacobi_x)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, Jacobi_b)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWDstTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float2>, Jacobi_x)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float2>, Jacobi_b)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, RWDstTexture)
 		END_SHADER_PARAMETER_STRUCT()
 
 public:
@@ -239,8 +239,8 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(float, Halfrdx)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, SrcTexture)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWDivergence)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float2>, SrcTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, RWDivergence)
 	END_SHADER_PARAMETER_STRUCT()
 
 public:
@@ -273,9 +273,9 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(float, Halfrdx)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, VelocityField)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, PressureField)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RWVelocityField)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float2>, VelocityField)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float2>, PressureField)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, RWVelocityField)
 		END_SHADER_PARAMETER_STRUCT()
 
 public:
@@ -310,14 +310,14 @@ void ComputeBoundary(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint Fl
 	PassParameters->SrcTexture = SrcTexure[0];
 	PassParameters->RWDstTexture = RWDstTexture[1];
 
-	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Vertical_CS"), BoundaryVert_CS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 1, THREAD_GROUP_SIZE), 1, 1));
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Vertical_CS"), BoundaryVert_CS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 2, THREAD_GROUP_SIZE), 1, 1));
 
 	PassParameters = RDG.AllocParameters<FComputeBoundaryShaderCS::FParameters>();
 	PassParameters->ValueScale = Scale;
 	PassParameters->SrcTexture = SrcTexure[1];
 	PassParameters->RWDstTexture = RWDstTexture[0];
 
-	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Vertical_CS"), BoundaryVert_CS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 1, THREAD_GROUP_SIZE), 1, 1));
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Vertical_CS"), BoundaryVert_CS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 2, THREAD_GROUP_SIZE), 1, 1));
 
 	PermutationVector.Set<FComputeBoundaryShaderCS::FIsVerticalBoundary>(false);
 	TShaderMapRef<FComputeBoundaryShaderCS> BoundaryHori_CS(ShaderMap, PermutationVector);
@@ -325,13 +325,13 @@ void ComputeBoundary(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint Fl
 	PassParameters->ValueScale = Scale;
 	PassParameters->SrcTexture = SrcTexure[0];
 	PassParameters->RWDstTexture = RWDstTexture[1];
-	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Horizontal_CS"), BoundaryHori_CS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 1, THREAD_GROUP_SIZE), 1, 1));
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Horizontal_CS"), BoundaryHori_CS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 2, THREAD_GROUP_SIZE), 1, 1));
 
 	PassParameters = RDG.AllocParameters<FComputeBoundaryShaderCS::FParameters>();
 	PassParameters->ValueScale = Scale;
 	PassParameters->SrcTexture = SrcTexure[1];
 	PassParameters->RWDstTexture = RWDstTexture[0];
-	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Horizontal_CS"), BoundaryHori_CS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 1, THREAD_GROUP_SIZE), 1, 1));
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Horizontal_CS"), BoundaryHori_CS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 2, THREAD_GROUP_SIZE), 1, 1));
 }
 
 void ComputeAdvect(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint FluidSurfaceSize, float TimeStep, float Dissipation, FRDGTextureSRVRef VelocityField, FRDGTextureSRVRef SrcTexure, FRDGTextureUAVRef DstTexture)
@@ -344,7 +344,7 @@ void ComputeAdvect(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint Flui
 	PassParameters->SrcTexture = SrcTexure;
 	PassParameters->RWDstTexture = DstTexture;
 
-	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("ComputeAdvect"), AdvectCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 1, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 1, THREAD_GROUP_SIZE), 1));
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("ComputeAdvect"), AdvectCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 2, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 2, THREAD_GROUP_SIZE), 1));
 }
 
 void AddImpluse(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint FluidSurfaceSize, FVector4 ForceParam, FIntPoint ForcePos, float ForceRadius, FRDGTextureSRVRef SrcTexture, FRDGTextureUAVRef DstTexture)
@@ -357,7 +357,7 @@ void AddImpluse(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint FluidSu
 	PassParameters->SrcTexture = SrcTexture;
 	PassParameters->RWDstTexture = DstTexture;
 
-	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("AddImpluse"), AddImpluseCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 1, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 1, THREAD_GROUP_SIZE), 1));
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("AddImpluse"), AddImpluseCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 2, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 2, THREAD_GROUP_SIZE), 1));
 }
 
 void ComputeVorticity(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint FluidSurfaceSize, float Halfrdx, FRDGTextureSRVRef VelocityField, FRDGTextureUAVRef DstTexture)
@@ -368,7 +368,7 @@ void ComputeVorticity(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint F
 	PassParameters->VelocityField = VelocityField;
 	PassParameters->RWDstTexture = DstTexture;
 
-	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("ComputeVorticity"), VorticityCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 1, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 1, THREAD_GROUP_SIZE), 1));
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("ComputeVorticity"), VorticityCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 2, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 2, THREAD_GROUP_SIZE), 1));
 }
 
 void ComputeVorticityForce(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint FluidSurfaceSize, float Halfrdx, float TimeStep, float dxScale, FRDGTextureSRVRef VorticityField, FRDGTextureSRVRef VelocityField, FRDGTextureUAVRef DstTexture)
@@ -382,7 +382,7 @@ void ComputeVorticityForce(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPo
 	PassParameters->VelocityField = VelocityField;
 	PassParameters->RWDstTexture = DstTexture;
 
-	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("ComputeVorticityForce"), VorticityForceCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 1, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 1, THREAD_GROUP_SIZE), 1));
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("ComputeVorticityForce"), VorticityForceCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 2, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 2, THREAD_GROUP_SIZE), 1));
 }
 
 
@@ -408,7 +408,7 @@ void Jacobi(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint FluidSurfac
 		PassParameters->Jacobi_x = x_SRVs[Switcher];
 		PassParameters->Jacobi_b = b_SRVs[Switcher];
 		PassParameters->RWDstTexture = x_UAVs[(Switcher + 1) & 1];
-		FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("JacobiIteration_%d", i), JacobiCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 1, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 1, THREAD_GROUP_SIZE), 1));
+		FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("JacobiIteration_%d", i), JacobiCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 2, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 2, THREAD_GROUP_SIZE), 1));
 		Switcher ^= 1;
 	}
 }
@@ -422,7 +422,7 @@ void ComputeDivergence(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint 
 	PassParameters->SrcTexture = SrcTexture;
 	PassParameters->RWDivergence = DstTexture;
 
-	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("ComputeDivergence"), DivergenceCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 1, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 1, THREAD_GROUP_SIZE), 1));
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("ComputeDivergence"), DivergenceCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 2, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 2, THREAD_GROUP_SIZE), 1));
 }
 
 // The final step, u = w - (nabla)p, w is a velocity field with divergence, u is a divergence-free velocity field, now we have got p(pressure field),  
@@ -435,7 +435,7 @@ void SubstarctPressureGradient(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FI
 	PassParameters->PressureField = PressureField; 
 	PassParameters->RWVelocityField = RWVelocityField;
 
-	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("SubstarctPressureGradient"), SubstractGradientCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 1, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 1, THREAD_GROUP_SIZE), 1));
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("SubstarctPressureGradient"), SubstractGradientCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 2, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 2, THREAD_GROUP_SIZE), 1));
 }
 
 void UpdateFluid(FRHICommandListImmediate& RHICmdList, 
@@ -452,7 +452,7 @@ void UpdateFluid(FRHICommandListImmediate& RHICmdList,
 	check(IsInRenderingThread());
 
 	FTexture2DRHIRef OutTexture = TextureRenderTargetResource->GetRenderTargetTexture();
-
+	
 	// First we should create all texture that will used in RenderGraph 
 	FRDGTextureDesc TexDesc = FRDGTextureDesc::Create2DDesc(FluidSurfaceSize, PF_G32R32F, FClearValueBinding(FLinearColor::Black), TexCreate_None, TexCreate_UAV | TexCreate_ShaderResource, false);
 	TRefCountPtr<IPooledRenderTarget> PooledVelocityField, PooledVelocityFieldSwap0, PooledVelocityFieldSwap1, PooledVorticityField, PooledDensityFieldSwap0, PooledDensityFieldSwap1, PooledDivregenceField, PooledPressureFieldSwap0, PooledPressureFieldSwap1;
