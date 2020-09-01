@@ -13,7 +13,7 @@
 #include "RenderGraphUtils.h"
 #include "RenderTargetPool.h"
 
-#define THREAD_GROUP_SIZE 4
+#define THREAD_GROUP_SIZE 8
 
 class FComputeBoundaryShaderCS : public FGlobalShader
 {
@@ -45,11 +45,46 @@ public:
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), THREAD_GROUP_SIZE);
+		OutEnvironment.SetDefine(TEXT("THREAD_GROUP_SIZE"), THREAD_GROUP_SIZE);
 	}
 };
 
 IMPLEMENT_SHADER_TYPE(, FComputeBoundaryShaderCS, TEXT("/Shaders/Private/Fluid.usf"), TEXT("Boundary"), SF_Compute)
+
+class FCopyBoundaryCS : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FCopyBoundaryCS);
+	SHADER_USE_PARAMETER_STRUCT(FCopyBoundaryCS, FGlobalShader)
+
+	class FIsVerticalBoundary : SHADER_PERMUTATION_BOOL("VERTICAL_BOUNDARY");
+	using FPermutationDomain = TShaderPermutationDomain<FIsVerticalBoundary>;
+public:
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float2>, SrcTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, RWDstTexture)
+		END_SHADER_PARAMETER_STRUCT()
+
+public:
+
+	static bool ShouldCache(EShaderPlatform Platform)
+	{
+		return true;
+	}
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Paramers)
+	{
+		return true;
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREAD_GROUP_SIZE"), THREAD_GROUP_SIZE);
+	}
+};
+
+IMPLEMENT_SHADER_TYPE(, FCopyBoundaryCS, TEXT("/Shaders/Private/Fluid.usf"), TEXT("CopyBoundary"), SF_Compute)
 
 class FFluid2DAdvectCS : public FGlobalShader
 {
@@ -81,7 +116,7 @@ public:
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), THREAD_GROUP_SIZE);
+		OutEnvironment.SetDefine(TEXT("THREAD_GROUP_SIZE"), THREAD_GROUP_SIZE);
 	}
 };
 
@@ -117,7 +152,7 @@ public:
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), THREAD_GROUP_SIZE);
+		OutEnvironment.SetDefine(TEXT("THREAD_GROUP_SIZE"), THREAD_GROUP_SIZE);
 	}
 };
 
@@ -151,7 +186,7 @@ public:
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), THREAD_GROUP_SIZE);
+		OutEnvironment.SetDefine(TEXT("THREAD_GROUP_SIZE"), THREAD_GROUP_SIZE);
 	}
 };
 
@@ -188,7 +223,7 @@ public:
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), THREAD_GROUP_SIZE);
+		OutEnvironment.SetDefine(TEXT("THREAD_GROUP_SIZE"), THREAD_GROUP_SIZE);
 	}
 };
 
@@ -224,7 +259,7 @@ public:
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), THREAD_GROUP_SIZE);
+		OutEnvironment.SetDefine(TEXT("THREAD_GROUP_SIZE"), THREAD_GROUP_SIZE);
 	}
 };
 
@@ -258,7 +293,7 @@ public:
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), THREAD_GROUP_SIZE);
+		OutEnvironment.SetDefine(TEXT("THREAD_GROUP_SIZE"), THREAD_GROUP_SIZE);
 	}
 };
 
@@ -293,7 +328,7 @@ public:
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), THREAD_GROUP_SIZE);
+		OutEnvironment.SetDefine(TEXT("THREAD_GROUP_SIZE"), THREAD_GROUP_SIZE);
 	}
 };
 
@@ -301,7 +336,7 @@ IMPLEMENT_SHADER_TYPE(, FSubstractGradientCS, TEXT("/Shaders/Private/Fluid.usf")
 
 void ComputeBoundary(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint FluidSurfaceSize, float Scale, FRDGTextureRef Textures[2], FRDGTextureSRVRef SrcTexure[2], FRDGTextureUAVRef RWDstTexture[2])
 {
-	AddCopyTexturePass(RDG, Textures[0], Textures[1], FIntPoint(1, 1), FIntPoint(1, 1), FluidSurfaceSize - 1);
+	//AddCopyTexturePass(RDG, Textures[0], Textures[1], FIntPoint(1, 1), FIntPoint(1, 1), FluidSurfaceSize - 1);
 	FComputeBoundaryShaderCS::FPermutationDomain PermutationVector;
 	PermutationVector.Set<FComputeBoundaryShaderCS::FIsVerticalBoundary>(true);
 	TShaderMapRef<FComputeBoundaryShaderCS> BoundaryVert_CS(ShaderMap, PermutationVector);
@@ -309,13 +344,6 @@ void ComputeBoundary(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint Fl
 	PassParameters->ValueScale = Scale;
 	PassParameters->SrcTexture = SrcTexure[0];
 	PassParameters->RWDstTexture = RWDstTexture[1];
-
-	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Vertical_CS"), BoundaryVert_CS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 2, THREAD_GROUP_SIZE), 1, 1));
-
-	PassParameters = RDG.AllocParameters<FComputeBoundaryShaderCS::FParameters>();
-	PassParameters->ValueScale = Scale;
-	PassParameters->SrcTexture = SrcTexure[1];
-	PassParameters->RWDstTexture = RWDstTexture[0];
 
 	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Vertical_CS"), BoundaryVert_CS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.Y - 2, THREAD_GROUP_SIZE), 1, 1));
 
@@ -327,11 +355,20 @@ void ComputeBoundary(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint Fl
 	PassParameters->RWDstTexture = RWDstTexture[1];
 	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Horizontal_CS"), BoundaryHori_CS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 2, THREAD_GROUP_SIZE), 1, 1));
 
-	PassParameters = RDG.AllocParameters<FComputeBoundaryShaderCS::FParameters>();
-	PassParameters->ValueScale = Scale;
-	PassParameters->SrcTexture = SrcTexure[1];
-	PassParameters->RWDstTexture = RWDstTexture[0];
-	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("InitBoundary_Horizontal_CS"), BoundaryHori_CS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidSurfaceSize.X - 2, THREAD_GROUP_SIZE), 1, 1));
+	FCopyBoundaryCS::FPermutationDomain CopyPermutationVector;
+	CopyPermutationVector.Set<FCopyBoundaryCS::FIsVerticalBoundary>(true);
+	TShaderMapRef<FCopyBoundaryCS> CopyBoundaryVert_CS(ShaderMap, CopyPermutationVector);
+	FCopyBoundaryCS::FParameters* CopyPassParameters = RDG.AllocParameters<FCopyBoundaryCS::FParameters>();
+	CopyPassParameters->SrcTexture = SrcTexure[1];
+	CopyPassParameters->RWDstTexture = RWDstTexture[0];
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("CopyBoundary_Vertical_CS"), CopyBoundaryVert_CS, CopyPassParameters, FIntVector(FMath::DivideAndRoundUp((FluidSurfaceSize.X - 2 + FluidSurfaceSize.Y - 2) * 2, THREAD_GROUP_SIZE), 1, 1));
+
+	/*CopyPermutationVector.Set<FCopyBoundaryCS::FIsVerticalBoundary>(false);
+	TShaderMapRef<FCopyBoundaryCS> CopyBoundaryHori_CS(ShaderMap, CopyPermutationVector);
+	CopyPassParameters = RDG.AllocParameters<FCopyBoundaryCS::FParameters>();
+	CopyPassParameters->SrcTexture = SrcTexure[1];
+	CopyPassParameters->RWDstTexture = RWDstTexture[0];
+	FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("CopyBoundary_Horizontal_CS"), CopyBoundaryHori_CS, CopyPassParameters, FIntVector(FMath::DivideAndRoundUp((FluidSurfaceSize.X - 2 + FluidSurfaceSize.Y - 2) * 2, THREAD_GROUP_SIZE), 1, 1));*/
 }
 
 void ComputeAdvect(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint FluidSurfaceSize, float TimeStep, float Dissipation, FRDGTextureSRVRef VelocityField, FRDGTextureSRVRef SrcTexure, FRDGTextureUAVRef DstTexture)
@@ -395,11 +432,11 @@ void Jacobi(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntPoint FluidSurfac
 	{
 		if (bUpdateBoundary)
 		{
-			FRDGTextureRef Textures[2] = {x_SRVs[Switcher]->GetParent(), x_UAVs[(Switcher + 1)]->GetParent()};
+			FRDGTextureRef Textures[2] = {x_SRVs[Switcher]->GetParent(), x_UAVs[(Switcher + 1) & 1]->GetParent()};
 			FRDGTextureSRVRef SRVs[2] = {x_SRVs[Switcher], x_SRVs[(Switcher + 1) & 1]};
 			FRDGTextureUAVRef UAVs[2] = {x_UAVs[Switcher], x_UAVs[(Switcher + 1) & 1]};
 			ComputeBoundary(RDG, ShaderMap, FluidSurfaceSize, Scale, Textures, SRVs, UAVs);
-			Switcher ^= 1;
+			//Switcher ^= 1;
 		}
 
 		FJacobiSolverCS::FParameters* PassParameters = RDG.AllocParameters<FJacobiSolverCS::FParameters>();
@@ -452,7 +489,11 @@ void UpdateFluid(FRHICommandListImmediate& RHICmdList,
 	check(IsInRenderingThread());
 
 	FTexture2DRHIRef OutTexture = TextureRenderTargetResource->GetRenderTargetTexture();
-	
+
+	/*FluidSurfaceSize.X = FMath::Max(64u, FMath::RoundUpToPowerOfTwo(FluidSurfaceSize.X));
+	FluidSurfaceSize.Y = FMath::Max(64u, FMath::RoundUpToPowerOfTwo(FluidSurfaceSize.Y));
+	FluidSurfaceSize += 2;*/
+
 	// First we should create all texture that will used in RenderGraph 
 	FRDGTextureDesc TexDesc = FRDGTextureDesc::Create2DDesc(FluidSurfaceSize, PF_G32R32F, FClearValueBinding(FLinearColor::Black), TexCreate_None, TexCreate_UAV | TexCreate_ShaderResource, false);
 	TRefCountPtr<IPooledRenderTarget> PooledVelocityField, PooledVelocityFieldSwap0, PooledVelocityFieldSwap1, PooledVorticityField, PooledDensityFieldSwap0, PooledDensityFieldSwap1, PooledDivregenceField, PooledPressureFieldSwap0, PooledPressureFieldSwap1;
@@ -542,7 +583,8 @@ void UpdateFluid(FRHICommandListImmediate& RHICmdList,
 			ComputeVorticity(GraphBuilder, ShaderMap, FluidSurfaceSize, Halfrdx, VelocityFieldSRV0, VorticityFieldUAV);
 			//FRDGTextureRef VelocityTextures1[2] = { VelocityFieldSwap1, VelocityFieldSwap0 };
 			ComputeBoundary(GraphBuilder, ShaderMap, FluidSurfaceSize, -1.f, VelocityTextures, VelocityFieldSRVs, VelocityFieldUAVs);
-			ComputeVorticityForce(GraphBuilder, ShaderMap, FluidSurfaceSize, Halfrdx, DeltaTime, VorticityScale, VorticityFieldSRV, VelocityFieldSRV1, VelocityFieldUAV0);
+			ComputeVorticityForce(GraphBuilder, ShaderMap, FluidSurfaceSize, Halfrdx, DeltaTime, VorticityScale, VorticityFieldSRV, VelocityFieldSRV0, VelocityFieldUAV1);
+			AddCopyTexturePass(GraphBuilder, VelocityFieldSwap1, VelocityFieldSwap0, FIntPoint(1, 1), FIntPoint(1, 1), FluidSurfaceSize - 2);
 		}
 
 		//AddCopyTexturePass(GraphBuilder, VelocityFieldSwap0, VelocityField, FIntPoint::ZeroValue, FIntPoint::ZeroValue, FluidSurfaceSize);
