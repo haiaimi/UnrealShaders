@@ -32,4 +32,4 @@
 ### 5、Fluid Simulation 2D  
   UE4中实现2维流体的模拟，使用CS解算N-S方程，效果如下：
   
-  ![image](https://github.com/haiaimi/UnrealShaders/blob/master/RenderPictures/Real-Time%20Fluid%20Simulation/FluidSimuation2D.gif)
+  ![image](https://github.com/haiaimi/UnrealShaders/blob/master/RenderPictures/Real-Time%20Fluid%20Simulation/FluidSimulation2D.gif)
