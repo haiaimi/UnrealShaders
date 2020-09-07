@@ -725,8 +725,7 @@ $f_{vc}=\xi (\Psi \times \omega)\delta x$
   $$\phi_{i,j,k}^{n+1}=\begin{cases}
      A(\phi^n)_{i,j,k},\phi_{i,j,k}^\infty\geq0\\
      (1-\beta)A(\phi ^n)_{i,j,k}+\beta\phi_{i,j,k}^\infty,\phi_{i,j,k}^\infty<0
-     \end{cases}
-     $$  
+     \end{cases}$$  
 
   这里的$\infty$是一个*level set*，用于表示在液体沉淀很长时间后的水面样子。例如将水箱的平衡*level set*简单表示为$f^{\infty}(x,y,z)=y-h$，$y$是距离水箱底部的垂直距离，$h$是水的目标高度。这里的$A$方法就是对流操作，并且参数范围是[0,1)，控制施加到从对流获得的解决方案的阻尼量。$\beta$越大就允许更少的迭代次数，但同时也减少的水的活性。注意这个阻尼只会施加于$\infty$为负的区域，这保证了水飞溅在解析域外时的活性，同时也会临时导致体积增加。这种非物理的方式操作*level set*是一个hack的方式，谨慎使用。
 
