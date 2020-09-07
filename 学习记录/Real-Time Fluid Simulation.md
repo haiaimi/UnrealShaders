@@ -704,3 +704,89 @@ $f_{vc}=\xi (\Psi \times \omega)\delta x$
   *Level set*方法是一个比较流行的液体表面表示法，并且很适合GPU实现，它每个网格单元只需要一个标量值，在*level set*中，每个网格单元记录的是到水面的最短有符号距离，所以如果这个值<0那么就在水中，>0就是在空气中，等于0就是在水面上。由于对流不会保留*level set*的距离场特型，因此通常会重新初始化*level set*，就是为了确保每个单元格存储的是距离水面最短距离。但是不会使用*level set*来简单的定义曲面，所以在实时渲染中不进行重新初始化也可以有不错的效果。
 
   *level set*和前面的颜色、温度一样，也是受对流影响，也影响着流体动力学。实际上*level set*就是简单定义了流体域，在水、空气的简单模型中，空气对水的影响忽略不计，这意味着液体外部的压力值设为0，只改变液体内部的压力值。为了确保只处理流体单元，检查相关着色器中*level set*纹理的值，如果$f$大于一定的阈值就在单元格处进行遮罩计算。
+
+### Performance Considerations
+  带宽是渲染的流体的主要性能瓶颈，可以考虑把颜色、温度使用半精度浮点数，而且效果上不会有明显的损失。把一些数据合并到一张贴图上也并不是明智的选择，因为有时候可能并不会用到其中一部分数据，这样就浪费一部分缓存，导致贷款浪费。
+
+### Storage
+  下面就是渲染流体时所要消耗的空间大小，每个流体网格单元需要41bytes，渲染时每个像素需要20bytes，，但是部分内容在渲染多个流体时可以共用，如下表： 
+
+  | Category | Total Space | Exclusive Textures | Shared Textures |
+  |:------------:|:--------------:|:--------------:|:-----------:|
+  | Fluid Simulation | 32 bytes per cell | 12 bytes per cell<br> 1xRGBA16(velocity)<br>  2xR16(Pressure and  density)  | 20 bytes per cell<br> 2xRGBA16(temporary)<br> 2xR16(temporary)
+  | Voxelization | 9 bytes per cell | - | 9 bytes per cell<br> 1xRGBA16(velocity)<br> 1xR8(Inside-Outside) |
+  | Rendering  | 20 bytes per pixel | - | 20 bytes per pixel of off-screen render target<br> 1xRGBA32(ray data)<br> 1xR32(SceneDepth) |
+
+### Numerical Issuses
+  在计算流体的时候很大一部分性能用于计算压力泊松方程，我们使用Jacobi进行迭代计算，但是实际上还有还有其他的方法如*共轭梯度法(Conjugate Gradient)*和*多重网格法(Multigrid method)*。我们一般可以在降低迭代次数来减少性能消耗，效果并不会有很大的差别。
+
+  但是液体流体却不能简单的减少迭代次数，因为水的体积相对比较固定，不会突然消失或流出，如果迭代次数太少压力就不能从底部传到水面，也就不能和重力抵消，所以就会出现水面下沉的现象。但是即便也有足够的迭代次数也不会有精确的解，但是水体模拟一定要保持水体平衡，所以要采取一些强制措施保证平衡，如下等式：
+
+  $$\phi_{i,j,k}^{n+1}=\begin{cases}
+     A(\phi^n)_{i,j,k}, \phi_{i,j,k}^\infty\geq0 \\
+     (1-\beta)A(\phi ^n)_{i,j,k}+\beta\phi_{i,j,k}^\infty,  \phi_{i,j,k}^\infty<0
+     \end{cases}
+     $$  
+
+  这里的$\infty$是一个*level set*，用于表示在液体沉淀很长时间后的水面样子。例如将水箱的平衡*level set*简单表示为$f^{\infty}(x,y,z)=y-h$，$y$是距离水箱底部的垂直距离，$h$是水的目标高度。这里的$A$方法就是对流操作，并且参数范围是[0,1)，控制施加到从对流获得的解决方案的阻尼量。$\beta$越大就允许更少的迭代次数，但同时也减少的水的活性。注意这个阻尼只会施加于$\infty$为负的区域，这保证了水飞溅在解析域外时的活性，同时也会临时导致体积增加。这种非物理的方式操作*level set*是一个hack的方式，谨慎使用。
+
+## Rendering Fluid3D  
+### Volume Rendering
+我们算出来的值都是存放在3维纹理中，但是这在游戏中并不能直接显示出来，所以这里需要使用*Ray-Marching*来进行渲染。流体范围都是在一个立方体内，所以直接渲染一个立方体，然后在PS里计算流体。
+
+#### Volume Ray Casting
+在进行Ray-Casting的时候需要知道投射线的起始点、方向、采样数，其中一种方法就可以在ray-marching的shader里执行线面求交。但是可以通过预计算并存储在Texture中使其更容易合成和裁剪。首先需要生成一张屏幕大小的Texture并叫做*RayData*，对于要被渲染的每个像素，射线在纹理空间的入口和射线穿过体积的深度。为了获得穿过的深度需要先渲染一边几何体的背面并且把深度写到alpha通道，然后渲染一次模型的正面，并且使用alpha相减的混合模式，同时为了获得射线的入口点，需要把渲染几何体正面的纹理坐标放在RGB通道中，如下混合公式：
+
+$OutputColor.rgb=SourceColor.rgb$
+
+$OutputColor.a=DestinationColor.a-SourceColor.a$
+
+在渲染流体的时候，直接用Ray-Marching的Shader绘制一个全屏的quad，这个会从*RayData*中查找数据来判断是否需要进行*ray-cast*，和射线入口点、raymarching的距离（深度），Ray-Marching的采样数量与步进距离成比例（这里使用等于半体素的步长）。*Ray-Marching*的方向就是从眼睛到入口处的方向（纹理空间）。在每一步中都会从前往后混合，如果alpha大于一定的值就可以停止混合（如*FinalColor.a > 0.99*），混合公式如下：
+
+$FinalColor.rgb += SampleColor.rgb\times SampleColor.a\times(1-FinalColor.a)$
+
+$FinalColor.a += SampleColor.a\times (1-FinalColor.a)$
+
+#### Compositing
+这里会有一些问题，在*ray-marching*到障碍物时还会继续*ray-marching*，投射线开始的那个点已经完全被遮挡住的情况。所以这里还需要考虑场景的深度，那么这里就不能直接使用背面的深度，需要取眼睛到场景深度和背面深度的最小值。场景深度可以从深度Buffer中获取，然后反投影到View Space。为了处理场景完全挡住流体的情况，那么正面深度需要和场景作比较，如果大于场景深度那么就不需要渲染，会在Red通道上给一个很大的负数。
+
+#### Clipping
+在相机位于流体中时也需要进行剔除操作，在相机位于流体中时，几何体会有一部分被近平面截断，这样就不能获得射线进入的位置和深度。为了解决这个问题，需要在渲染背面的时候进行标记，在Green通道上给上一个负值，那么在渲染正面的时候，Green通道还为负就代表这个部分被剔除，在最后RayMarching流体的时候把这些标记的像素初始化为近平面上相应点的适当的纹理空间位置，同时还要把当前深度减去眼睛距离近平面的距离收的距离作为raymarching的深度。
+
+#### Filtering
+在进行Ray-Marching后会产生一些Artifacts，例如*banding*，表现为画面分层严重，过渡不自然，在流体区域内深度变化剧烈的时候尤为明显，这是因为进行了等距采样。为了解决这个问题，需要进行一次额外的采样，然后根据到场景深度的距离在两个采样点之间进行插值，如下图：
+
+![image](https://github.com/haiaimi/UnrealShaders/blob/master/RenderPictures/Real-Time%20Fluid%20Simulation/Fluid3DArtifact_Binding.png)
+
+上图中，d就是采样点到场景深度的距离，$d/sampleWidth$就是最后的权重。但是$banding$现象可能还是会存在。有一些方法来解决这种问题，如增加采样频率，往射线方向抖动一小段距离，或者使用更高级的过滤器。通常会把这些方法结合起来使用以获得比较好的**表现-性能**之间的平衡。如这个示例项目就是使用了三线性抖动采样。
+
+#### Off-Screen Ray Marching
+如果模拟网格的分辨率小于屏幕分辨率，如果直接绘制道render target上这对最终效果没有好处。所以这里会先绘制到一个低分辨率的RT上，最后再合并到最终RT上，这样就会有不错的效果，就是在深度不连续的时候效果不太好，不透明物体边缘会不自然。这里的解决方案是：以低分辨率渲染大部分烟雾部分，但是以全分辨率渲染有问题的区域。我们通过在*RayData*纹理上计算边缘检测，具体就是在alpha通道运行一个*Sobel*边缘检测过滤器。
+
+#### Fire
+渲染火焰和之前渲染烟雾的方法类似，除了混合值的方式不一样，火焰累加的值是由*Reaction Coordinate*决定而不是由密度决定。我们可以用美术定义的一维纹理用来映射*Reaction Coordinate*和对应颜色的值来确定。
+
+### Rendering Liquids
+渲染液体的时候，也需要march一个Volume，但是这次是从*level-set*中查值。但是不是像前面那样对每次的march结果累加，而是找到*level-set*值为0的位置。找到后就对其进行着色，然后在该点使用$\Delta f$求出大致的Shading法线。在渲染的水的时候，网格分辨率原因一定不能产生*Artifact*，所以这里使用*tricubic*过滤这些值。
+
+#### Refraction
+液体的渲染一般都会需要折射的效果，可以使用Ray-Tracing的方式实现，但是过于昂贵。所以就使用下面的方式：
+
+1. 把液体Volume后面的物体渲染到RT上
+2. 通过march流体体积来确定每个像素于射线的焦点，这产生一对交点位置和法线的texture。在存放位置贴图的alpha通道设为0如果没有射线在这个像素点相交，否则设为1。然后再使用背景的RT来进行折射计算。
+
+折射就是通过查找当前点周围的某些点作为结果进行渲染，更准确地是通过坐标**t**来获取背景纹理的值，**t**实际上就等于当前位置**p**与一个成比例的投影偏移量，这个投影就是表面的法线**N**到视角平面的投影。如果$P_h$和$P_v$是面向视角平面的正交基，如下公式就是用于法线的投影：
+
+$t=p-(N\cdot P_h,N\cdot P_v)$
+
+$P_v$和$P_h$如下定义：
+
+$P_v=\frac{z-(z\cdot V)V}{||z-(z\cdot V)V||}$
+
+$P_h=P_v\times V$
+
+$z$是向上的向量，$V$是视角方向。
+
+这种表现效果就是如果表面是凸形区域就方大，凹形就缩小，平坦就不会产生变化。
+
+以上就是3维流体实现的大致过程。
