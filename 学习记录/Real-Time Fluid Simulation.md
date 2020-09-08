@@ -613,6 +613,13 @@ $f_{vc}=\xi (\Psi \times \omega)\delta x$
   
   下面就是Gpu Gems里3维流体模拟的内容，3维包括烟、水等。
 
+### Equations of Fluid Motion
+在3维流体模拟中，流体被认为是无粘性和不可压缩的，所以公式会与之前的2维模拟有所不同，如下：
+
+$\frac{\partial u}{\partial t}=-(u\cdot\nabla)u-\frac{1}{\rho}\nabla p+F$
+
+可以看出来大致内容一样，就是少了粘性计算项，这样液体类的就更像水。同样是不可压缩的，所以$\nabla \cdot u=0$依然成立。
+
 ### Solving for Velocity
 #### Improving Detail
   之前的二维流体模拟使用的是*semi-Lagrangian*（半拉格朗日）对流，虽然这个方法可以解决TimeStep过大导致模拟错误的问题，但是也会产生不正常的平滑从而，导致失真，使水看起来十分粘稠，为了提高流体模拟的准确度，这里使用*MacCormack*的方案：就是操作两个中间*semi-Lagrangian*对流步骤，给定对流的数量和对流方案，如下操作：
