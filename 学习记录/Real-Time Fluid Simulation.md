@@ -728,10 +728,9 @@ $\frac{\partial u}{\partial t}=-(u\cdot\nabla)u-\frac{1}{\rho}\nabla p+F$
   在计算流体的时候很大一部分性能用于计算压力泊松方程，我们使用Jacobi进行迭代计算，但是实际上还有还有其他的方法如*共轭梯度法(Conjugate Gradient)*和*多重网格法(Multigrid method)*。我们一般可以在降低迭代次数来减少性能消耗，效果并不会有很大的差别。
 
   但是液体流体却不能简单的减少迭代次数，因为水的体积相对比较固定，不会突然消失或流出，如果迭代次数太少压力就不能从底部传到水面，也就不能和重力抵消，所以就会出现水面下沉的现象。但是即便也有足够的迭代次数也不会有精确的解，但是水体模拟一定要保持水体平衡，所以要采取一些强制措施保证平衡，如下等式：
-
   $$\phi_{i,j,k}^{n+1}=\begin{cases}
-     A(\phi^n)_{i,j,k}, \phi_{i,j,k}^\infty\geq0\\
-     (1-\beta)A(\phi ^n)_{i,j,k}+\beta\phi_{i,j,k}^\infty,\phi_{i,j,k}^\infty<0
+     A(\phi^n)_{i,j,k},\phi_{i,j,k}^\infty\geq 0\\
+     (1-\beta)A(\phi ^n)_{i,j,k}+\beta\phi_{i,j,k}^\infty,\phi_{i,j,k}^\infty <0
      \end{cases}
     $$  
 
