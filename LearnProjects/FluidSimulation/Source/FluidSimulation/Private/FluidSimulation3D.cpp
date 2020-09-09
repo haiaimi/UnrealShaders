@@ -159,6 +159,76 @@ namespace FluidSimulation3D
 
 	IMPLEMENT_SHADER_TYPE(, FDivergenceCS, TEXT("/Shaders/Private/Fluid.usf"), TEXT("Divergence"), SF_Compute)
 
+	class FAddImpluseCS : public FGlobalShader
+	{
+		DECLARE_GLOBAL_SHADER(FAddImpluseCS);
+		SHADER_USE_PARAMETER_STRUCT(FAddImpluseCS, FGlobalShader);
+
+	public:
+
+		BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+			SHADER_PARAMETER(FVector4, ForceParam)
+			SHADER_PARAMETER(FIntVector, ForcePos)
+			SHADER_PARAMETER(float, Radius)
+			SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture3D<float4>, SrcTexture)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<float4>, RWDstTexture)
+			END_SHADER_PARAMETER_STRUCT()
+
+	public:
+
+		static bool ShouldCache(EShaderPlatform Platform)
+		{
+			return true;
+		}
+
+		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Paramers)
+		{
+			return true;
+		}
+
+		static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+		{
+			FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+			OutEnvironment.SetDefine(TEXT("THREAD_GROUP_SIZE"), THREAD_GROUP_SIZE);
+		}
+	};
+
+	IMPLEMENT_SHADER_TYPE(, FAddImpluseCS, TEXT("/Shaders/Private/Fluid.usf"), TEXT("AddImpluse"), SF_Compute)
+
+	class FJacobiSolverCS : public FGlobalShader
+	{
+		DECLARE_GLOBAL_SHADER(FJacobiSolverCS);
+		SHADER_USE_PARAMETER_STRUCT(FJacobiSolverCS, FGlobalShader);
+
+	public:
+
+		BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+			SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture3D<float4>, PressureField)
+			SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture3D<float4>, DivergenceField)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<float4>, RWPressureField)
+			END_SHADER_PARAMETER_STRUCT()
+
+	public:
+
+		static bool ShouldCache(EShaderPlatform Platform)
+		{
+			return true;
+		}
+
+		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Paramers)
+		{
+			return true;
+		}
+
+		static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+		{
+			FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+			OutEnvironment.SetDefine(TEXT("THREAD_GROUP_SIZE"), THREAD_GROUP_SIZE);
+		}
+	};
+
+	IMPLEMENT_SHADER_TYPE(, FJacobiSolverCS, TEXT("/Shaders/Private/Fluid.usf"), TEXT("Jacobi"), SF_Compute)
+
 	void ComputeAdvect(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntVector FluidVolumeSize, float TimeStep, FRDGTextureSRVRef VelocityField, FRDGTextureUAVRef DstField)
 	{
 		TShaderMapRef<FAdvectVelocityCS> AdvectCS(ShaderMap);
@@ -195,6 +265,19 @@ namespace FluidSimulation3D
 		FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("ComputeVorticityForce"), VorticityForceCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidVolumeSize.Y, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidVolumeSize.Y, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidVolumeSize.Y, THREAD_GROUP_SIZE)));
 	}
 
+	void AddImpluse(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntVector FluidVolumeSize, FVector4 ForceParam, FIntVector ForcePos, float ForceRadius, FRDGTextureSRVRef SrcTexture, FRDGTextureUAVRef DstTexture)
+	{
+		TShaderMapRef<FAddImpluseCS> AddImpluseCS(ShaderMap);
+		FAddImpluseCS::FParameters* PassParameters = RDG.AllocParameters<FAddImpluseCS::FParameters>();
+		PassParameters->ForceParam = ForceParam;
+		PassParameters->ForcePos = ForcePos;
+		PassParameters->Radius = ForceRadius;
+		PassParameters->SrcTexture = SrcTexture;
+		PassParameters->RWDstTexture = DstTexture;
+
+		FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("AddImpluse"), AddImpluseCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidVolumeSize.X, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidVolumeSize.Y, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidVolumeSize.Z, THREAD_GROUP_SIZE)));
+	}
+
 	void ComputeDivergence(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntVector FluidVolumeSize, float Halfrdx, FRDGTextureSRVRef VelocityFieldSRV, FRDGTextureUAVRef DivergenceFieldUAV)
 	{
 		TShaderMapRef<FDivergenceCS> DivergenceCS(ShaderMap);
@@ -205,25 +288,46 @@ namespace FluidSimulation3D
 
 		FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("ComputeDivergence"), DivergenceCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidVolumeSize.X, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidVolumeSize.Y, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidVolumeSize.Y, THREAD_GROUP_SIZE)));
 	}
+
+	// used to solve poisson equation
+	void Jacobi(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntVector FluidVolumeSize, int32 IterationCount, FRDGTextureSRVRef x_SRVs[], FRDGTextureUAVRef x_UAVs[], FRDGTextureSRVRef b_SRV)
+	{
+		TShaderMapRef<FJacobiSolverCS> JacobiCS(ShaderMap);
+		uint8 Switcher = 0;
+		for (int32 i = 0; i < IterationCount; ++i)
+		{
+			FJacobiSolverCS::FParameters* PassParameters = RDG.AllocParameters<FJacobiSolverCS::FParameters>();
+			PassParameters->PressureField = x_SRVs[Switcher];
+			PassParameters->DivergenceField = b_SRV;
+			PassParameters->RWPressureField = x_UAVs[(Switcher + 1) & 1];
+			FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("JacobiIteration_%d", i), JacobiCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidVolumeSize.X, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidVolumeSize.Y, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidVolumeSize.Y, THREAD_GROUP_SIZE)));
+			Switcher ^= 1;
+		}
+	}
 }
 
-void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, float DeltaTime, float VorticityScale, FIntVector FluidVolumeSize, ERHIFeatureLevel::Type FeatureLevel)
+void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, uint32 IterationCount, float DeltaTime, float VorticityScale, FIntVector FluidVolumeSize, ERHIFeatureLevel::Type FeatureLevel)
 {
 	check(IsInRenderingThread());
 
 	FPooledRenderTargetDesc FluidVloumeDesc = FPooledRenderTargetDesc::CreateVolumeDesc(FluidVolumeSize.X, FluidVolumeSize.Y, FluidVolumeSize.Z, EPixelFormat::PF_A32B32G32R32F, FClearValueBinding::None, ETextureCreateFlags::TexCreate_None, ETextureCreateFlags::TexCreate_UAV | ETextureCreateFlags::TexCreate_ShaderResource, false);
-	TRefCountPtr<IPooledRenderTarget> VelocityTexture3D_0, VelocityTexture3D_1, ColorTexture3D_0, ColorTexture3D_1, VorticityTexture3D, DivergenceTexture3D;
+	FPooledRenderTargetDesc FluidVloumeSingleDesc = FPooledRenderTargetDesc::CreateVolumeDesc(FluidVolumeSize.X, FluidVolumeSize.Y, FluidVolumeSize.Z, EPixelFormat::PF_R32_FLOAT, FClearValueBinding::None, ETextureCreateFlags::TexCreate_None, ETextureCreateFlags::TexCreate_UAV | ETextureCreateFlags::TexCreate_ShaderResource, false);
+	TRefCountPtr<IPooledRenderTarget> VelocityTexture3D_0, VelocityTexture3D_1, PressureTexture3D_0, PressureTexture3D_1, ColorTexture3D_0, ColorTexture3D_1, VorticityTexture3D, DivergenceTexture3D;
 	GRenderTargetPool.FindFreeElement(RHICmdList, FluidVloumeDesc, VelocityTexture3D_0, TEXT("VelocityTexture3D_0"));
 	GRenderTargetPool.FindFreeElement(RHICmdList, FluidVloumeDesc, VelocityTexture3D_1, TEXT("VelocityTexture3D_1"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, FluidVloumeSingleDesc, PressureTexture3D_0, TEXT("PressureTexture3D_0"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, FluidVloumeSingleDesc, PressureTexture3D_1, TEXT("PressureTexture3D_1"));
 	GRenderTargetPool.FindFreeElement(RHICmdList, FluidVloumeDesc, ColorTexture3D_0, TEXT("ColorTexture3D_0"));
 	GRenderTargetPool.FindFreeElement(RHICmdList, FluidVloumeDesc, ColorTexture3D_1, TEXT("ColorTexture3D_1"));
 	GRenderTargetPool.FindFreeElement(RHICmdList, FluidVloumeDesc, VorticityTexture3D, TEXT("VorticityTexture3D"));
-	GRenderTargetPool.FindFreeElement(RHICmdList, FluidVloumeDesc, DivergenceTexture3D, TEXT("DivergenceTexture3D"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, FluidVloumeSingleDesc, DivergenceTexture3D, TEXT("DivergenceTexture3D"));
 
 	FRDGBuilder GraphBuilder(RHICmdList);
 
 	FRDGTextureRef VelocityField_0 = GraphBuilder.RegisterExternalTexture(VelocityTexture3D_0, TEXT("VelocityField_0"), ERDGResourceFlags::MultiFrame);
 	FRDGTextureRef VelocityField_1 = GraphBuilder.RegisterExternalTexture(VelocityTexture3D_1, TEXT("VelocityField_1"), ERDGResourceFlags::MultiFrame);
+	FRDGTextureRef PressureField_0 = GraphBuilder.RegisterExternalTexture(PressureTexture3D_0, TEXT("PressureField_0"), ERDGResourceFlags::MultiFrame);
+	FRDGTextureRef PressureField_1 = GraphBuilder.RegisterExternalTexture(PressureTexture3D_1, TEXT("PressureField_1"), ERDGResourceFlags::MultiFrame);
 	FRDGTextureRef ColorField_0 = GraphBuilder.RegisterExternalTexture(ColorTexture3D_0, TEXT("ColorField_0"), ERDGResourceFlags::MultiFrame);
 	FRDGTextureRef ColorField_1 = GraphBuilder.RegisterExternalTexture(ColorTexture3D_1, TEXT("ColorField_1"), ERDGResourceFlags::MultiFrame);
 	FRDGTextureRef Vorticity = GraphBuilder.RegisterExternalTexture(VorticityTexture3D, TEXT("VorticityField"), ERDGResourceFlags::MultiFrame);
@@ -233,6 +337,11 @@ void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, float DeltaTime, float 
 	FRDGTextureSRVRef VelocityFieldSRV1 = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(VelocityField_1));
 	FRDGTextureUAVRef VelocityFieldUAV0 = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(VelocityField_0));
 	FRDGTextureUAVRef VelocityFieldUAV1 = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(VelocityField_1));
+
+	FRDGTextureSRVRef PressureFieldSRV0 = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(PressureField_0));
+	FRDGTextureSRVRef PressureFieldSRV1 = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(PressureField_1));
+	FRDGTextureUAVRef PressureFieldUAV0 = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(PressureField_0));
+	FRDGTextureUAVRef PressureFieldUAV1 = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(PressureField_1));
 
 	FRDGTextureSRVRef ColorFieldSRV0 = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(ColorField_0));
 	FRDGTextureSRVRef ColorFieldSRV1 = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(ColorField_1));
@@ -258,11 +367,20 @@ void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, float DeltaTime, float 
 	FluidSimulation3D::ComputeVorticityForce(GraphBuilder, ShaderMap, FluidVolumeSize, 0.5f, DeltaTime, VorticityScale, VorticitySRV, VelocityFieldSRV1, VelocityFieldUAV0);
 
 	// 3. Apply external force
+	FVector4 ForceParam(10, 10, 10, 0);
+	FIntVector ForcePos(10, 10, 10);
+	float ForceRadius = 20.f;
+	FluidSimulation3D::AddImpluse(GraphBuilder, ShaderMap, FluidVolumeSize, ForceParam, ForcePos, ForceRadius, VelocityFieldSRV0, VelocityFieldUAV1);
+	ForceParam = FVector4(0.1f, 0.1f, 0.1f, 0.f);
+	FluidSimulation3D::AddImpluse(GraphBuilder, ShaderMap, FluidVolumeSize, ForceParam, ForcePos, ForceRadius, ColorFieldSRV1, ColorFieldUAV0);
 
 	// 4. Compute velocity divergence
-	FluidSimulation3D::ComputeDivergence(GraphBuilder, ShaderMap, FluidVolumeSize, 0.5f, VelocityFieldSRV0, DivergenceUAV);
+	FluidSimulation3D::ComputeDivergence(GraphBuilder, ShaderMap, FluidVolumeSize, 0.5f, VelocityFieldSRV1, DivergenceUAV);
 
 	// 5. Compute pressure by jacobi iteration
+	FRDGTextureSRVRef x_SRVs = { PressureFieldSRV0, PressureFieldSRV1 };
+	FRDGTextureUAVRef x_UAVs = { PressureFieldUAV0, PressureFieldUAV1 };
+	FluidSimulation3D::Jacobi(GraphBuilder, ShaderMap, FluidVolumeSize, IterationCount, x_SRVs, x_UAVs, DivergenceSRV);
 
 	// 6. Project velocity to free-divergence
 

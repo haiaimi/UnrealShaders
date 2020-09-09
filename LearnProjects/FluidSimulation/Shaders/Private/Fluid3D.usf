@@ -4,9 +4,6 @@ RWTexture3D<float4> RWVelocityField;
 Texture3D<float4> VelocityField;
 Texture3D<float4> TempVelocityField;
 
-RWTexture3D<float> RWPressureField;
-Texture3D<float> PressureField;
-
 float TimeStep;
 
 void LinearSampleTexture3D(Texture3D<float4> InTexture, float3 Coord, out float4 OutResult)
@@ -89,6 +86,20 @@ void LoadTexture3DNeighbors(Texture3D<float4> InTexture, uint3 Coord, out float4
 	Bottom = InTexture.Load(clamp(uint4(TextureDim - uint3(0, 1, 0), 0), 0, uint4(TextureDim - 1, 0)));
 }
 
+void LoadTexture3DNeighbors(Texture3D<float> InTexture, uint3 Coord, out float Left, out float Forward, out float Right, out float Back, out float Up, out float Bottom)
+{
+	uint3 TextureDim;
+	InTexture.GetDimensions(TextureDim.x, TextureDim.y, TextureDim.z);
+	
+	Left = InTexture.Load(clamp(uint4(Coord - uint3(1, 0, 0), 0), 0, uint4(TextureDim - 1, 0)));
+	Forward = InTexture.Load(clamp(uint4(TextureDim + uint3(0, 0, 1), 0), 0, uint4(TextureDim - 1, 0)));
+	Right = InTexture.Load(clamp(uint4(TextureDim + uint3(1, 0, 0), 0), 0, uint4(TextureDim - 1, 0)));
+	Back = InTexture.Load(clamp(uint4(TextureDim - uint3(0, 0, 1), 0), 0, uint4(TextureDim - 1, 0)));
+	Up = InTexture.Load(clamp(uint4(TextureDim + uint3(0, 1, 0), 0), 0, uint4(TextureDim - 1, 0)));
+	Bottom = InTexture.Load(clamp(uint4(TextureDim - uint3(0, 1, 0), 0), 0, uint4(TextureDim - 1, 0)));
+}
+
+
 float Halfrdx;
 RWTexture3D<float4> RWVorticityField;
 
@@ -125,6 +136,24 @@ void VorticityForce(uint3 GroupId : SV_GroupID,
 	// We need do cross prroduct with current vorticity, see more in VorticityConfinement formula.
 	Force.xyz = TimeStep * ConfinementScale * float3(Force.y * VC.z - Force.z * VC.y, Force.z * VC.x - Force.x * VC.z, Force.x * VC.y - Force.y * VC.x);
 	RWVelocityField[DispatchThreadId] = VelocityField.Load(uint4(DispatchThreadId, 0)) + Force;
+}
+
+Texture3D<float4> SrcTexture;
+RWTexture3D<float4> RWDstTexture;
+
+float4 ForceParam;
+int3 ForcePos;
+float Radius;
+
+// Add force or color density to fluid
+[numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, THREAD_GROUP_SIZE)]
+void AddImpluse(uint3 GroupId : SV_GroupID,
+			   uint3 DispatchThreadId : SV_DispatchThreadID,
+			   uint3 GroupThreadId : SV_GroupThreadID)
+{
+	float3 DeltaPos = float3(ForcePos - (int3) DispatchThreadId);
+	float c = exp(-dot(DeltaPos, DeltaPos) / Radius);
+	RWDstTexture[DispatchThreadId] = SrcTexture.Load(uint4(DispatchThreadId, 0)) + ForceParam * c;
 }
 
 // #TODO Now only consider fluid volume boundary
@@ -166,4 +195,19 @@ void Divergence(uint3 GroupId : SV_GroupID,
 	if (IsBoundary(BoundaryCoord)) Bottom = GetBoundaryVelocity(BoundaryCoord);
 	
 	RWDivergence[DispatchThreadId] = 0.5f * ((Right.x - Left.x) + (Up.y - Bottom.y) + (Forward.z - Back.z));
+}
+
+Texture3D<float> DivergenceField;
+Texture3D<float> PressureField;
+RWTexture3D<float> RWPressureField;
+
+[numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, THREAD_GROUP_SIZE)]
+void Jacobi(uint3 GroupId : SV_GroupID,
+			uint3 DispatchThreadId : SV_DispatchThreadID,
+			uint3 GroupThreadId : SV_GroupThreadID)
+{
+	float b = DivergenceField.Load(uint4(DispatchThreadId, 0));
+	float Left, Forward, Right, Back, Up, Bottom;
+	LoadTexture3DNeighbors(PressureField, DispatchThreadId, Left, Forward, Right, Back, Up, Bottom);
+	RWPressureField[DispatchThreadId] = (Left + Forward + Right + Back + Up + Bottom - b) / 6.f;
 }
