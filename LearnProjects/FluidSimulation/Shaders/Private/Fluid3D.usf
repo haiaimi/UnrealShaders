@@ -81,16 +81,16 @@ void LoadTexture3DNeighbors(Texture3D<float4> InTexture, uint3 Coord, out float4
 	uint3 TextureDim;
 	InTexture.GetDimensions(TextureDim.x, TextureDim.y, TextureDim.z);
 	
-	Left = InTexture.Load(clamp(0, uint4(TextureDim - 1, 0), uint4(TextureDim - uint3(1, 0, 0), 0)));
-	Forward = InTexture.Load(clamp(0, uint4(TextureDim - 1, 0), uint4(TextureDim + uint3(0, 0, 1), 0)));
-	Right = InTexture.Load(clamp(0, uint4(TextureDim - 1, 0), uint4(TextureDim + uint3(1, 0, 0), 0)));
-	Back = InTexture.Load(clamp(0, uint4(TextureDim - 1, 0), uint4(TextureDim - uint3(0, 0, 1), 0)));
-	Up = InTexture.Load(clamp(0, uint4(TextureDim - 1, 0), uint4(TextureDim + uint3(0, 1, 0), 0)));
-	Bottom = InTexture.Load(clamp(0, uint4(TextureDim - 1, 0), uint4(TextureDim - uint3(0, 1, 0), 0)));
+	Left = InTexture.Load(clamp(uint4(Coord - uint3(1, 0, 0), 0), 0, uint4(TextureDim - 1, 0)));
+	Forward = InTexture.Load(clamp(uint4(TextureDim + uint3(0, 0, 1), 0), 0, uint4(TextureDim - 1, 0)));
+	Right = InTexture.Load(clamp(uint4(TextureDim + uint3(1, 0, 0), 0), 0, uint4(TextureDim - 1, 0)));
+	Back = InTexture.Load(clamp(uint4(TextureDim - uint3(0, 0, 1), 0), 0, uint4(TextureDim - 1, 0)));
+	Up = InTexture.Load(clamp(uint4(TextureDim + uint3(0, 1, 0), 0), 0, uint4(TextureDim - 1, 0)));
+	Bottom = InTexture.Load(clamp(uint4(TextureDim - uint3(0, 1, 0), 0), 0, uint4(TextureDim - 1, 0)));
 }
 
 float Halfrdx;
-RWTexture3D<float4> RWVorticity;
+RWTexture3D<float4> RWVorticityField;
 
 // Compute curl of the velocity field
 [numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, THREAD_GROUP_SIZE)]
@@ -100,12 +100,12 @@ void ComputeVorticity(uint3 GroupId : SV_GroupID,
 {
 	float4 Left, Forward, Right, Back, Up, Bottom;
 	LoadTexture3DNeighbors(VelocityField, DispatchThreadId, Left, Forward, Right, Back, Up, Bottom);
-	RWVorticity[DispatchThreadId + 1] = Halfrdx * float4((Forward.y - Back.y) - (Up.z - Bottom.z),
+	RWVorticityField[DispatchThreadId + 1] = -Halfrdx * float4((Forward.y - Back.y) - (Up.z - Bottom.z),
 														  (Right.z - Left.z) - (Forward.x - Back.x),
 														  (Up.x - Bottom.x) - (Right.y - Left.y), 0.f);
 }
 
-Texture3D<float4> Vorticity;
+Texture3D<float4> VorticityField;
 float ConfinementScale;
 
 // Apply vorticity force
@@ -114,12 +114,56 @@ void VorticityForce(uint3 GroupId : SV_GroupID,
 			   uint3 DispatchThreadId : SV_DispatchThreadID,
 			   uint3 GroupThreadId : SV_GroupThreadID)
 {
-	float4 VC = Vorticity.Load(uint4(DispatchThreadId, 0));
+	float4 VC = VorticityField.Load(uint4(DispatchThreadId, 0));
 	float4 Left, Forward, Right, Back, Up, Bottom;
-	LoadTexture3DNeighbors(Vorticity, DispatchThreadId, Left, Forward, Right, Back, Up, Bottom);
+	LoadTexture3DNeighbors(VorticityField, DispatchThreadId, Left, Forward, Right, Back, Up, Bottom);
 	float4 CurVelocity = VelocityField.Load(uint4(DispatchThreadId, 0));
 	
-	float4 Force = 0.5f * float4(length(Right) - length(Left), length(Up) - length(Bottom), length(Forward) - length(Back), 0);
+	// Compute normalize force vector nabla|omega|
+	float4 Force = Halfrdx * float4(length(Right) - length(Left), length(Up) - length(Bottom), length(Forward) - length(Back), 0);
 	Force = normalize(max(0.001f, Force));
+	// We need do cross prroduct with current vorticity, see more in VorticityConfinement formula.
 	Force.xyz = TimeStep * ConfinementScale * float3(Force.y * VC.z - Force.z * VC.y, Force.z * VC.x - Force.x * VC.z, Force.x * VC.y - Force.y * VC.x);
+	RWVelocityField[DispatchThreadId] = VelocityField.Load(uint4(DispatchThreadId, 0)) + Force;
+}
+
+// #TODO Now only consider fluid volume boundary
+bool IsBoundary(uint3 Coord)
+{
+	uint3 FieldDim;
+	VelocityField.GetDimensions(FieldDim.x, FieldDim.y, FieldDim.z);
+	FieldDim += 1u;
+	return (Coord.x == 0 || Coord.y == 0 || Coord.z == 0 ||
+			Coord.x == FieldDim.x || Coord.y == FieldDim.y || Coord.z == FieldDim.z);
+}
+
+float4 GetBoundaryVelocity(uint3 Coord)
+{
+	return 0.f;
+}
+
+RWTexture3D<float> RWDivergence;
+// Compute divergence of velocity field
+[numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, THREAD_GROUP_SIZE)]
+void Divergence(uint3 GroupId : SV_GroupID,
+			   uint3 DispatchThreadId : SV_DispatchThreadID,
+			   uint3 GroupThreadId : SV_GroupThreadID)
+{
+	float4 Left, Forward, Right, Back, Up, Bottom;
+	LoadTexture3DNeighbors(VorticityField, DispatchThreadId, Left, Forward, Right, Back, Up, Bottom);
+	
+	uint3 BoundaryCoord = DispatchThreadId + 1u - uint3(1, 0, 0);
+	if (IsBoundary(BoundaryCoord)) Left = GetBoundaryVelocity(BoundaryCoord);
+	BoundaryCoord = DispatchThreadId + 1u + uint3(0, 0, 1);
+	if (IsBoundary(BoundaryCoord)) Forward = GetBoundaryVelocity(BoundaryCoord);
+	BoundaryCoord = DispatchThreadId + 1u + uint3(1, 0, 0);
+	if (IsBoundary(BoundaryCoord)) Right = GetBoundaryVelocity(BoundaryCoord);
+	BoundaryCoord = DispatchThreadId + 1u - uint3(0, 0, 1);
+	if (IsBoundary(BoundaryCoord)) Back = GetBoundaryVelocity(BoundaryCoord);
+	BoundaryCoord = DispatchThreadId + 1u + uint3(0, 1, 0);
+	if (IsBoundary(BoundaryCoord)) Up = GetBoundaryVelocity(BoundaryCoord);
+	BoundaryCoord = DispatchThreadId + 1u - uint3(0, 1, 0);
+	if (IsBoundary(BoundaryCoord)) Bottom = GetBoundaryVelocity(BoundaryCoord);
+	
+	RWDivergence[DispatchThreadId] = 0.5f * ((Right.x - Left.x) + (Up.y - Bottom.y) + (Forward.z - Back.z));
 }
