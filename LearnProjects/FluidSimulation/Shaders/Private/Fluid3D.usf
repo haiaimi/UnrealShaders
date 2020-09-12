@@ -25,6 +25,9 @@ void LinearSampleTexture3D(Texture3D<float4> InTexture, float3 Coord, out float4
 	OutResult = lerp(Value0, Value1, frac(Coord.z));
 }
 
+Texture3D<float4> SrcTexture;
+RWTexture3D<float4> RWDstTexture;
+
 [numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, THREAD_GROUP_SIZE)]
 void AdvectVelocity(uint3 GroupId : SV_GroupID,
 					uint3 DispatchThreadId : SV_DispatchThreadID,
@@ -34,8 +37,8 @@ void AdvectVelocity(uint3 GroupId : SV_GroupID,
 	float3 PreCoord = (float3) DispatchThreadId - PreVelocity.xyz * TimeStep;
 
 	float4 Result;
-	LinearSampleTexture3D(VelocityField, PreCoord, Result);
-	RWVelocityField[DispatchThreadId] = Result;
+	LinearSampleTexture3D(SrcTexture, PreCoord, Result);
+	RWDstTexture[DispatchThreadId] = Result;
 }
 
 // #MacCormack Advection Scheme. The more order-accuracy advection scheme, we will use two intermediate values, it may be used to optimize final appearance
@@ -79,11 +82,11 @@ void LoadTexture3DNeighbors(Texture3D<float4> InTexture, uint3 Coord, out float4
 	InTexture.GetDimensions(TextureDim.x, TextureDim.y, TextureDim.z);
 	
 	Left = InTexture.Load(clamp(uint4(Coord - uint3(1, 0, 0), 0), 0, uint4(TextureDim - 1, 0)));
-	Forward = InTexture.Load(clamp(uint4(TextureDim + uint3(0, 0, 1), 0), 0, uint4(TextureDim - 1, 0)));
-	Right = InTexture.Load(clamp(uint4(TextureDim + uint3(1, 0, 0), 0), 0, uint4(TextureDim - 1, 0)));
-	Back = InTexture.Load(clamp(uint4(TextureDim - uint3(0, 0, 1), 0), 0, uint4(TextureDim - 1, 0)));
-	Up = InTexture.Load(clamp(uint4(TextureDim + uint3(0, 1, 0), 0), 0, uint4(TextureDim - 1, 0)));
-	Bottom = InTexture.Load(clamp(uint4(TextureDim - uint3(0, 1, 0), 0), 0, uint4(TextureDim - 1, 0)));
+	Forward = InTexture.Load(clamp(uint4(Coord + uint3(0, 0, 1), 0), 0, uint4(TextureDim - 1, 0)));
+	Right = InTexture.Load(clamp(uint4(Coord + uint3(1, 0, 0), 0), 0, uint4(TextureDim - 1, 0)));
+	Back = InTexture.Load(clamp(uint4(Coord - uint3(0, 0, 1), 0), 0, uint4(TextureDim - 1, 0)));
+	Up = InTexture.Load(clamp(uint4(Coord + uint3(0, 1, 0), 0), 0, uint4(TextureDim - 1, 0)));
+	Bottom = InTexture.Load(clamp(uint4(Coord - uint3(0, 1, 0), 0), 0, uint4(TextureDim - 1, 0)));
 }
 
 void LoadTexture3DNeighbors(Texture3D<float> InTexture, uint3 Coord, out float Left, out float Forward, out float Right, out float Back, out float Up, out float Bottom)
@@ -92,11 +95,11 @@ void LoadTexture3DNeighbors(Texture3D<float> InTexture, uint3 Coord, out float L
 	InTexture.GetDimensions(TextureDim.x, TextureDim.y, TextureDim.z);
 	
 	Left = InTexture.Load(clamp(uint4(Coord - uint3(1, 0, 0), 0), 0, uint4(TextureDim - 1, 0)));
-	Forward = InTexture.Load(clamp(uint4(TextureDim + uint3(0, 0, 1), 0), 0, uint4(TextureDim - 1, 0)));
-	Right = InTexture.Load(clamp(uint4(TextureDim + uint3(1, 0, 0), 0), 0, uint4(TextureDim - 1, 0)));
-	Back = InTexture.Load(clamp(uint4(TextureDim - uint3(0, 0, 1), 0), 0, uint4(TextureDim - 1, 0)));
-	Up = InTexture.Load(clamp(uint4(TextureDim + uint3(0, 1, 0), 0), 0, uint4(TextureDim - 1, 0)));
-	Bottom = InTexture.Load(clamp(uint4(TextureDim - uint3(0, 1, 0), 0), 0, uint4(TextureDim - 1, 0)));
+	Forward = InTexture.Load(clamp(uint4(Coord + uint3(0, 0, 1), 0), 0, uint4(TextureDim - 1, 0)));
+	Right = InTexture.Load(clamp(uint4(Coord + uint3(1, 0, 0), 0), 0, uint4(TextureDim - 1, 0)));
+	Back = InTexture.Load(clamp(uint4(Coord - uint3(0, 0, 1), 0), 0, uint4(TextureDim - 1, 0)));
+	Up = InTexture.Load(clamp(uint4(Coord + uint3(0, 1, 0), 0), 0, uint4(TextureDim - 1, 0)));
+	Bottom = InTexture.Load(clamp(uint4(Coord - uint3(0, 1, 0), 0), 0, uint4(TextureDim - 1, 0)));
 }
 
 
@@ -111,7 +114,7 @@ void ComputeVorticity(uint3 GroupId : SV_GroupID,
 {
 	float4 Left, Forward, Right, Back, Up, Bottom;
 	LoadTexture3DNeighbors(VelocityField, DispatchThreadId, Left, Forward, Right, Back, Up, Bottom);
-	RWVorticityField[DispatchThreadId + 1] = -Halfrdx * float4((Forward.y - Back.y) - (Up.z - Bottom.z),
+	RWVorticityField[DispatchThreadId + 1] = -0.5f * float4((Forward.y - Back.y) - (Up.z - Bottom.z),
 														  (Right.z - Left.z) - (Forward.x - Back.x),
 														  (Up.x - Bottom.x) - (Right.y - Left.y), 0.f);
 }
@@ -137,9 +140,6 @@ void VorticityForce(uint3 GroupId : SV_GroupID,
 	Force.xyz = TimeStep * ConfinementScale * float3(Force.y * VC.z - Force.z * VC.y, Force.z * VC.x - Force.x * VC.z, Force.x * VC.y - Force.y * VC.x);
 	RWVelocityField[DispatchThreadId] = VelocityField.Load(uint4(DispatchThreadId, 0)) + Force;
 }
-
-Texture3D<float4> SrcTexture;
-RWTexture3D<float4> RWDstTexture;
 
 float4 ForceParam;
 int3 ForcePos;

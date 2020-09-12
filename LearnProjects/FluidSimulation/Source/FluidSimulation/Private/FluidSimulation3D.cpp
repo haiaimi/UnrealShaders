@@ -30,7 +30,8 @@ namespace FluidSimulation3D
 		BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 			SHADER_PARAMETER(float, TimeStep)
 			SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture3D<float4>, VelocityField)
-			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<float4>, RWVelocityField)
+			SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture3D<float4>, SrcTexture)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<float4>, RWDstTexture)
 			END_SHADER_PARAMETER_STRUCT()
 
 	public:
@@ -265,13 +266,14 @@ namespace FluidSimulation3D
 	IMPLEMENT_SHADER_TYPE(, FSubstractGradientCS, TEXT("/Shaders/Private/Fluid3D.usf"), TEXT("SubstractGradient"), SF_Compute)
 
 
-	void ComputeAdvect(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntVector FluidVolumeSize, float TimeStep, FRDGTextureSRVRef VelocityField, FRDGTextureUAVRef DstField)
+	void ComputeAdvect(FRDGBuilder& RDG, FGlobalShaderMap* ShaderMap, FIntVector FluidVolumeSize, float TimeStep, FRDGTextureSRVRef VelocityField, FRDGTextureSRVRef SrcField, FRDGTextureUAVRef DstField)
 	{
 		TShaderMapRef<FAdvectVelocityCS> AdvectCS(ShaderMap);
 		FAdvectVelocityCS::FParameters* PassParameters = RDG.AllocParameters<FAdvectVelocityCS::FParameters>();
 		PassParameters->TimeStep = TimeStep;
 		PassParameters->VelocityField = VelocityField;
-		PassParameters->RWVelocityField = DstField;
+		PassParameters->SrcTexture = SrcField;
+		PassParameters->RWDstTexture = DstField;
 
 		FComputeShaderUtils::AddPass(RDG, RDG_EVENT_NAME("ComputeAdvect"), AdvectCS, PassParameters, FIntVector(FMath::DivideAndRoundUp(FluidVolumeSize.X, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidVolumeSize.Y, THREAD_GROUP_SIZE), FMath::DivideAndRoundUp(FluidVolumeSize.Z, THREAD_GROUP_SIZE)));
 	}
@@ -408,8 +410,8 @@ void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, uint32 IterationCount, 
 	
 	// 1. Advect velocity field and color 
 	// #TODO it may use a high-order advection scheme which is called MacCormack Advection Scheme 
-	FluidSimulation3D::ComputeAdvect(GraphBuilder, ShaderMap, FluidVolumeSize, DeltaTime, VelocityFieldSRV0, VelocityFieldUAV1);
-	FluidSimulation3D::ComputeAdvect(GraphBuilder, ShaderMap, FluidVolumeSize, DeltaTime, ColorFieldSRV0, ColorFieldUAV1);
+	FluidSimulation3D::ComputeAdvect(GraphBuilder, ShaderMap, FluidVolumeSize, DeltaTime, VelocityFieldSRV0, VelocityFieldSRV0, VelocityFieldUAV1);
+	FluidSimulation3D::ComputeAdvect(GraphBuilder, ShaderMap, FluidVolumeSize, DeltaTime, VelocityFieldSRV0, ColorFieldSRV0, ColorFieldUAV1);
 
 	// 2. Apply VorticityConfinement
 	FluidSimulation3D::ComputeVorticity(GraphBuilder, ShaderMap, FluidVolumeSize, 0.5f, VelocityFieldSRV1, VorticityUAV);
@@ -432,7 +434,9 @@ void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, uint32 IterationCount, 
 	FluidSimulation3D::Jacobi(GraphBuilder, ShaderMap, FluidVolumeSize, IterationCount & ~0x1, x_SRVs, x_UAVs, DivergenceSRV);
 
 	// 6. Project velocity to free-divergence
-	FluidSimulation3D::SubstarctPressureGradient(GraphBuilder, ShaderMap, FluidVolumeSize, 0.5f, VelocityFieldSRV1, PressureFieldSRV0, PressureFieldUAV1);
+	FluidSimulation3D::SubstarctPressureGradient(GraphBuilder, ShaderMap, FluidVolumeSize, 0.5f, VelocityFieldSRV1, PressureFieldSRV0, VelocityFieldUAV0);
+
+	GraphBuilder.Execute();
 
 	// Draw fluid with ray-marching
 }
