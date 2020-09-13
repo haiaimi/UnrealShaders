@@ -437,6 +437,10 @@ void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, uint32 IterationCount, 
 	FluidSimulation3D::SubstarctPressureGradient(GraphBuilder, ShaderMap, FluidVolumeSize, 0.5f, VelocityFieldSRV1, PressureFieldSRV0, VelocityFieldUAV0);
 
 	GraphBuilder.Execute();
+}
 
-	// Draw fluid with ray-marching
+// After we compute the velocity or density of fluid, we need to render it to screen, but it is more complex than fluid 2D.
+void RenderFluidVolume()
+{
+	
 }
