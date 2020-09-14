@@ -11,6 +11,8 @@
 #include "ShaderParameterStruct.h"
 #include "RenderGraphUtils.h"
 #include "RenderTargetPool.h"
+#include "ScreenRendering.h"
+#include "../Private/SceneRendering.h"
 
 class FFluidVolumeBackPS : public FGlobalShader
 {
@@ -77,26 +79,26 @@ void DrawVolumeBox(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRen
 	FRHIRenderPassInfo RPInfo(RenderTarget->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Clear_DontStore);
 	RHICmdList.BeginRenderPass(RPInfo, TEXT("DrawVolumeBox"));
 	{
-		/*FIntRect SrcRect = View.ViewRect;
+		FIntRect SrcRect = View.ViewRect;
 		FIntRect DestRect = View.ViewRect;
 
-		RHICmdList.SetViewport()
+		RHICmdList.SetViewport(0, 0, 0, View.ViewRect.Width(), View.ViewRect.Height(), 1);
 
 		FGraphicsPipelineStateInitializer GraphicsPSOInit;
-		Context.RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
 		GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
 		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
 		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
 
-		TShaderMapRef<FPostProcessVS> VertexShader(View.ShaderMap);
-		TShaderMapRef<FDistortionMergePS_ES2> PixelShader(View.ShaderMap);
+		TShaderMapRef<FScreenVS> VertexShader(View.ShaderMap);
+		TShaderMapRef<FFluidVolumeBackPS> PixelShader(View.ShaderMap);
 
-		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
+		//GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
 		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
 		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
-		SetGraphicsPipelineState(Context.RHICmdList, GraphicsPSOInit);*/
+		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 	}
 	RHICmdList.EndRenderPass();
 }

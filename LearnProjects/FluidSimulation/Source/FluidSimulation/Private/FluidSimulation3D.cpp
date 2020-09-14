@@ -15,6 +15,7 @@
 #include "ShaderParameterStruct.h"
 #include "RenderGraphUtils.h"
 #include "RenderTargetPool.h"
+#include "../Private/ScenePrivate.h"
 
 #define THREAD_GROUP_SIZE 8
 
@@ -357,9 +358,11 @@ namespace FluidSimulation3D
 	}
 }
 
-void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, uint32 IterationCount, float DeltaTime, float VorticityScale, FIntVector FluidVolumeSize, ERHIFeatureLevel::Type FeatureLevel)
+void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, uint32 IterationCount, float DeltaTime, float VorticityScale, FIntVector FluidVolumeSize, FScene* Scene, ERHIFeatureLevel::Type FeatureLevel)
 {
 	check(IsInRenderingThread());
+
+	auto CacheView = Scene->UniformBuffers.CachedView;
 
 	FPooledRenderTargetDesc FluidVloumeDesc = FPooledRenderTargetDesc::CreateVolumeDesc(FluidVolumeSize.X, FluidVolumeSize.Y, FluidVolumeSize.Z, EPixelFormat::PF_A32B32G32R32F, FClearValueBinding::None, ETextureCreateFlags::TexCreate_None, ETextureCreateFlags::TexCreate_UAV | ETextureCreateFlags::TexCreate_ShaderResource, false);
 	FPooledRenderTargetDesc FluidVloumeSingleDesc = FPooledRenderTargetDesc::CreateVolumeDesc(FluidVolumeSize.X, FluidVolumeSize.Y, FluidVolumeSize.Z, EPixelFormat::PF_R32_FLOAT, FClearValueBinding::None, ETextureCreateFlags::TexCreate_None, ETextureCreateFlags::TexCreate_UAV | ETextureCreateFlags::TexCreate_ShaderResource, false);
