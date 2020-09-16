@@ -179,7 +179,7 @@ void DrawVolumeBox(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRen
 	FVector EyePosToVolume = View.ViewMatrices.GetInvViewMatrix().TransformPosition(View.ViewLocation);
 
 	// #TODO
-	FMatrix TranslatedMatrix = FScaleMatrix(FVector(1.f, 1.f, -1.f)) * FRotationMatrix(FRotator(90.f, 90.f, 0.f)) * FTranslationMatrix(FVector(0.f, 0.f, 100.f));
+	FMatrix TranslatedMatrix = FScaleMatrix(FVector(1.f, 1.f, -1.f)) * FRotationMatrix(FRotator(0.f, 90.f, 90.f)) * FTranslationMatrix(FVector(0.f, 0.f, 100.f));
 
 	FRHIRenderPassInfo RPInfo(RenderTarget->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Clear_DontStore);
 	RHICmdList.BeginRenderPass(RPInfo, TEXT("DrawVolumeBox"));
@@ -192,7 +192,7 @@ void DrawVolumeBox(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRen
 		FGraphicsPipelineStateInitializer GraphicsPSOInit;
 		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
 		GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
-		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, ERasterizerCullMode::CM_CW>::GetRHI();
+		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, ERasterizerCullMode::CM_CCW>::GetRHI();
 		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
 
 		FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(FeatureLevel);

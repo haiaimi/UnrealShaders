@@ -6,19 +6,22 @@ float3 EyePosToVolume;
 struct FVolumePixelInput
 {
 	float4 OutPosition : SV_Position;
-	float3 VolumePosition : POSITION;
+	float4 VolumePosition : POSITION;
 };
 
-void VolumeBackVS(in float3 VertexPosition : ATTRIBUTE,
+void VolumeBackVS(in float3 VertexPosition : ATTRIBUTE0,
 					out FVolumePixelInput Result)
 {
-	
+	Result.VolumePosition.xyz = VertexPosition;
+	float4 NDC = mul(float4(VertexPosition, 1), WorldViewProjection);
+	Result.VolumePosition.w = 1.f / NDC.w;
+	Result.OutPosition = NDC / NDC.w;
 }
 
 void VolumeBackPS(in FVolumePixelInput PSInput,
 					out float4 OutColor : SV_Target0)
 {
-	
+	OutColor = PSInput.VolumePosition;
 }
 
 void VolumeFrontPS()
