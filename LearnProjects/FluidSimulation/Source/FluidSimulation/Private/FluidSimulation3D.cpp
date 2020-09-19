@@ -358,6 +358,8 @@ namespace FluidSimulation3D
 	}
 }
 
+extern void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, FIntVector FluidVolumeSize, const FViewInfo& View, ERHIFeatureLevel::Type FeatureLevel);
+
 void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, uint32 IterationCount, float DeltaTime, float VorticityScale, FIntVector FluidVolumeSize, FScene* Scene, ERHIFeatureLevel::Type FeatureLevel)
 {
 	check(IsInRenderingThread());
@@ -440,10 +442,13 @@ void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, uint32 IterationCount, 
 	FluidSimulation3D::SubstarctPressureGradient(GraphBuilder, ShaderMap, FluidVolumeSize, 0.5f, VelocityFieldSRV1, PressureFieldSRV0, VelocityFieldUAV0);
 
 	GraphBuilder.Execute();
+
+	if(CacheView)
+		RenderFluidVolume(RHICmdList, FluidVolumeSize, *CacheView, FeatureLevel);
 }
 
 // After we compute the velocity or density of fluid, we need to render it to screen, but it is more complex than fluid 2D.
-void RenderFluidVolume()
-{
-	
-}
+//void RenderFluidVolume()
+//{
+//	
+//}

@@ -6,25 +6,36 @@ float3 EyePosToVolume;
 struct FVolumePixelInput
 {
 	float4 OutPosition : SV_Position;
-	float4 VolumePosition : POSITION;
+	float4 VolumePosition : COLOR;
 };
 
-void VolumeBackVS(in float3 VertexPosition : ATTRIBUTE0,
+void VolumeBackVS(float3 VertexPosition : ATTRIBUTE0,
+					out float4 OutPosition : SV_Position)
+{
+	OutPosition = mul(float4(VertexPosition, 1), WorldViewProjection);
+}
+
+void VolumeBackPS(in float4 Position : SV_Position, 
+					out float4 OutColor : SV_Target0)
+{
+	float3 BackMark = float3(0.f, -1.f, 0.f);
+	OutColor.xyz = BackMark;
+	OutColor.w = Position.w;
+}
+
+void VolumeFrontVS(float3 VertexPosition : ATTRIBUTE0,
 					out FVolumePixelInput Result)
 {
 	Result.VolumePosition.xyz = VertexPosition;
-	float4 NDC = mul(float4(VertexPosition, 1), WorldViewProjection);
-	Result.VolumePosition.w = 1.f / NDC.w;
-	Result.OutPosition = NDC / NDC.w;
+	float4 ClipSpace = mul(float4(VertexPosition, 1), WorldViewProjection);
+	Result.VolumePosition.w = ClipSpace.w;
+	Result.OutPosition = ClipSpace;
 }
 
-void VolumeBackPS(in FVolumePixelInput PSInput,
+
+void VolumeFrontPS(in FVolumePixelInput Input,
 					out float4 OutColor : SV_Target0)
 {
-	OutColor = PSInput.VolumePosition;
-}
-
-void VolumeFrontPS()
-{
-	
+	OutColor.xyz = Input.VolumePosition.xyz;
+	OutColor.w = Input.OutPosition.w;
 }

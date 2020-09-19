@@ -77,7 +77,7 @@ public:
 		RHIUnlockVertexBuffer(VolumeVertexBuffer);
 
 		VolumeIndexBuffer = RHICreateIndexBuffer(sizeof(uint32), sizeof(uint32) * VolumeIndices.Num(), BUF_Static, CreateInfo);
-		void* VoidPtr = RHILockIndexBuffer(VolumeIndexBuffer, 0, sizeof(uint32) * VolumeIndices.Num(), RLM_WriteOnly);
+		VoidPtr = RHILockIndexBuffer(VolumeIndexBuffer, 0, sizeof(uint32) * VolumeIndices.Num(), RLM_WriteOnly);
 		FMemory::Memcpy(VoidPtr, VolumeIndices.GetData(), sizeof(uint32) * VolumeIndices.Num());
 		RHIUnlockIndexBuffer(VolumeIndexBuffer);
 	}
@@ -91,91 +91,70 @@ public:
 
 static TGlobalResource<FVolumeStreamBuffer> GVolumeStreamBuffer;
 
-class FFluidVolumeBackVS : public FGlobalShader
+enum : int32
 {
-	DECLARE_SHADER_TYPE(FFluidVolumeBackVS, Global);
+	BackwardVolume = 0,
+	FrontVolume = 1
+};
+
+template<int32 Index>
+class FFluidVolumeVS : public FGlobalShader
+{
+	DECLARE_SHADER_TYPE(FFluidVolumeVS, Global);
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
 		return true;
 	}
 
-	FFluidVolumeBackVS() {}
+	FFluidVolumeVS() {}
 
 public:
-	FFluidVolumeBackVS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+	FFluidVolumeVS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
 	{
 		WorldViewProjection.Bind(Initializer.ParameterMap, TEXT("WorldViewProjection"));
-		EyePosToVolume.Bind(Initializer.ParameterMap, TEXT("EyePosToVolume"));
 	}
 
-	void SetParameters(FRHICommandListImmediate& RHICmdList, const FMatrix& WVP, const FVector& EyePosToVol)
+	void SetParameters(FRHICommandListImmediate& RHICmdList, const FMatrix& WVP)
 	{
 		
 		SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), WorldViewProjection, WVP);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), EyePosToVolume, EyePosToVol);
 	}
 
 	LAYOUT_FIELD(FShaderParameter, WorldViewProjection)
-	LAYOUT_FIELD(FShaderParameter, EyePosToVolume)
 };
 
-IMPLEMENT_SHADER_TYPE(, FFluidVolumeBackVS, TEXT("/Shaders/Private/Fluid3D.usf"), TEXT("VolumeBackVS"), SF_Vertex);
+IMPLEMENT_SHADER_TYPE(, FFluidVolumeVS<0>, TEXT("/Shaders/Private/RenderFluidVolume.usf"), TEXT("VolumeBackVS"), SF_Vertex);
+IMPLEMENT_SHADER_TYPE(, FFluidVolumeVS<1>, TEXT("/Shaders/Private/RenderFluidVolume.usf"), TEXT("VolumeFrontVS"), SF_Vertex);
 
-class FFluidVolumeBackPS : public FGlobalShader
+template<int32 Index>
+class FFluidVolumePS : public FGlobalShader
 {
-	DECLARE_SHADER_TYPE(FFluidVolumeBackPS, Global);
+	DECLARE_SHADER_TYPE(FFluidVolumePS, Global);
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
 		return true;
 	}
 
-	FFluidVolumeBackPS() {}
+	FFluidVolumePS() {}
 
 public:
-	FFluidVolumeBackPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+	FFluidVolumePS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
 	{
-		WorldViewProjection.Bind(Initializer.ParameterMap, TEXT("WorldViewProjection"));
-		EyePosToVolume.Bind(Initializer.ParameterMap, TEXT("EyePosToVolume"));
-	}
 
-	LAYOUT_FIELD(FShaderParameter, WorldViewProjection)
-	LAYOUT_FIELD(FShaderParameter, EyePosToVolume)
+	}
 };
 
-IMPLEMENT_SHADER_TYPE(, FFluidVolumeBackPS, TEXT("/Shaders/Private/RenderFluidVolume.usf"), TEXT("VolumeBackPS"), SF_Pixel);
-
-
-
-class FFluidVolumeFrontPS : public FGlobalShader
-{
-	DECLARE_SHADER_TYPE(FFluidVolumeFrontPS, Global);
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return true;
-	}
-
-	FFluidVolumeFrontPS() {}
-
-public:
-	FFluidVolumeFrontPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
-		: FGlobalShader(Initializer)
-	{
-		
-	} 
-};
-
-IMPLEMENT_SHADER_TYPE(, FFluidVolumeFrontPS, TEXT("/Shaders/Private/RenderFluidVolume.usf"), TEXT("VolumeFrontPS"), SF_Pixel);
-
+IMPLEMENT_SHADER_TYPE(, FFluidVolumePS<0>, TEXT("/Shaders/Private/RenderFluidVolume.usf"), TEXT("VolumeBackPS"), SF_Pixel);
+IMPLEMENT_SHADER_TYPE(, FFluidVolumePS<1>, TEXT("/Shaders/Private/RenderFluidVolume.usf"), TEXT("VolumeFrontPS"), SF_Pixel);
 
 void DrawVolumeBox(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget> RenderTarget, const FViewInfo& View, ERHIFeatureLevel::Type FeatureLevel)
 {	
-	FScaleMatrix VolumeScale = FScaleMatrix(FVector::OneVector * 50);
-	auto ViewProj = VolumeScale * View.ViewMatrices.GetViewProjectionMatrix();
+	FScaleMatrix VolumeScale = FScaleMatrix(FVector::OneVector * 200);
+	auto WorldViewProj = VolumeScale * FTranslationMatrix(FVector::UpVector * 200.f) * View.ViewMatrices.GetViewProjectionMatrix();
 	FVector EyePosToVolume = View.ViewMatrices.GetInvViewMatrix().TransformPosition(View.ViewLocation);
 
 	// #TODO
@@ -196,25 +175,30 @@ void DrawVolumeBox(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRen
 		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
 
 		FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(FeatureLevel);
-		TShaderMapRef<FVolumeVertex> VertexShader(ShaderMap);
-		TShaderMapRef<FFluidVolumeBackPS> BackPixelShader(View.ShaderMap);
+		TShaderMapRef<FFluidVolumeVS<BackwardVolume>> BackVertexShader(ShaderMap);
+		TShaderMapRef<FFluidVolumePS<BackwardVolume>> BackPixelShader(View.ShaderMap);
 
 		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GVolumeVertexDeclaration.VertexDeclarationRHI;
-		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = BackVertexShader.GetVertexShader();
 		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = BackPixelShader.GetPixelShader();
 		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
-
+		
 		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+		BackVertexShader->SetParameters(RHICmdList, WorldViewProj);
 
 		RHICmdList.SetStreamSource(0, GVolumeStreamBuffer.VolumeVertexBuffer, 0);
 		RHICmdList.DrawIndexedPrimitive(GVolumeStreamBuffer.VolumeIndexBuffer, 0, 0, VolumeVertices.Num(), 0, VolumeIndices.Num() / 3, 1);
 
-		TShaderMapRef<FFluidVolumeFrontPS> FrontPixelShader(ShaderMap);
+		TShaderMapRef<FFluidVolumeVS<FrontVolume>> FrontVertexShader(ShaderMap);
+		TShaderMapRef<FFluidVolumePS<FrontVolume>> FrontPixelShader(ShaderMap);
 		GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_Zero, BO_Subtract, BF_One, BF_Zero>::GetRHI();
 		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, ERasterizerCullMode::CM_CW>::GetRHI();
 		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
 
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = FrontVertexShader.GetVertexShader();
 		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = FrontPixelShader.GetPixelShader();
+		
+		FrontVertexShader->SetParameters(RHICmdList, WorldViewProj);
 		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
 		RHICmdList.SetStreamSource(0, GVolumeStreamBuffer.VolumeVertexBuffer, 0);
@@ -223,9 +207,13 @@ void DrawVolumeBox(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRen
 	RHICmdList.EndRenderPass();
 }
 
-void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, FIntVector FluidVolumeSize, ERHIFeatureLevel::Type FeatureLevel)
+void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, FIntVector FluidVolumeSize, const FViewInfo& View, ERHIFeatureLevel::Type FeatureLevel)
 {
 	FPooledRenderTargetDesc FluidVloumeDesc = FPooledRenderTargetDesc::CreateVolumeDesc(FluidVolumeSize.X, FluidVolumeSize.Y, FluidVolumeSize.Z, EPixelFormat::PF_A32B32G32R32F, FClearValueBinding::None, ETextureCreateFlags::TexCreate_None, ETextureCreateFlags::TexCreate_UAV | ETextureCreateFlags::TexCreate_ShaderResource, false);
-	TRefCountPtr<IPooledRenderTarget> ColorTexture3D_0;
+	FPooledRenderTargetDesc RayMarchDesc = FPooledRenderTargetDesc::Create2DDesc(FIntPoint(View.ViewRect.Width(), View.ViewRect.Height()), EPixelFormat::PF_A32B32G32R32F, FClearValueBinding::Black, ETextureCreateFlags::TexCreate_None, ETextureCreateFlags::TexCreate_RenderTargetable | ETextureCreateFlags::TexCreate_ShaderResource, false);
+	TRefCountPtr<IPooledRenderTarget> ColorTexture3D_0, RayMarchData;
 	GRenderTargetPool.FindFreeElement(RHICmdList, FluidVloumeDesc, ColorTexture3D_0, TEXT("ColorTexture3D_0"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, RayMarchDesc, RayMarchData, TEXT("RayMarchData"));
+
+	DrawVolumeBox(RHICmdList, RayMarchData, View, FeatureLevel);
 }
