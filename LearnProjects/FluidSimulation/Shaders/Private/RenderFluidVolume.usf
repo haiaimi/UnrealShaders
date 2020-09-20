@@ -1,7 +1,6 @@
 #include "/Engine/Public/Platform.ush"
 
 float4x4 WorldViewProjection;
-float3 EyePosToVolume;
 
 struct FVolumePixelInput
 {
@@ -38,4 +37,82 @@ void VolumeFrontPS(in FVolumePixelInput Input,
 {
 	OutColor.xyz = Input.VolumePosition.xyz;
 	OutColor.w = Input.OutPosition.w;
+}
+
+float NearPlaneDistance;
+float4x4 InvWorldViewProjection;
+
+struct FRayMarchPixelInput
+{
+	float4 OutPosition : SV_Position;
+	float4 VolumePosition : COLOR;
+	float2 UV : TEXCOORD;
+};
+
+void VolumeRayMarchVS(float2 Position : ATTRIBUTE0,
+						float2 UV : ATTRIBUTE1,
+						out FRayMarchPixelInput OutResult)
+{
+	OutResult.OutPosition = float4(Position, 0.f, 1.f);
+	OutResult.VolumePosition = mul(float4(Position * NearPlaneDistance, 0.f, NearPlaneDistance), InvWorldViewProjection);
+	OutResult.UV = UV;
+}
+
+float3 EyePosToVolume;
+Texture2D<float4> RayMarchDataTexture;
+SamplerState RayMarchSampler;
+Texture3D<float4> VolumeFluidColor;
+float VolumeGridScale;
+float MaxVolumeSize;
+float3 PerGridSize;
+float3 VolumeDimension;
+
+void SampleColor(in out float4 Color, float3 SamplePos, float Weight)
+{
+	float4 VoxelColor = VolumeFluidColor.Sample(RayMarchSampler, SamplePos);
+	Color.rgb += VoxelColor.rgb * VoxelColor.a * (1.f - Color.a);
+	Color.a += VoxelColor.a * (1.f - Color.a);
+}
+
+void VolumeRayMarchPS(in FRayMarchPixelInput Input,
+						out float4 OutColor : SV_Target)
+{
+	float4 RayData = RayMarchDataTexture.Sample(RayMarchSampler, Input.UV);
+	BRANCH
+	if (RayData.w <= 0.f)
+		OutColor = 0.f;
+	
+	float3 StartPos = RayData.xyz;
+	float Depth = RayData.w;
+	BRANCH
+	if(RayData.y < 0)  // It means that the view nearplane is in the volume
+	{
+		RayData.xyz = Input.VolumePosition.xyz;
+		RayData.w = RayData.w - NearPlaneDistance;
+	}
+	
+	float TSampleCount = (RayData.w / VolumeGridScale) * MaxVolumeSize * 2.f;
+	float SampleCount = floor(TSampleCount);
+	
+	float3 SampleStep = normalize((RayData.xyz - EyePosToVolume) * VolumeDimension) * PerGridSize * 0.5f;
+	float3 SamplePos = RayData.xyz + SampleStep;
+
+	float4 Color = 0;
+	
+	int i = 0;
+	LOOP
+	for (; i < SampleCount; ++i)
+	{
+		SampleColor(Color, SamplePos, 1);
+		SamplePos += SampleStep;
+		
+		// ww do not need to do more compution if alpha is almost 1 
+		if(Color.a > 0.99f)
+			break;
+	}
+	
+	if(i == SampleCount)
+	{
+		SampleColor(Color, SamplePos, frac(TSampleCount));
+	}
 }
