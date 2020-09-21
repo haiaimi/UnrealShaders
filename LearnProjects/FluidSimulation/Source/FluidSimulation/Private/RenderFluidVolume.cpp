@@ -256,30 +256,41 @@ public:
 		RayMarchDataTexture.Bind(Initializer.ParameterMap, TEXT("RayMarchDataTexture"));
 		VolumeFluidColor.Bind(Initializer.ParameterMap, TEXT("VolumeFluidColor"));
 		RayMarchSampler.Bind(Initializer.ParameterMap, TEXT("RayMarchSampler"));
-		VolumeGridScale.Bind(Initializer.ParameterMap, TEXT("VolumeGridScale"));
-		MaxVolumeSize.Bind(Initializer.ParameterMap, TEXT("MaxVolumeSize"));
+		NearPlaneDistance.Bind(Initializer.ParameterMap, TEXT("NearPlaneDistance"));
+		VolumeBoxScale.Bind(Initializer.ParameterMap, TEXT("VolumeBoxScale"));
+		MaxVolumeBoxSize.Bind(Initializer.ParameterMap, TEXT("MaxVolumeBoxSize"));
 		PerGridSize.Bind(Initializer.ParameterMap, TEXT("PerGridSize"));
 		VolumeDimension.Bind(Initializer.ParameterMap, TEXT("VolumeDimension"));
 	}
 
-	void SetParameters(FRHICommandListImmediate& RHICmdList, FVector EyePosToVol, FRHITexture* RayDataTextureRHI, FRHITexture* FluidColorTextureRHI)
+	void SetParameters(FRHICommandListImmediate& RHICmdList, 
+						FVector EyePosToVol, 
+						FRHITexture* RayDataTextureRHI, 
+						FRHITexture* FluidColorTextureRHI,
+						float NearPlane,
+						float VolumeBoxSl,
+						float MaxVolumeBoxEdgeSize,
+						FVector PerGrid,
+						FVector VolumeDim)
 	{
 		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), EyePosToVolume, EyePosToVol);
 		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), RayMarchDataTexture, RayMarchSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::CreateRHI(), RayDataTextureRHI);
 		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), VolumeFluidColor, FluidColorTextureRHI);
 
-		/*SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), VolumeGridScale);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), MaxVolumeSize);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), PerGridSize);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), VolumeDimension);*/
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), NearPlaneDistance, NearPlane);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), VolumeBoxScale, VolumeBoxSl);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), MaxVolumeBoxSize, MaxVolumeBoxEdgeSize);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), PerGridSize, PerGrid);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), VolumeDimension, VolumeDim);
 	}
 
 	LAYOUT_FIELD(FShaderParameter, EyePosToVolume)
 	LAYOUT_FIELD(FShaderResourceParameter, RayMarchDataTexture)
 	LAYOUT_FIELD(FShaderResourceParameter, VolumeFluidColor)
 	LAYOUT_FIELD(FShaderResourceParameter, RayMarchSampler)
-	LAYOUT_FIELD(FShaderParameter, VolumeGridScale)
-	LAYOUT_FIELD(FShaderParameter, MaxVolumeSize)
+	LAYOUT_FIELD(FShaderParameter, NearPlaneDistance)
+	LAYOUT_FIELD(FShaderParameter, VolumeBoxScale)
+	LAYOUT_FIELD(FShaderParameter, MaxVolumeBoxSize)
 	LAYOUT_FIELD(FShaderParameter, PerGridSize)
 	LAYOUT_FIELD(FShaderParameter, VolumeDimension)
 };
@@ -296,7 +307,7 @@ void DrawVolumeBox(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRen
 	// #TODO
 	FMatrix TranslatedMatrix = FScaleMatrix(FVector(1.f, 1.f, -1.f)) * FRotationMatrix(FRotator(0.f, 90.f, 90.f)) * FTranslationMatrix(FVector(0.f, 0.f, VolumeBoxScale));
 
-	FRHIRenderPassInfo RPInfo(RenderTarget->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Clear_DontStore);
+	FRHIRenderPassInfo RPInfo(RenderTarget->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Clear_Store);
 	RHICmdList.BeginRenderPass(RPInfo, TEXT("DrawVolumeBox"));
 	{
 		FIntRect SrcRect = View.ViewRect;
@@ -343,9 +354,9 @@ void DrawVolumeBox(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRen
 	RHICmdList.EndRenderPass();
 }
 
-void VolumeRayMarch(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget> FluidColor, TRefCountPtr<IPooledRenderTarget> RayMarchData, const FViewInfo& View, const FTransform& VolumeTransform, ERHIFeatureLevel::Type FeatureLevel)
+void RayMarchFluidVolume(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget> FluidColor, TRefCountPtr<IPooledRenderTarget> RayMarchData, const FViewInfo& View, const FIntVector FluidVolumeSize, const FTransform& VolumeTransform, ERHIFeatureLevel::Type FeatureLevel)
 {
-	FRHIRenderPassInfo RPInfo(RayMarchData->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Clear_DontStore);
+	FRHIRenderPassInfo RPInfo(RayMarchData->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Clear_Store);
 	RHICmdList.BeginRenderPass(RPInfo, TEXT("RayMarchFluid"));
 	{
 		FIntRect SrcRect = View.ViewRect;
@@ -368,11 +379,16 @@ void VolumeRayMarch(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRe
 		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 		// Set Shader Params
-		const FVector EyePosInVolume = VolumeTransform.ToMatrixWithScale().InverseTransformPosition(View.ViewLocation);
+		const FMatrix InverseVolumeTransformMatrix = VolumeTransform.ToMatrixWithScale();
+		const FVector EyePosInVolume = InverseVolumeTransformMatrix.TransformPosition(View.ViewLocation);
 		const float NearPlane = View.NearClippingDistance;
-		const FMatrix InvVolumeViewProjection = View.ViewMatrices.GetInvViewProjectionMatrix() * VolumeTransform.ToInverseMatrixWithScale();
+		const FMatrix InvVolumeViewProjection = View.ViewMatrices.GetInvViewProjectionMatrix() * InverseVolumeTransformMatrix;
+
+		FVector VolumeScale = VolumeTransform.GetScale3D();
+		FVector VolumeDim(FluidVolumeSize);
 
 		VertexShader->SetParameters(RHICmdList, NearPlane, InvVolumeViewProjection);
+		PixelShader->SetParameters(RHICmdList, EyePosInVolume, RayMarchData->GetRenderTargetItem().TargetableTexture, FluidColor->GetRenderTargetItem().TargetableTexture, NearPlane, VolumeScale.GetAbsMax(), (float)FluidVolumeSize.GetMax(), VolumeDim.Reciprocal(), VolumeDim);
 		
 		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 		RHICmdList.SetStreamSource(0, GVolumeRayMarchBuffer.RayMarchVertexBuffer, 0);
@@ -393,4 +409,8 @@ void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, FIntVector FluidVol
 	FTransform VolumeTransform(FRotator::ZeroRotator, FVector::UpVector * 200.f, FVector::OneVector * VolumeBoxScale);
 
 	DrawVolumeBox(RHICmdList, RayMarchData, View, VolumeTransform, FeatureLevel);
+
+	//RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, RayMarchData->GetRenderTargetItem().TargetableTexture);
+	//RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, ColorTexture3D_0->GetRenderTargetItem().TargetableTexture);
+	RayMarchFluidVolume(RHICmdList, ColorTexture3D_0, RayMarchData, View, FluidVolumeSize, VolumeTransform, FeatureLevel);
 }

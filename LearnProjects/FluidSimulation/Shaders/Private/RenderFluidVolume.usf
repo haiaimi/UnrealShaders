@@ -62,8 +62,8 @@ float3 EyePosToVolume;
 Texture2D<float4> RayMarchDataTexture;
 SamplerState RayMarchSampler;
 Texture3D<float4> VolumeFluidColor;
-float VolumeGridScale;
-float MaxVolumeSize;
+float VolumeBoxScale;
+float MaxVolumeBoxSize;
 float3 PerGridSize;
 float3 VolumeDimension;
 
@@ -91,7 +91,7 @@ void VolumeRayMarchPS(in FRayMarchPixelInput Input,
 		RayData.w = RayData.w - NearPlaneDistance;
 	}
 	
-	float TSampleCount = (RayData.w / VolumeGridScale) * MaxVolumeSize * 2.f;
+	float TSampleCount = (RayData.w / VolumeBoxScale) * MaxVolumeBoxSize * 2.f;
 	float SampleCount = floor(TSampleCount);
 	
 	float3 SampleStep = normalize((RayData.xyz - EyePosToVolume) * VolumeDimension) * PerGridSize * 0.5f;
