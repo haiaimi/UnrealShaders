@@ -117,13 +117,13 @@ public:
 		Vertices[3].UV = FVector2D(1.f, 1.f);
 
 		FRHIResourceCreateInfo VertexCreateInfo(&Vertices);
-		RayMarchVertexBuffer = RHICreateVertexBuffer(sizeof(FVolumeVertex) * VolumeVertices.Num(), BUF_Static, VertexCreateInfo);
+		RayMarchVertexBuffer = RHICreateVertexBuffer(sizeof(FScreenVertex) * Vertices.Num(), BUF_Static, VertexCreateInfo);
 		
 		TResourceArray<uint16, INDEXBUFFER_ALIGNMENT> IndexBuffer;
 		IndexBuffer.SetNumUninitialized(6);
 		FMemory::Memcpy(IndexBuffer.GetData(), (const void*)Indices, sizeof(uint16) * GetIndexNum());
 		FRHIResourceCreateInfo IndexCreateInfo(&IndexBuffer);
-		RayMarchIndexBuffer = RHICreateIndexBuffer(sizeof(uint32), sizeof(uint32) * VolumeIndices.Num(), BUF_Static, IndexCreateInfo);
+		RayMarchIndexBuffer = RHICreateIndexBuffer(sizeof(uint16), sizeof(uint16) * GetIndexNum(), BUF_Static, IndexCreateInfo);
 	}
 
 	virtual void ReleaseRHI() override
@@ -410,7 +410,7 @@ void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, FIntVector FluidVol
 
 	DrawVolumeBox(RHICmdList, RayMarchData, View, VolumeTransform, FeatureLevel);
 
-	//RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, RayMarchData->GetRenderTargetItem().TargetableTexture);
-	//RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, ColorTexture3D_0->GetRenderTargetItem().TargetableTexture);
+	FRHITexture* TranslationTextures[] = {RayMarchData->GetRenderTargetItem().ShaderResourceTexture->GetTexture2D(), ColorTexture3D_0->GetRenderTargetItem().TargetableTexture->GetTexture3D()};
+	RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, TranslationTextures, UE_ARRAY_COUNT(TranslationTextures));
 	RayMarchFluidVolume(RHICmdList, ColorTexture3D_0, RayMarchData, View, FluidVolumeSize, VolumeTransform, FeatureLevel);
 }

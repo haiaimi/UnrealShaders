@@ -69,9 +69,9 @@ float3 VolumeDimension;
 
 void SampleColor(in out float4 Color, float3 SamplePos, float Weight)
 {
-	float4 VoxelColor = VolumeFluidColor.Sample(RayMarchSampler, SamplePos);
-	Color.rgb += VoxelColor.rgb * VoxelColor.a * (1.f - Color.a);
-	Color.a += VoxelColor.a * (1.f - Color.a);
+	float4 VoxelColor = VolumeFluidColor.SampleLevel(RayMarchSampler, SamplePos, 0);
+	Color.rgb += VoxelColor.rgb * VoxelColor.a * (1.f - Color.a) * Weight;
+	Color.a += VoxelColor.a * (1.f - Color.a) * Weight;
 }
 
 void VolumeRayMarchPS(in FRayMarchPixelInput Input,
@@ -98,9 +98,8 @@ void VolumeRayMarchPS(in FRayMarchPixelInput Input,
 	float3 SamplePos = RayData.xyz + SampleStep;
 
 	float4 Color = 0;
-	
 	int i = 0;
-	LOOP
+	
 	for (; i < SampleCount; ++i)
 	{
 		SampleColor(Color, SamplePos, 1);
