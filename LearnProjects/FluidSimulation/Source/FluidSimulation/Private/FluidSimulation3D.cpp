@@ -358,14 +358,14 @@ namespace FluidSimulation3D
 	}
 }
 
-extern void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, FIntVector FluidVolumeSize, const FViewInfo& View, ERHIFeatureLevel::Type FeatureLevel);
+extern void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, FTextureRenderTargetResource* TextureRenderTargetResource, FIntVector FluidVolumeSize, FTextureRHIRef FluidColor, ERHIFeatureLevel::Type FeatureLevel);
 
-void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, uint32 IterationCount, float DeltaTime, float VorticityScale, FIntVector FluidVolumeSize, FScene* Scene, ERHIFeatureLevel::Type FeatureLevel)
+void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, FTextureRenderTargetResource* TextureRenderTargetResource, uint32 IterationCount, float DeltaTime, float VorticityScale, FIntVector FluidVolumeSize, FScene* Scene, ERHIFeatureLevel::Type FeatureLevel)
 {
 	check(IsInRenderingThread());
 
-	auto CacheView = Scene->UniformBuffers.CachedView;
-
+	//if(Scene->GetFrameNumber() <= 1) return;
+	
 	FPooledRenderTargetDesc FluidVloumeDesc = FPooledRenderTargetDesc::CreateVolumeDesc(FluidVolumeSize.X, FluidVolumeSize.Y, FluidVolumeSize.Z, EPixelFormat::PF_A32B32G32R32F, FClearValueBinding::None, ETextureCreateFlags::TexCreate_None, ETextureCreateFlags::TexCreate_UAV | ETextureCreateFlags::TexCreate_ShaderResource, false);
 	FPooledRenderTargetDesc FluidVloumeSingleDesc = FPooledRenderTargetDesc::CreateVolumeDesc(FluidVolumeSize.X, FluidVolumeSize.Y, FluidVolumeSize.Z, EPixelFormat::PF_R32_FLOAT, FClearValueBinding::None, ETextureCreateFlags::TexCreate_None, ETextureCreateFlags::TexCreate_UAV | ETextureCreateFlags::TexCreate_ShaderResource, false);
 	TRefCountPtr<IPooledRenderTarget> VelocityTexture3D_0, VelocityTexture3D_1, PressureTexture3D_0, PressureTexture3D_1, ColorTexture3D_0, ColorTexture3D_1, VorticityTexture3D, DivergenceTexture3D;
@@ -423,11 +423,11 @@ void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, uint32 IterationCount, 
 	FluidSimulation3D::ComputeVorticityForce(GraphBuilder, ShaderMap, FluidVolumeSize, 0.5f, DeltaTime, VorticityScale, VorticitySRV, VelocityFieldSRV1, VelocityFieldUAV0);
 
 	// 3. Apply external force
-	FVector4 ForceParam(10, 10, 10, 0);
-	FIntVector ForcePos(10, 10, 10);
+	FVector4 ForceParam(0, 80, 0, 0);
+	FIntVector ForcePos(FluidVolumeSize.X / 2, 20, FluidVolumeSize.Z / 2);
 	float ForceRadius = 20.f;
 	FluidSimulation3D::AddImpluse(GraphBuilder, ShaderMap, FluidVolumeSize, ForceParam, ForcePos, ForceRadius, VelocityFieldSRV0, VelocityFieldUAV1);
-	ForceParam = FVector4(0.1f, 0.1f, 0.1f, 0.f);
+	ForceParam = FVector4(0.2f, 0.2f, 0.2f, 0.f);
 	FluidSimulation3D::AddImpluse(GraphBuilder, ShaderMap, FluidVolumeSize, ForceParam, ForcePos, ForceRadius, ColorFieldSRV1, ColorFieldUAV0);
 
 	// 4. Compute velocity divergence
@@ -443,8 +443,8 @@ void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, uint32 IterationCount, 
 
 	GraphBuilder.Execute();
 
-	if(CacheView)
-		RenderFluidVolume(RHICmdList, FluidVolumeSize, *CacheView, FeatureLevel);
+	//if(CacheView)
+	RenderFluidVolume(RHICmdList, TextureRenderTargetResource, FluidVolumeSize, ColorTexture3D_0->GetRenderTargetItem().TargetableTexture, FeatureLevel);
 }
 
 // After we compute the velocity or density of fluid, we need to render it to screen, but it is more complex than fluid 2D.

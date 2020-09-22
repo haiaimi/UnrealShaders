@@ -67,11 +67,12 @@ float MaxVolumeBoxSize;
 float3 PerGridSize;
 float3 VolumeDimension;
 
-void SampleColor(in out float4 Color, float3 SamplePos, float Weight)
+float4 SampleColor(float4 Color, float3 SamplePos, float Weight)
 {
 	float4 VoxelColor = VolumeFluidColor.SampleLevel(RayMarchSampler, SamplePos, 0);
-	Color.rgb += VoxelColor.rgb * VoxelColor.a * (1.f - Color.a) * Weight;
-	Color.a += VoxelColor.a * (1.f - Color.a) * Weight;
+	Color.rgb += float3(0.8f, 0.8f, 0.8f) * VoxelColor.r * (1.f - Color.a) * Weight;
+	Color.a += VoxelColor.r * (1.f - Color.a) * Weight;
+	return Color;
 }
 
 void VolumeRayMarchPS(in FRayMarchPixelInput Input,
@@ -98,11 +99,11 @@ void VolumeRayMarchPS(in FRayMarchPixelInput Input,
 	float3 SamplePos = RayData.xyz + SampleStep;
 
 	float4 Color = 0;
-	int i = 0;
 	
+	int i = 0;
 	for (; i < SampleCount; ++i)
 	{
-		SampleColor(Color, SamplePos, 1);
+		Color = SampleColor(Color, SamplePos, 1.f);
 		SamplePos += SampleStep;
 		
 		// ww do not need to do more compution if alpha is almost 1 
@@ -110,8 +111,10 @@ void VolumeRayMarchPS(in FRayMarchPixelInput Input,
 			break;
 	}
 	
-	if(i == SampleCount)
+	if (i == SampleCount)
 	{
-		SampleColor(Color, SamplePos, frac(TSampleCount));
+		Color = SampleColor(Color, SamplePos, frac(TSampleCount));
 	}
+	
+	OutColor = Color;
 }
