@@ -81,18 +81,21 @@ void VolumeRayMarchPS(in FRayMarchPixelInput Input,
 	float4 RayData = RayMarchDataTexture.Sample(RayMarchSampler, Input.UV);
 	BRANCH
 	if (RayData.w <= 0.f)
+	{
 		OutColor = 0.f;
+		return;
+	}
 	
 	float3 StartPos = RayData.xyz;
-	float Depth = RayData.w;
 	BRANCH
+	float Depth = RayData.w;
 	if(RayData.y < 0)  // It means that the view nearplane is in the volume
 	{
 		RayData.xyz = Input.VolumePosition.xyz;
 		RayData.w = RayData.w - NearPlaneDistance;
 	}
 	
-	float TSampleCount = (RayData.w / VolumeBoxScale) * MaxVolumeBoxSize * 2.f;
+	float TSampleCount = (RayData.w / (length(PerGridSize) * VolumeDimension)) * 2.f + 100.f;
 	float SampleCount = floor(TSampleCount);
 	
 	float3 SampleStep = normalize((RayData.xyz - EyePosToVolume) * VolumeDimension) * PerGridSize * 0.5f;

@@ -36,6 +36,7 @@ public:
 
 	virtual void EndFrame() override
 	{
+		//ViewInfo->
 		int32 A = 1 + 2;
 		ViewInfo = nullptr;
 	}
@@ -88,7 +89,7 @@ static const TArray<FVector> VolumeVertices = { FVector(0, 0, 0),
 										FVector(1, 0, 1),
 										FVector(1, 1, 1) };
 
-static const  TArray<uint32> VolumeIndices = { 0, 4, 5,  5, 1, 0,
+static const TArray<uint32> VolumeIndices = { 0, 4, 5,  5, 1, 0,
 								1, 5, 3,  5, 7, 3,
 								3, 7, 6,  6, 2, 3,
 								6, 4, 0,  0, 2, 6,
