@@ -206,15 +206,18 @@ public:
 		: FGlobalShader(Initializer)
 	{
 		WorldViewProjection.Bind(Initializer.ParameterMap, TEXT("WorldViewProjection"));
+		WorldView.Bind(Initializer.ParameterMap, TEXT("WorldView"));
 	}
 
-	void SetParameters(FRHICommandListImmediate& RHICmdList, const FMatrix& WVP)
+	void SetParameters(FRHICommandListImmediate& RHICmdList, const FMatrix& WVP, const FMatrix& WV)
 	{
 		
 		SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), WorldViewProjection, WVP);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), WorldView, WV);
 	}
 
 	LAYOUT_FIELD(FShaderParameter, WorldViewProjection)
+	LAYOUT_FIELD(FShaderParameter, WorldView)
 };
 
 IMPLEMENT_SHADER_TYPE(, FFluidVolumeVS<BackwardVolume>, TEXT("/Shaders/Private/RenderFluidVolume.usf"), TEXT("VolumeBackVS"), SF_Vertex);
@@ -260,16 +263,19 @@ public:
 	{
 		NearPlaneDistance.Bind(Initializer.ParameterMap, TEXT("NearPlaneDistance"));
 		InvWorldViewProjection.Bind(Initializer.ParameterMap, TEXT("InvWorldViewProjection"));
+		InvProjection.Bind(Initializer.ParameterMap, TEXT("InvProjection"));
 	}
 
-	void SetParameters(FRHICommandListImmediate& RHICmdList, float NearPlaneDist, const FMatrix& InvVolumeWorldViewProjection)
+	void SetParameters(FRHICommandListImmediate& RHICmdList, float NearPlaneDist, const FMatrix& InvVolumeWorldViewProjection, const FMatrix& InInvProjection)
 	{
 		SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), NearPlaneDistance, NearPlaneDist);
 		SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), InvWorldViewProjection, InvVolumeWorldViewProjection);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), InvProjection, InInvProjection);
 	}
 
 	LAYOUT_FIELD(FShaderParameter, NearPlaneDistance)
 	LAYOUT_FIELD(FShaderParameter, InvWorldViewProjection)
+	LAYOUT_FIELD(FShaderParameter, InvProjection)
 };
 
 IMPLEMENT_SHADER_TYPE(, FFluidVolumeQuadVS, TEXT("/Shaders/Private/RenderFluidVolume.usf"), TEXT("VolumeRayMarchVS"), SF_Vertex);
@@ -340,6 +346,7 @@ void DrawVolumeBox(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRen
 	FScaleMatrix VolumeScale = FScaleMatrix(FVector::OneVector * VolumeBoxScale);
 	const FMatrix VolumeMatrix = VolumeTransform.ToMatrixWithScale();
 	auto WorldViewProj = VolumeMatrix * View.ViewMatrices.GetViewProjectionMatrix();
+	auto WorldView = VolumeMatrix * View.ViewMatrices.GetViewMatrix();
 	FVector EyePosToVolume = VolumeMatrix.TransformPosition(View.ViewLocation);
 
 	// #TODO
@@ -369,7 +376,7 @@ void DrawVolumeBox(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRen
 		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 		
 		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
-		BackVertexShader->SetParameters(RHICmdList, WorldViewProj);
+		BackVertexShader->SetParameters(RHICmdList, WorldViewProj, WorldView);
 
 		RHICmdList.SetStreamSource(0, GVolumeStreamBuffer.VolumeVertexBuffer, 0);
 		RHICmdList.DrawIndexedPrimitive(GVolumeStreamBuffer.VolumeIndexBuffer, 0, 0, VolumeVertices.Num(), 0, VolumeIndices.Num() / 3, 1);
@@ -383,7 +390,7 @@ void DrawVolumeBox(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRen
 		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = FrontVertexShader.GetVertexShader();
 		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = FrontPixelShader.GetPixelShader();
 		
-		FrontVertexShader->SetParameters(RHICmdList, WorldViewProj);
+		FrontVertexShader->SetParameters(RHICmdList, WorldViewProj, WorldView);
 		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
 		RHICmdList.SetStreamSource(0, GVolumeStreamBuffer.VolumeVertexBuffer, 0);
@@ -421,13 +428,14 @@ void RayMarchFluidVolume(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPoo
 		const FVector EyePosInVolume = InverseVolumeTransformMatrix.TransformPosition(View.ViewLocation);
 		const float NearPlane = View.NearClippingDistance;
 		const FMatrix InvVolumeViewProjection = View.ViewMatrices.GetInvViewProjectionMatrix() * InverseVolumeTransformMatrix;
+		const FMatrix InvProjection = View.ViewMatrices.GetInvProjectionMatrix();
 
 		FVector VolumeScale = VolumeTransform.GetScale3D();
 		FVector VolumeDim(FluidVolumeSize);
 		
 		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
-		VertexShader->SetParameters(RHICmdList, NearPlane, InvVolumeViewProjection);
+		VertexShader->SetParameters(RHICmdList, NearPlane, InvVolumeViewProjection, InvProjection);
 		PixelShader->SetParameters(RHICmdList, EyePosInVolume, RayMarchData->GetRenderTargetItem().TargetableTexture, FluidColor, NearPlane, VolumeScale.GetAbsMax(), (float)FluidVolumeSize.GetMax(), VolumeDim.Reciprocal(), VolumeDim);
 
 		RHICmdList.SetStreamSource(0, GVolumeRayMarchBuffer.RayMarchVertexBuffer, 0);

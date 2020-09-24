@@ -1,6 +1,7 @@
 #include "/Engine/Public/Platform.ush"
 
 float4x4 WorldViewProjection;
+float4x4 WorldView;
 
 struct FVolumePixelInput
 {
@@ -14,7 +15,7 @@ void VolumeBackVS(float3 VertexPosition : ATTRIBUTE0,
 	OutPosition = mul(float4(VertexPosition, 1), WorldViewProjection);
 }
 
-void VolumeBackPS(in float4 Position : SV_Position, 
+void VolumeBackPS(in float4 Position : SV_Position,
 					out float4 OutColor : SV_Target0)
 {
 	float3 BackMark = float3(0.f, -1.f, 0.f);
@@ -36,16 +37,18 @@ void VolumeFrontPS(in FVolumePixelInput Input,
 					out float4 OutColor : SV_Target0)
 {
 	OutColor.xyz = Input.VolumePosition.xyz;
-	OutColor.w = Input.OutPosition.w;
+	OutColor.w = Input.VolumePosition.w;
 }
 
 float NearPlaneDistance;
 float4x4 InvWorldViewProjection;
+float4x4 InvProjection;
 
 struct FRayMarchPixelInput
 {
 	float4 OutPosition : SV_Position;
 	float4 VolumePosition : COLOR;
+	float4 ViewSpaceDir : COLOR1;
 	float2 UV : TEXCOORD;
 };
 
@@ -55,6 +58,7 @@ void VolumeRayMarchVS(float2 Position : ATTRIBUTE0,
 {
 	OutResult.OutPosition = float4(Position, 0.f, 1.f);
 	OutResult.VolumePosition = mul(float4(Position * NearPlaneDistance, 0.f, NearPlaneDistance), InvWorldViewProjection);
+	OutResult.ViewSpaceDir = mul(float4(Position * NearPlaneDistance, 0.f, NearPlaneDistance), InvProjection);
 	OutResult.UV = UV;
 }
 
@@ -70,8 +74,9 @@ float3 VolumeDimension;
 float4 SampleColor(float4 Color, float3 SamplePos, float Weight)
 {
 	float4 VoxelColor = VolumeFluidColor.SampleLevel(RayMarchSampler, SamplePos, 0);
-	Color.rgb += float3(0.8f, 0.8f, 0.8f) * VoxelColor.r * (1.f - Color.a) * Weight;
-	Color.a += VoxelColor.r * (1.f - Color.a) * Weight;
+	float TempAlpha = VoxelColor.r * (1.f - Color.a) * Weight;
+	Color.rgb += VoxelColor.r * TempAlpha;
+	Color.a += TempAlpha * Weight;
 	return Color;
 }
 
@@ -94,13 +99,17 @@ void VolumeRayMarchPS(in FRayMarchPixelInput Input,
 		RayData.xyz = Input.VolumePosition.xyz;
 		RayData.w = RayData.w - NearPlaneDistance;
 	}
+	Input.ViewSpaceDir /= Input.ViewSpaceDir.z;
+	RayData.w *= length(Input.ViewSpaceDir.xyz);
 	
-	float TSampleCount = (RayData.w / (length(PerGridSize) * VolumeDimension)) * 2.f + 100.f;
+	float StepLength = length(PerGridSize);
+	float TSampleCount = (RayData.w / (StepLength * VolumeBoxScale)) * 2.f;
+	//float TSampleCount = (RayData.w / VolumeBoxScale) * MaxVolumeBoxSize * 2.f + 100.f;
 	float SampleCount = floor(TSampleCount);
 	
-	float3 SampleStep = normalize((RayData.xyz - EyePosToVolume) * VolumeDimension) * PerGridSize * 0.5f;
+	float3 SampleStep = normalize((RayData.xyz - EyePosToVolume) /* * VolumeDimension*/) * StepLength * 0.5f;
 	float3 SamplePos = RayData.xyz + SampleStep;
-
+	
 	float4 Color = 0;
 	
 	int i = 0;

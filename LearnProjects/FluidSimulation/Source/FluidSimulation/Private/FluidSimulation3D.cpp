@@ -427,7 +427,7 @@ void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, FTextureRenderTargetRes
 	FIntVector ForcePos(FluidVolumeSize.X / 2, 20, FluidVolumeSize.Z / 2);
 	float ForceRadius = 20.f;
 	FluidSimulation3D::AddImpluse(GraphBuilder, ShaderMap, FluidVolumeSize, ForceParam, ForcePos, ForceRadius, VelocityFieldSRV0, VelocityFieldUAV1);
-	ForceParam = FVector4(0.2f, 0.2f, 0.2f, 0.f);
+	ForceParam = FVector4(0.6f, 0.6f, 0.6f, 0.f);
 	FluidSimulation3D::AddImpluse(GraphBuilder, ShaderMap, FluidVolumeSize, ForceParam, ForcePos, ForceRadius, ColorFieldSRV1, ColorFieldUAV0);
 
 	// 4. Compute velocity divergence
