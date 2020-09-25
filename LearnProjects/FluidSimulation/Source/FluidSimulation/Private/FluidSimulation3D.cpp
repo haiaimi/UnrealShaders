@@ -4,7 +4,6 @@
 #include "FluidSimulation3D.h"
 #include "RHI.h"
 #include "RendererInterface.h"
-#include "RHICommandList.h"
 #include "GlobalShader.h"
 #include <ShaderParameterMacros.h>
 #include "UniformBuffer.h"
@@ -358,9 +357,9 @@ namespace FluidSimulation3D
 	}
 }
 
-extern void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, FTextureRenderTargetResource* TextureRenderTargetResource, FIntVector FluidVolumeSize, FTextureRHIRef FluidColor, ERHIFeatureLevel::Type FeatureLevel);
+extern void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, FFluidResourceParams ResourceParam, FIntVector FluidVolumeSize, FTextureRHIRef FluidColor, ERHIFeatureLevel::Type FeatureLevel);
 
-void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, FTextureRenderTargetResource* TextureRenderTargetResource, uint32 IterationCount, float DeltaTime, float VorticityScale, FIntVector FluidVolumeSize, FScene* Scene, ERHIFeatureLevel::Type FeatureLevel)
+void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, FFluidResourceParams ResourceParam, uint32 IterationCount, float DeltaTime, float VorticityScale, FIntVector FluidVolumeSize, FScene* Scene, ERHIFeatureLevel::Type FeatureLevel)
 {
 	check(IsInRenderingThread());
 
@@ -427,7 +426,7 @@ void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, FTextureRenderTargetRes
 	FIntVector ForcePos(FluidVolumeSize.X / 2, 20, FluidVolumeSize.Z / 2);
 	float ForceRadius = 20.f;
 	FluidSimulation3D::AddImpluse(GraphBuilder, ShaderMap, FluidVolumeSize, ForceParam, ForcePos, ForceRadius, VelocityFieldSRV0, VelocityFieldUAV1);
-	ForceParam = FVector4(0.6f, 0.6f, 0.6f, 0.f);
+	ForceParam = FVector4(1.f, 1.f, 1.6f, 0.f);
 	FluidSimulation3D::AddImpluse(GraphBuilder, ShaderMap, FluidVolumeSize, ForceParam, ForcePos, ForceRadius, ColorFieldSRV1, ColorFieldUAV0);
 
 	// 4. Compute velocity divergence
@@ -444,7 +443,7 @@ void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, FTextureRenderTargetRes
 	GraphBuilder.Execute();
 
 	//if(CacheView)
-	RenderFluidVolume(RHICmdList, TextureRenderTargetResource, FluidVolumeSize, ColorTexture3D_0->GetRenderTargetItem().TargetableTexture, FeatureLevel);
+	RenderFluidVolume(RHICmdList, ResourceParam, FluidVolumeSize, ColorTexture3D_0->GetRenderTargetItem().TargetableTexture, FeatureLevel);
 }
 
 // After we compute the velocity or density of fluid, we need to render it to screen, but it is more complex than fluid 2D.

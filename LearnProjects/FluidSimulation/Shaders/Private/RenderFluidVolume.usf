@@ -1,5 +1,13 @@
 #include "/Engine/Public/Platform.ush"
 
+Texture2D<float> SceneDepth;
+
+void DepthDownSamplePS(in float2 UV : TEXCOORD,
+						out float Depth : SV_Depth)
+{
+	uint2 SampleLocation = floor(UV);
+}
+
 float4x4 WorldViewProjection;
 float4x4 WorldView;
 

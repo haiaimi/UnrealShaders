@@ -15,6 +15,7 @@
 #include "../Private/SceneRendering.h"
 #include "EngineGlobals.h"
 #include "EngineModule.h"
+#include "TextureResource.h"
 
 // This was used to get the viewinfo in the renderer
 class FVolumeFluidViewUniformBufferExtension : public IPersistentViewUniformBufferExtension
@@ -340,7 +341,32 @@ public:
 
 IMPLEMENT_SHADER_TYPE(, FFluidVolumeRayMarchPS, TEXT("/Shaders/Private/RenderFluidVolume.usf"), TEXT("VolumeRayMarchPS"), SF_Pixel);
 
-void DrawVolumeBox(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget> RenderTarget, const FViewInfo& View, const FTransform& VolumeTransform, ERHIFeatureLevel::Type FeatureLevel)
+//class FDownSampleDepthPS : public FGlobalShader
+//{
+//	DECLARE_SHADER_TYPE(FDownSampleDepthPS, Global);
+//
+//	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+//	{
+//		return true;
+//	}
+//
+//	FDownSampleDepthPS() {}
+//
+//public:
+//	FDownSampleDepthPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+//		: FGlobalShader(Initializer)
+//	{
+//		
+//	}
+//
+//
+//
+//	LAYOUT_FIELD(FShaderResourceParameter, SceneDepthTexture)
+//};
+//
+//IMPLEMENT_SHADER_TYPE(, FDownSampleDepthPS, TEXT("/Shaders/Private/RenderFluidVolume.usf"), TEXT("DepthDownSamplePS"), SF_Pixel);
+
+void DrawVolumeBox(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget> RenderTarget, const FViewInfo& View, float ViewportScale, const FTransform& VolumeTransform, ERHIFeatureLevel::Type FeatureLevel)
 {	
 	const float VolumeBoxScale = 200.f;
 	FScaleMatrix VolumeScale = FScaleMatrix(FVector::OneVector * VolumeBoxScale);
@@ -358,7 +384,7 @@ void DrawVolumeBox(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRen
 		FIntRect SrcRect = View.ViewRect;
 		FIntRect DestRect = View.ViewRect;
 
-		RHICmdList.SetViewport(0, 0, 0, View.ViewRect.Width(), View.ViewRect.Height(), 1);
+		RHICmdList.SetViewport(0, 0, 0, ViewportScale * View.ViewRect.Width(), ViewportScale * View.ViewRect.Height(), 1);
 
 		FGraphicsPipelineStateInitializer GraphicsPSOInit;
 		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -399,14 +425,14 @@ void DrawVolumeBox(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRen
 	RHICmdList.EndRenderPass();
 }
 
-void RayMarchFluidVolume(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget> RayMarchResult, FTextureRHIRef FluidColor, TRefCountPtr<IPooledRenderTarget> RayMarchData, const FViewInfo& View, const FIntVector FluidVolumeSize, const FTransform& VolumeTransform, ERHIFeatureLevel::Type FeatureLevel)
+void RayMarchFluidVolume(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget> RayMarchResult, FTextureRHIRef FluidColor, TRefCountPtr<IPooledRenderTarget> RayMarchData, const FViewInfo& View, float ViewportScale, const FIntVector FluidVolumeSize, const FTransform& VolumeTransform, ERHIFeatureLevel::Type FeatureLevel)
 {
 	FRHIRenderPassInfo RPInfo(RayMarchResult->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Clear_Store);
 	RHICmdList.BeginRenderPass(RPInfo, TEXT("RayMarchFluid"));
 	{
 		FIntRect SrcRect = View.ViewRect;
 
-		RHICmdList.SetViewport(0, 0, 0, View.ViewRect.Width(), View.ViewRect.Height(), 1);
+		RHICmdList.SetViewport(0, 0, 0, ViewportScale * View.ViewRect.Width(), ViewportScale * View.ViewRect.Height(), 1);
 
 		FGraphicsPipelineStateInitializer GraphicsPSOInit;
 		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -444,16 +470,17 @@ void RayMarchFluidVolume(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPoo
 	RHICmdList.EndRenderPass();
 }
 
-void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, FTextureRenderTargetResource* TextureRenderTargetResource, FIntVector FluidVolumeSize, FTextureRHIRef FluidColor, ERHIFeatureLevel::Type FeatureLevel)
+void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, FFluidResourceParams ResourceParam, FIntVector FluidVolumeSize, FTextureRHIRef FluidColor, ERHIFeatureLevel::Type FeatureLevel)
 {
 	GetRendererModule().RegisterPersistentViewUniformBufferExtension(&VolumeFluidViewUniformBufferExtension);
 	if(!VolumeFluidViewUniformBufferExtension.GetViewInfo())
 		return;
 
 	const FViewInfo& View = *VolumeFluidViewUniformBufferExtension.GetViewInfo();
+	const float ViewportScale = 0.5f;
 	
 	FPooledRenderTargetDesc FluidVloumeDesc = FPooledRenderTargetDesc::CreateVolumeDesc(FluidVolumeSize.X, FluidVolumeSize.Y, FluidVolumeSize.Z, EPixelFormat::PF_A32B32G32R32F, FClearValueBinding::None, ETextureCreateFlags::TexCreate_None, ETextureCreateFlags::TexCreate_UAV | ETextureCreateFlags::TexCreate_ShaderResource, false);
-	FPooledRenderTargetDesc RayMarchDesc = FPooledRenderTargetDesc::Create2DDesc(FIntPoint(View.ViewRect.Width(), View.ViewRect.Height()), EPixelFormat::PF_A32B32G32R32F, FClearValueBinding::Black, ETextureCreateFlags::TexCreate_None, ETextureCreateFlags::TexCreate_RenderTargetable | ETextureCreateFlags::TexCreate_ShaderResource, false);
+	FPooledRenderTargetDesc RayMarchDesc = FPooledRenderTargetDesc::Create2DDesc(FIntPoint(ViewportScale * View.ViewRect.Width(), ViewportScale * View.ViewRect.Height()), EPixelFormat::PF_A32B32G32R32F, FClearValueBinding::Black, ETextureCreateFlags::TexCreate_None, ETextureCreateFlags::TexCreate_RenderTargetable | ETextureCreateFlags::TexCreate_ShaderResource, false);
 	//FPooledRenderTargetDesc RayMarchDesc = FPooledRenderTargetDesc::Create2DDesc(FIntPoint(View.ViewRect.Width(), View.ViewRect.Height()), EPixelFormat::PF_A32B32G32R32F, FClearValueBinding::Black, ETextureCreateFlags::TexCreate_None, ETextureCreateFlags::TexCreate_RenderTargetable | ETextureCreateFlags::TexCreate_ShaderResource, false);
 	TRefCountPtr<IPooledRenderTarget> ColorTexture3D_0, RayMarchData, RayMarchResult;
 	GRenderTargetPool.FindFreeElement(RHICmdList, FluidVloumeDesc, ColorTexture3D_0, TEXT("ColorTexture3D_0"));
@@ -463,14 +490,23 @@ void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, FTextureRenderTarge
 	const float VolumeBoxScale = 200.f;
 	FTransform VolumeTransform(FRotator::ZeroRotator, FVector::UpVector * 200.f, FVector::OneVector * VolumeBoxScale);
 
-	DrawVolumeBox(RHICmdList, RayMarchData, View, VolumeTransform, FeatureLevel);
+	DrawVolumeBox(RHICmdList, RayMarchData, View, ViewportScale, VolumeTransform, FeatureLevel);
 
 	FRHITexture* TranslationTextures[] = {RayMarchData->GetRenderTargetItem().ShaderResourceTexture->GetTexture2D(), FluidColor->GetTexture3D()};
 	RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, TranslationTextures, UE_ARRAY_COUNT(TranslationTextures));
-	RayMarchFluidVolume(RHICmdList, RayMarchResult, FluidColor, RayMarchData, View, FluidVolumeSize, VolumeTransform, FeatureLevel);
+	RayMarchFluidVolume(RHICmdList, RayMarchResult, FluidColor, RayMarchData, View, ViewportScale, FluidVolumeSize, VolumeTransform, FeatureLevel);
 
 	FRHICopyTextureInfo CopyInfo;
-	CopyInfo.Size = FIntVector(View.ViewRect.Width(), View.ViewRect.Height(), 1);
-	if(TextureRenderTargetResource)
-		RHICmdList.CopyTexture(RayMarchResult->GetRenderTargetItem().TargetableTexture, TextureRenderTargetResource->GetRenderTargetTexture(), CopyInfo);
+	CopyInfo.Size = FIntVector(ViewportScale * View.ViewRect.Width(), ViewportScale * View.ViewRect.Height(), 1);
+	if (ResourceParam.TextureRenderTargetResource)
+	{
+		RHICmdList.CopyTexture(RayMarchResult->GetRenderTargetItem().TargetableTexture, ResourceParam.TextureRenderTargetResource->GetRenderTargetTexture(), CopyInfo);
+	}
+
+	if (ResourceParam.TextureResource)
+	{
+		FTexture2DResource* Resource2D = static_cast<FTexture2DResource*>(ResourceParam.TextureResource);
+		FTexture2DRHIRef Texture2DRef = RayMarchResult->GetRenderTargetItem().TargetableTexture->GetTexture2D();
+		Resource2D->UpdateTexture(Texture2DRef, 0);
+	}
 }
