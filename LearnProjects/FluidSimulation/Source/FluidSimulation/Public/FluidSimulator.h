@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "FluidSimulation3D.h"
 #include "FluidSimulator.generated.h"
 
 /**
@@ -23,12 +24,18 @@ protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason)override;
+
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
 private:
+	void CreateFluidProxy();
+
 	void SubmitDrawToRenderThread(float DeltaTime);
+	
+	void UpdateFluidRenderTarget(FViewport* Viewport, uint32 Index);
 
 protected:
 	UPROPERTY(EditDefaultsOnly)
@@ -47,9 +54,15 @@ protected:
 	class UProceduralMeshComponent* FluidRenderingQuadMesh;
 
 	UPROPERTY(BlueprintReadOnly)
+	class UTextureRenderTarget2D* FluidRenderTarget;
+
+	UPROPERTY(BlueprintReadOnly)
 	class UTexture2D* FluidRenderResult;
 
 	// The Material that render fluid to the viewport, it is always a transluency material.
 	UPROPERTY(EditDefaultsOnly)
 	class UMaterialInterface* FluidRenderToViewMaterial;
+
+private:
+	TSharedPtr<class FVolumeFluidProxy, ESPMode::ThreadSafe> VolumeFluidProxy;
 };

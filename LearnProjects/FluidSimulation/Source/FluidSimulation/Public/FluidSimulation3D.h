@@ -4,17 +4,102 @@
 
 #include "CoreMinimal.h"
 #include "RHICommandList.h"
+#include "SceneViewExtension.h"
 
 
 /**
  * This file was used to simulate 3D fluid, such as smoke, fire 
  */
  
- struct FFluidResourceParams
+ /**
+  * This struct was used as the fluid proxy on game thread
+  */
+ class FVolumeFluidProxy : public TSharedFromThis<FVolumeFluidProxy, ESPMode::ThreadSafe>
  {
+ public:
+	FTransform FluidVolumeTransform;
+
+	FIntVector FluidVolumeSize = FIntVector(128);
+
+	uint32 IterationCount = 20u;
+
+	float VorticityScale = 0.2f;
+
+	float TimeStep = 0.1f;
+
 	FTextureResource* TextureResource = nullptr;
 
 	FTextureRenderTargetResource* TextureRenderTargetResource = nullptr;
+
+	ERHIFeatureLevel::Type FeatureLevel = ERHIFeatureLevel::SM5;
  };
 
-void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, FFluidResourceParams ResourceParam, uint32 IterationCount, float DeltaTime, float VorticityScale, FIntVector FluidVolumeSize, FScene* Scene, ERHIFeatureLevel::Type FeatureLevel);
+ class FVolumeFluidSceneViewExtension : public FSceneViewExtensionBase
+{
+public:
+	FVolumeFluidSceneViewExtension(const FAutoRegister& Register):
+		FSceneViewExtensionBase(Register)
+	{}
+
+    virtual void SetupViewFamily(FSceneViewFamily& InViewFamily) {}
+
+	/**
+	 * Called on game thread when creating the view.
+	 */
+	virtual void SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView) {}
+
+    /**
+     * Called on game thread when view family is about to be rendered.
+     */
+    virtual void BeginRenderViewFamily(FSceneViewFamily& InViewFamily) {}
+
+    /**
+     * Called on render thread at the start of rendering.
+     */
+    virtual void PreRenderViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily) {}
+
+	/**
+     * Called on render thread at the start of rendering, for each view, after PreRenderViewFamily_RenderThread call.
+     */
+    virtual void PreRenderView_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView);
+
+	/**
+	 * Called right after Base Pass rendering finished
+	 */
+	virtual void PostRenderBasePass_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView);
+
+};
+
+ class FFluidSmiulationManager : public FRenderResource
+ {
+ public:
+
+	 virtual ~FFluidSmiulationManager() {}
+
+	 virtual void InitRHI() override
+	 {
+		// Regiser view extension used to render fluid
+		VolumeFluidExtension = FSceneViewExtensions::NewExtension<FVolumeFluidSceneViewExtension>();
+	 }
+
+	 virtual void ReleaseRHI() override
+	 {
+		
+	 }
+
+	 void AddFluidProxy(TSharedPtr<class FVolumeFluidProxy, ESPMode::ThreadSafe> FluidProxy)
+	 {
+		AllFluidProxys.AddUnique(FluidProxy);
+	 }
+
+private:
+	TSharedPtr<FVolumeFluidSceneViewExtension, ESPMode::ThreadSafe> VolumeFluidExtension;
+
+	TArray<TWeakPtr<FVolumeFluidProxy, ESPMode::ThreadSafe>> AllFluidProxys;
+
+	friend FVolumeFluidSceneViewExtension;
+ };
+
+ static TGlobalResource<FFluidSmiulationManager> GFluidSmiulationManager;
+
+void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, FVolumeFluidProxy ResourceParam, FSceneView& InView);

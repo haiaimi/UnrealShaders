@@ -357,16 +357,16 @@ namespace FluidSimulation3D
 	}
 }
 
-extern void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, FFluidResourceParams ResourceParam, FIntVector FluidVolumeSize, FTextureRHIRef FluidColor, ERHIFeatureLevel::Type FeatureLevel);
+extern void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, FVolumeFluidProxy ResourceParam, FTextureRHIRef FluidColor, const FViewInfo& InView);
 
-void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, FFluidResourceParams ResourceParam, uint32 IterationCount, float DeltaTime, float VorticityScale, FIntVector FluidVolumeSize, FScene* Scene, ERHIFeatureLevel::Type FeatureLevel)
+void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, FVolumeFluidProxy ResourceParam, FSceneView& InView)
 {
 	check(IsInRenderingThread());
 
 	//if(Scene->GetFrameNumber() <= 1) return;
 	
-	FPooledRenderTargetDesc FluidVloumeDesc = FPooledRenderTargetDesc::CreateVolumeDesc(FluidVolumeSize.X, FluidVolumeSize.Y, FluidVolumeSize.Z, EPixelFormat::PF_A32B32G32R32F, FClearValueBinding::None, ETextureCreateFlags::TexCreate_None, ETextureCreateFlags::TexCreate_UAV | ETextureCreateFlags::TexCreate_ShaderResource, false);
-	FPooledRenderTargetDesc FluidVloumeSingleDesc = FPooledRenderTargetDesc::CreateVolumeDesc(FluidVolumeSize.X, FluidVolumeSize.Y, FluidVolumeSize.Z, EPixelFormat::PF_R32_FLOAT, FClearValueBinding::None, ETextureCreateFlags::TexCreate_None, ETextureCreateFlags::TexCreate_UAV | ETextureCreateFlags::TexCreate_ShaderResource, false);
+	FPooledRenderTargetDesc FluidVloumeDesc = FPooledRenderTargetDesc::CreateVolumeDesc(ResourceParam.FluidVolumeSize.X, ResourceParam.FluidVolumeSize.Y, ResourceParam.FluidVolumeSize.Z, EPixelFormat::PF_A32B32G32R32F, FClearValueBinding::None, ETextureCreateFlags::TexCreate_None, ETextureCreateFlags::TexCreate_UAV | ETextureCreateFlags::TexCreate_ShaderResource, false);
+	FPooledRenderTargetDesc FluidVloumeSingleDesc = FPooledRenderTargetDesc::CreateVolumeDesc(ResourceParam.FluidVolumeSize.X, ResourceParam.FluidVolumeSize.Y, ResourceParam.FluidVolumeSize.Z, EPixelFormat::PF_R32_FLOAT, FClearValueBinding::None, ETextureCreateFlags::TexCreate_None, ETextureCreateFlags::TexCreate_UAV | ETextureCreateFlags::TexCreate_ShaderResource, false);
 	TRefCountPtr<IPooledRenderTarget> VelocityTexture3D_0, VelocityTexture3D_1, PressureTexture3D_0, PressureTexture3D_1, ColorTexture3D_0, ColorTexture3D_1, VorticityTexture3D, DivergenceTexture3D;
 	GRenderTargetPool.FindFreeElement(RHICmdList, FluidVloumeDesc, VelocityTexture3D_0, TEXT("VelocityTexture3D_0"));
 	GRenderTargetPool.FindFreeElement(RHICmdList, FluidVloumeDesc, VelocityTexture3D_1, TEXT("VelocityTexture3D_1"));
@@ -409,41 +409,41 @@ void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, FFluidResourceParams Re
 	FRDGTextureSRVRef DivergenceSRV = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(Divergence));
 	FRDGTextureUAVRef DivergenceUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(Divergence));
 
-	FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(FeatureLevel);
+	FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(ResourceParam.FeatureLevel);
 	// The main steps may have some difference with fluid 2D, because this time we don't need to compute Viscous, so we can reduce a jacobi iteration
 	
 	// 1. Advect velocity field and color 
 	// #TODO it may use a high-order advection scheme which is called MacCormack Advection Scheme 
-	FluidSimulation3D::ComputeAdvect(GraphBuilder, ShaderMap, FluidVolumeSize, DeltaTime, VelocityFieldSRV0, VelocityFieldSRV0, VelocityFieldUAV1);
-	FluidSimulation3D::ComputeAdvect(GraphBuilder, ShaderMap, FluidVolumeSize, DeltaTime, VelocityFieldSRV0, ColorFieldSRV0, ColorFieldUAV1);
+	FluidSimulation3D::ComputeAdvect(GraphBuilder, ShaderMap, ResourceParam.FluidVolumeSize, ResourceParam.TimeStep, VelocityFieldSRV0, VelocityFieldSRV0, VelocityFieldUAV1);
+	FluidSimulation3D::ComputeAdvect(GraphBuilder, ShaderMap, ResourceParam.FluidVolumeSize, ResourceParam.TimeStep, VelocityFieldSRV0, ColorFieldSRV0, ColorFieldUAV1);
 
 	// 2. Apply VorticityConfinement
-	FluidSimulation3D::ComputeVorticity(GraphBuilder, ShaderMap, FluidVolumeSize, 0.5f, VelocityFieldSRV1, VorticityUAV);
-	FluidSimulation3D::ComputeVorticityForce(GraphBuilder, ShaderMap, FluidVolumeSize, 0.5f, DeltaTime, VorticityScale, VorticitySRV, VelocityFieldSRV1, VelocityFieldUAV0);
+	FluidSimulation3D::ComputeVorticity(GraphBuilder, ShaderMap, ResourceParam.FluidVolumeSize, 0.5f, VelocityFieldSRV1, VorticityUAV);
+	FluidSimulation3D::ComputeVorticityForce(GraphBuilder, ShaderMap, ResourceParam.FluidVolumeSize, 0.5f, ResourceParam.TimeStep, ResourceParam.VorticityScale, VorticitySRV, VelocityFieldSRV1, VelocityFieldUAV0);
 
 	// 3. Apply external force
 	FVector4 ForceParam(0, 80, 0, 0);
-	FIntVector ForcePos(FluidVolumeSize.X / 2, 20, FluidVolumeSize.Z / 2);
+	FIntVector ForcePos(ResourceParam.FluidVolumeSize.X / 2, 20, ResourceParam.FluidVolumeSize.Z / 2);
 	float ForceRadius = 20.f;
-	FluidSimulation3D::AddImpluse(GraphBuilder, ShaderMap, FluidVolumeSize, ForceParam, ForcePos, ForceRadius, VelocityFieldSRV0, VelocityFieldUAV1);
+	FluidSimulation3D::AddImpluse(GraphBuilder, ShaderMap, ResourceParam.FluidVolumeSize, ForceParam, ForcePos, ForceRadius, VelocityFieldSRV0, VelocityFieldUAV1);
 	ForceParam = FVector4(1.f, 1.f, 1.6f, 0.f);
-	FluidSimulation3D::AddImpluse(GraphBuilder, ShaderMap, FluidVolumeSize, ForceParam, ForcePos, ForceRadius, ColorFieldSRV1, ColorFieldUAV0);
+	FluidSimulation3D::AddImpluse(GraphBuilder, ShaderMap, ResourceParam.FluidVolumeSize, ForceParam, ForcePos, ForceRadius, ColorFieldSRV1, ColorFieldUAV0);
 
 	// 4. Compute velocity divergence
-	FluidSimulation3D::ComputeDivergence(GraphBuilder, ShaderMap, FluidVolumeSize, 0.5f, VelocityFieldSRV1, DivergenceUAV);
+	FluidSimulation3D::ComputeDivergence(GraphBuilder, ShaderMap, ResourceParam.FluidVolumeSize, 0.5f, VelocityFieldSRV1, DivergenceUAV);
 
 	// 5. Compute pressure by jacobi iteration
 	FRDGTextureSRVRef x_SRVs[2] = { PressureFieldSRV0, PressureFieldSRV1 };
 	FRDGTextureUAVRef x_UAVs[2] = { PressureFieldUAV0, PressureFieldUAV1 };
-	FluidSimulation3D::Jacobi(GraphBuilder, ShaderMap, FluidVolumeSize, IterationCount & ~0x1, x_SRVs, x_UAVs, DivergenceSRV);
+	FluidSimulation3D::Jacobi(GraphBuilder, ShaderMap, ResourceParam.FluidVolumeSize, ResourceParam.IterationCount & ~0x1, x_SRVs, x_UAVs, DivergenceSRV);
 
 	// 6. Project velocity to free-divergence
-	FluidSimulation3D::SubstarctPressureGradient(GraphBuilder, ShaderMap, FluidVolumeSize, 0.5f, VelocityFieldSRV1, PressureFieldSRV0, VelocityFieldUAV0);
+	FluidSimulation3D::SubstarctPressureGradient(GraphBuilder, ShaderMap, ResourceParam.FluidVolumeSize, 0.5f, VelocityFieldSRV1, PressureFieldSRV0, VelocityFieldUAV0);
 
 	GraphBuilder.Execute();
 
 	//if(CacheView)
-	RenderFluidVolume(RHICmdList, ResourceParam, FluidVolumeSize, ColorTexture3D_0->GetRenderTargetItem().TargetableTexture, FeatureLevel);
+	RenderFluidVolume(RHICmdList, ResourceParam, ColorTexture3D_0->GetRenderTargetItem().TargetableTexture, InView);
 }
 
 // After we compute the velocity or density of fluid, we need to render it to screen, but it is more complex than fluid 2D.
@@ -451,3 +451,24 @@ void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, FFluidResourceParams Re
 //{
 //	
 //}
+
+void FVolumeFluidSceneViewExtension::PreRenderView_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView)
+{
+	for (int32 i = 0; i < GFluidSmiulationManager.AllFluidProxys.Num(); ++i)
+	{
+		if (GFluidSmiulationManager.AllFluidProxys[i].IsValid())
+		{
+			
+		}
+		else
+		{
+			GFluidSmiulationManager.AllFluidProxys.RemoveAt(i);
+			--i;
+		}
+	}
+}
+
+void FVolumeFluidSceneViewExtension::PostRenderBasePass_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView)
+{
+	
+}

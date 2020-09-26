@@ -4,7 +4,7 @@
 #include "Engine/TextureRenderTarget.h"
 #include "FluidSimulation3D.h"
 
-extern void UpdateFluid(FRHICommandListImmediate& RHICmdList, FTextureRenderTargetResource* TextureRenderTargetResource, int32 IterationCount, float Dissipation, float Viscosity, float DeltaTime, FIntPoint FluidSurfaceSize, bool bApplyVorticityForce, float VorticityScale, ERHIFeatureLevel::Type FeatureLevel);
+extern void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, FVolumeFluidProxy ResourceParam, FSceneView& InView);
 
 void UFluidSimulationFunctionLibrary::SimulateFluid2D(const UObject* WorldContextObject, class UTextureRenderTarget* OutputRenderTarget, int32 IterationCount, float Dissipation, float Viscosity, float DeltaTime, FIntPoint FluidSurfaceSize, bool bApplyVorticityForce, float VorticityScale)
 {
@@ -24,7 +24,7 @@ void UFluidSimulationFunctionLibrary::SimulateFluid3D(const UObject* WorldContex
 {
 	FTextureRenderTargetResource* TextureRenderTargetResource = OutputRenderTarget ? OutputRenderTarget->GameThread_GetRenderTargetResource() : nullptr;
 	UWorld* World = WorldContextObject->GetWorld();
-	FFluidResourceParams ResourceParam;
+	FVolumeFluidProxy ResourceParam;
 	ResourceParam.TextureRenderTargetResource = TextureRenderTargetResource;
 	ERHIFeatureLevel::Type FeatureLevel = WorldContextObject->GetWorld()->Scene->GetFeatureLevel();
 	FScene* Scene = WorldContextObject->GetWorld()->Scene->GetRenderScene();

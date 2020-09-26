@@ -8,6 +8,7 @@
 #include "Engine/Engine.h"
 #include "FluidSimulation3D.h"
 #include "Kismet/GameplayStatics.h"
+#include "Engine/TextureRenderTarget2D.h"
 
 // Sets default values
 AFluidSimulator::AFluidSimulator():
@@ -30,12 +31,36 @@ AFluidSimulator::AFluidSimulator():
 void AFluidSimulator::BeginPlay()
 {
 	Super::BeginPlay();
+
+	APlayerController* Player = UGameplayStatics::GetPlayerController(this, 0);
+	ULocalPlayer* const LP = Player ? Player->GetLocalPlayer() : nullptr;
+	LP->ViewportClient->Viewport->ViewportResizedEvent.AddUObject(this, &AFluidSimulator::UpdateFluidRenderTarget);
+
+	const FIntPoint CurRTSize = LP->ViewportClient->Viewport->GetRenderTargetTextureSizeXY();
 	
 	FluidRenderResult = NewObject<UTexture2D>();
+	FluidRenderTarget = NewObject<UTextureRenderTarget2D>();
+	FluidRenderTarget->SizeX = CurRTSize.X;
+	FluidRenderTarget->SizeY = CurRTSize.Y;
+	FluidRenderTarget->AddressX = TextureAddress::TA_Clamp;
+	FluidRenderTarget->AddressY = TextureAddress::TA_Clamp;
+	FluidRenderTarget->RenderTargetFormat = ETextureRenderTargetFormat::RTF_RGBA32f;
+	FluidRenderTarget->ClearColor = FLinearColor::Transparent;
+	FluidRenderTarget->UpdateResource();
+
 	if (FluidRenderToViewMaterial)
 	{
 		FluidRenderingQuadMesh->SetMaterial(0, FluidRenderToViewMaterial);
 	}
+
+	CreateFluidProxy();
+}
+
+void AFluidSimulator::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	Super::EndPlay(EndPlayReason);
+
+	VolumeFluidProxy.Reset();
 }
 
 // Called every frame
@@ -88,22 +113,50 @@ void AFluidSimulator::Tick(float DeltaTime)
 	}
 }
 
+void AFluidSimulator::CreateFluidProxy()
+{
+	VolumeFluidProxy = MakeShared<FVolumeFluidProxy, ESPMode::ThreadSafe>();
+
+	if(VolumeFluidProxy.IsValid())
+		GFluidSmiulationManager.AddFluidProxy(VolumeFluidProxy);
+}
+
 void AFluidSimulator::SubmitDrawToRenderThread(float DeltaTime)
 {
+	if(!VolumeFluidProxy.IsValid())return;
 	FTextureResource* TextureResource = FluidRenderResult ? FluidRenderResult->Resource : nullptr;
-	FFluidResourceParams ResourceParams;
-	ResourceParams.TextureResource = TextureResource;
+	FTextureRenderTargetResource* RTResource = FluidRenderTarget ? FluidRenderTarget->GetRenderTargetResource() : nullptr;
 	UWorld* World = GetWorld();
 	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
-	FScene* Scene = World->Scene->GetRenderScene();
+	// Update the fluid render resource
+	VolumeFluidProxy->FluidVolumeSize = FluidVolumeSize;
+	VolumeFluidProxy->FluidVolumeTransform = FTransform(GetActorRotation(), GetActorLocation(), FluidProxyBox->GetScaledBoxExtent());
+	VolumeFluidProxy->IterationCount = IterationCount;
+	VolumeFluidProxy->VorticityScale = VorticityScale;
+	VolumeFluidProxy->TimeStep = DeltaTime;
+	VolumeFluidProxy->TextureRenderTargetResource = RTResource;
+	VolumeFluidProxy->TextureResource = TextureResource;
+	VolumeFluidProxy->FeatureLevel = FeatureLevel;
+	//UWorld* World = GetWorld();
+	//ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
+	//FScene* Scene = World->Scene->GetRenderScene();
 
-	int32 IterCount = IterationCount;
-	FIntVector FluidVolSize = FluidVolumeSize;
-	float VortiScale = VorticityScale;
-	GEngine->PreRenderDelegate.RemoveAll(this);
-	GEngine->PreRenderDelegate.AddWeakLambda(this, [ResourceParams, FeatureLevel, IterCount, DeltaTime, FluidVolSize, VortiScale, Scene]() {
-		FRHICommandListImmediate& RHICmdList = GetImmediateCommandList_ForRenderCommand();
-		UpdateFluid3D(RHICmdList, ResourceParams, IterCount, DeltaTime, VortiScale, FluidVolSize, Scene, FeatureLevel);
-	});
+	//int32 IterCount = IterationCount;
+	//FIntVector FluidVolSize = FluidVolumeSize;
+	//float VortiScale = VorticityScale;
+	//GEngine->PreRenderDelegate.RemoveAll(this);
+	//GEngine->PreRenderDelegate.AddWeakLambda(this, [ResourceParams, FeatureLevel, IterCount, DeltaTime, FluidVolSize, VortiScale, Scene]() {
+	//	FRHICommandListImmediate& RHICmdList = GetImmediateCommandList_ForRenderCommand();
+	//	UpdateFluid3D(RHICmdList, ResourceParams, IterCount, DeltaTime, VortiScale, FluidVolSize, Scene, FeatureLevel);
+	//});
+}
+
+void AFluidSimulator::UpdateFluidRenderTarget(FViewport* Viewport, uint32 Index)
+{
+	if (FluidRenderTarget && Viewport)
+	{
+		FIntPoint NewRTSize = Viewport->GetRenderTargetTextureSizeXY();
+		FluidRenderTarget->ResizeTarget(NewRTSize.X, NewRTSize.Y);
+	}
 }
 
