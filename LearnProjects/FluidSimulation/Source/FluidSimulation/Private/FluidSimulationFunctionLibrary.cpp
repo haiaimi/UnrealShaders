@@ -3,8 +3,9 @@
 #include "Engine/Engine.h"
 #include "Engine/TextureRenderTarget.h"
 #include "FluidSimulation3D.h"
+#include "../Private/SceneRendering.h"
 
-extern void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, FVolumeFluidProxy ResourceParam, FSceneView& InView);
+extern void UpdateFluid(FRHICommandListImmediate& RHICmdList, FTextureRenderTargetResource* TextureRenderTargetResource, int32 IterationCount, float Dissipation, float Viscosity, float DeltaTime, FIntPoint FluidSurfaceSize, bool bApplyVorticityForce, float VorticityScale, ERHIFeatureLevel::Type FeatureLevel);
 
 void UFluidSimulationFunctionLibrary::SimulateFluid2D(const UObject* WorldContextObject, class UTextureRenderTarget* OutputRenderTarget, int32 IterationCount, float Dissipation, float Viscosity, float DeltaTime, FIntPoint FluidSurfaceSize, bool bApplyVorticityForce, float VorticityScale)
 {
@@ -25,6 +26,10 @@ void UFluidSimulationFunctionLibrary::SimulateFluid3D(const UObject* WorldContex
 	FTextureRenderTargetResource* TextureRenderTargetResource = OutputRenderTarget ? OutputRenderTarget->GameThread_GetRenderTargetResource() : nullptr;
 	UWorld* World = WorldContextObject->GetWorld();
 	FVolumeFluidProxy ResourceParam;
+	ResourceParam.IterationCount = IterationCount;
+	ResourceParam.TimeStep = DeltaTime;
+	ResourceParam.FluidVolumeSize = FluidVolumeSize;
+	ResourceParam.VorticityScale = VorticityScale;
 	ResourceParam.TextureRenderTargetResource = TextureRenderTargetResource;
 	ERHIFeatureLevel::Type FeatureLevel = WorldContextObject->GetWorld()->Scene->GetFeatureLevel();
 	FScene* Scene = WorldContextObject->GetWorld()->Scene->GetRenderScene();
@@ -32,7 +37,8 @@ void UFluidSimulationFunctionLibrary::SimulateFluid3D(const UObject* WorldContex
 	{
 		GEngine->PreRenderDelegate.AddWeakLambda(World, [ResourceParam, FeatureLevel, IterationCount, DeltaTime, FluidVolumeSize,  VorticityScale, Scene]() {
 			FRHICommandListImmediate& RHICmdList = GetImmediateCommandList_ForRenderCommand();
-			UpdateFluid3D(RHICmdList, ResourceParam, IterationCount, DeltaTime, VorticityScale, FluidVolumeSize, Scene, FeatureLevel);
+			FViewInfo* ViewInfo = nullptr;
+			UpdateFluid3D(RHICmdList, ResourceParam, ViewInfo);
 		});
 	}
 }

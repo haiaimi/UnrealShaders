@@ -472,13 +472,13 @@ void RayMarchFluidVolume(FRHICommandListImmediate& RHICmdList, FTexture2DRHIRef 
 	RHICmdList.EndRenderPass();
 }
 
-void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, FVolumeFluidProxy ResourceParam, FTextureRHIRef FluidColor, const FViewInfo& InView)
+void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, const FVolumeFluidProxy& ResourceParam, FTextureRHIRef FluidColor, const FViewInfo* InView)
 {
-	/*GetRendererModule().RegisterPersistentViewUniformBufferExtension(&VolumeFluidViewUniformBufferExtension);
-	if(!VolumeFluidViewUniformBufferExtension.GetViewInfo())
-		return;*/
+	GetRendererModule().RegisterPersistentViewUniformBufferExtension(&VolumeFluidViewUniformBufferExtension);
+	if (!VolumeFluidViewUniformBufferExtension.GetViewInfo())
+		return;
 
-	const FViewInfo& View = InView;
+	const FViewInfo& View = InView ? *InView : *VolumeFluidViewUniformBufferExtension.GetViewInfo();
 	const float ViewportScale = 0.5f;
 	
 	FPooledRenderTargetDesc FluidVloumeDesc = FPooledRenderTargetDesc::CreateVolumeDesc(ResourceParam.FluidVolumeSize.X, ResourceParam.FluidVolumeSize.Y, ResourceParam.FluidVolumeSize.Z, EPixelFormat::PF_A32B32G32R32F, FClearValueBinding::None, ETextureCreateFlags::TexCreate_None, ETextureCreateFlags::TexCreate_UAV | ETextureCreateFlags::TexCreate_ShaderResource, false);

@@ -102,4 +102,4 @@ private:
 
  static TGlobalResource<FFluidSmiulationManager> GFluidSmiulationManager;
 
-void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, FVolumeFluidProxy ResourceParam, FSceneView& InView);
+void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, const FVolumeFluidProxy& ResourceParam, class FViewInfo* InView);

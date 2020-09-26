@@ -357,9 +357,9 @@ namespace FluidSimulation3D
 	}
 }
 
-extern void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, FVolumeFluidProxy ResourceParam, FTextureRHIRef FluidColor, const FViewInfo& InView);
+extern void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, const FVolumeFluidProxy& ResourceParam, FTextureRHIRef FluidColor, const FViewInfo* InView);
 
-void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, FVolumeFluidProxy ResourceParam, FSceneView& InView)
+void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, const FVolumeFluidProxy& ResourceParam, FViewInfo* InView)
 {
 	check(IsInRenderingThread());
 
@@ -454,11 +454,12 @@ void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, FVolumeFluidProxy Resou
 
 void FVolumeFluidSceneViewExtension::PreRenderView_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView)
 {
+	FViewInfo* ViewInfo = static_cast<FViewInfo*>(&InView);
 	for (int32 i = 0; i < GFluidSmiulationManager.AllFluidProxys.Num(); ++i)
 	{
 		if (GFluidSmiulationManager.AllFluidProxys[i].IsValid())
 		{
-			
+			UpdateFluid3D(RHICmdList, *GFluidSmiulationManager.AllFluidProxys[i].Pin(), ViewInfo);
 		}
 		else
 		{
