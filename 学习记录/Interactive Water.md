@@ -58,3 +58,48 @@ $\frac{\partial ^2h}{\partial t^2}=L*h$
 cm，那么卷积的大小就是20x20，每个像素有400次计算，压力很大。
 
 这里的方法是：$h$被划分到不同的部分$(h_1,h_2,h_3,...,h_k)$代表不同范围的波长。$h_1$代表波长为$\lambda$，$h_2$就是$\lambda$到$\frac{\lambda}{2}$，以此类推。由于高度$h_i$可以在半分辨率下模拟$h_{i+1}$，所以全高度通过插值和对所有可能的$h_i$求和来获得。这个方法的最大优势就是格子里所有的波长都小于格子宽度，因为卷积$L$可以粗略到更小的尺寸。通过划分一些子网格会增加格子计算量，但是每个格子的计算量会小很多。
+
+## Theory and Techniques
+
+### Dispersion as Convolution
+我们的推导基于线性波理论，所以会使用一些不同的变量：对h进行时间的导数，对h使用速度势能：
+
+$\frac{\partial ^2h}{\partial t^2}=c^2\nabla^2h$
+
+这种差分等式可以在离散化下使用欧拉步进解算。但是这需要保证$c$恒定，因为所有的波长都是以相同的方式处理。从前面内容可以了解到波速和水面到水底的高度$H$和角波数$k$相关，如下关系：
+
+$c^2=\frac{g}{\mid k\mid}tanh\frac{\mid k\mid}{H}$
+
+但是上式不能直接积分，因为这依赖于$k$。但是通过转换成傅里叶可以直接使用。
+
+$F(\frac{\partial ^2h}{\partial t^2})=c^2(iK)^2F(h)$
+
+$F(\frac{\partial ^2h}{\partial t^2})=-\frac{g}{\mid k\mid}tanh\frac{\mid k\mid}{H}\mid k\mid^2 F(h)$
+
+可以应用傅里叶逆变换来获得最终结果，如下：
+
+$\frac{\partial ^2h}{\partial t^2}=L*h$
+
+$L=F^{-1}(-g\mid k\mid tanh\frac{\mid k\mid}{H})$
+
+通过计算L可以得出最终的数值解。
+
+### Laplacian Pyramids
+
+# Fast Interactive Water Simulate
+
+下面是波动方程：
+$\frac{\partial^2z}{\partial t^2}=c^2\nabla^2z$
+
+PDE离散后：
+$\frac{\partial ^2z}{\partial t^2}=c^2(\frac{\partial ^2z}{\partial x^2}+\frac{\partial ^2z}{\partial y^2})$
+
+要对每个点求解通常要进行大量计算，可能会用到FFT来求解。
+
+这里使用中心差分法来近似PDE，如下公式：
+
+$\frac{z_{i,j}^{n+1}-2z_{i,j}^n+z_{i,j}^{n-1}}{\Delta t^2}=c^2(\frac{z_{i+1,j}^n+z_{i-1,j}^n+z_{i,j+1}^n+z_{i,j-1}^n-4z_{i,j}^n}{h^2})$
+
+$z_{i,j}^{n+1}=\frac{c^2\Delta t^2}{h^2}(z_{i+1}^n+z_{i-1,j}^n+z_{i,j+1}^n+z_{i,j-1}^n)+(2-\frac{4c^2\Delta t^2}{h^2})z_{i,j}^n-z_{i,j}^{n-1}$
+
+上式中$c$就是速度，$h$是单个格子的大小。
