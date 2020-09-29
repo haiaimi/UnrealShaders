@@ -1,0 +1,56 @@
+#include "/Engine/Public/Platform.ush"
+
+
+void CommonQuadVS(float2 Position : ATTRIBUTE0,
+				  float2 UV : ATTRIBUTE1,
+				  out float2 OutUV : TEXCOORD,
+				  out float4 OutPos : SV_Position)
+{
+	OutUV = UV;
+	OutPos = float4(Position, 0.f, 1.f);
+}
+
+float2 ForcePos;
+float Radius;
+float Strength;
+
+Texture2D<half2> HeightField;
+SamplerState WaterSampler;
+
+void ApplyForcePS(in float2 UV : TEXCOORD,
+					out half2 OutColor : SV_Target)
+{
+	half2 Center = HeightField.Sample(WaterSampler, UV);
+	float2 DeltaPos = ForcePos - UV;
+	float C = exp(-dot(DeltaPos, DeltaPos) / Radius);
+	
+	Center.r += 0.5f * (1.f - cos(3.14159f * (max(0.f, 1.f - length(DeltaPos) / Radius)))) * Strength;
+	
+	OutColor = Center;
+}
+
+float2 GridDelta;
+
+void UpdateHeightFieldPS(in float2 UV : TEXCOORD,
+						out half2 OutColor : SV_Target)
+{
+	float2 dx = float2(GridDelta.x, 0.f);
+	float2 dy = float2(0.f, GridDelta.y);
+	
+	float2 Left = HeightField.Sample(WaterSampler, UV - dx);
+	float2 Right = HeightField.Sample(WaterSampler, UV + dx);
+	float2 Bottom = HeightField.Sample(WaterSampler, UV - dy);
+	float2 Up = HeightField.Sample(WaterSampler, UV + dy);
+
+	half2 Center = HeightField.Sample(WaterSampler, UV);
+	half4 OutHeight = HeightField.GatherRed(WaterSampler, UV, -dx, dx, -dy, dy);
+	//half AverageHeight = (OutHeight.x + OutHeight.y + OutHeight.z, OutHeight.w) * 0.25f;
+	half AverageHeight = (Left.x + Right.x + Bottom.x + Up.x) * 0.25f;
+	Center.y += (AverageHeight - Center.x) * 2.f;
+	Center.y *= 0.98f;
+	Center.x += Center.y;
+	
+	OutColor = Center;
+}
+
+

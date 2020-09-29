@@ -14,4 +14,10 @@ public:
 
 	UFUNCTION(BlueprintCallable, meta = (WorldContext = "WorldContextObject"))
 	static void SimulateFluid3D(const UObject* WorldContextObject, class UTextureRenderTarget* OutputRenderTarget, int32 IterationCount, float DeltaTime, FIntVector FluidVolumeSize, float VorticityScale = 0.5f);
+
+	UFUNCTION(BlueprintCallable, meta = (WorldContext = "WorldContextObject"))
+	static void SimulateIntearctiveWater01(const UObject* WorldContextObject, const FVector2D& InMoveDir, class UTextureRenderTarget* HeightField01, class UTextureRenderTarget* HeightField02, float DeltaTime);
+
+	UFUNCTION(BlueprintCallable, meta = (WorldContext = "WorldContextObject"))
+	static void BPTest(const UObject* WorldContextObject, const FVector2D& InMoveDir);
 };

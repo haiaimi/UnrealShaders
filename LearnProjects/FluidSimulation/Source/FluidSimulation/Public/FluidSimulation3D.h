@@ -78,18 +78,25 @@ public:
 
 	 virtual void InitRHI() override
 	 {
-		// Regiser view extension used to render fluid
-		VolumeFluidExtension = FSceneViewExtensions::NewExtension<FVolumeFluidSceneViewExtension>();
+		
 	 }
 
 	 virtual void ReleaseRHI() override
 	 {
-		
+		VolumeFluidExtension.Reset();
+	 }
+
+	 void RegisterFluidExtension()
+	 {
+		// Regiser view extension used to render fluid
+		if(!VolumeFluidExtension.IsValid())
+			VolumeFluidExtension = FSceneViewExtensions::NewExtension<FVolumeFluidSceneViewExtension>();
 	 }
 
 	 void AddFluidProxy(TSharedPtr<class FVolumeFluidProxy, ESPMode::ThreadSafe> FluidProxy)
 	 {
-		AllFluidProxys.AddUnique(FluidProxy);
+		if(AllFluidProxys.AddUnique(FluidProxy) != INDEX_NONE)
+			RegisterFluidExtension();
 	 }
 
 private:

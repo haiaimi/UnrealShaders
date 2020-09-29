@@ -4,6 +4,8 @@
 #include "Engine/TextureRenderTarget.h"
 #include "FluidSimulation3D.h"
 #include "../Private/SceneRendering.h"
+#include "InteractiveWater.h"
+#include "RenderingThread.h"
 
 extern void UpdateFluid(FRHICommandListImmediate& RHICmdList, FTextureRenderTargetResource* TextureRenderTargetResource, int32 IterationCount, float Dissipation, float Viscosity, float DeltaTime, FIntPoint FluidSurfaceSize, bool bApplyVorticityForce, float VorticityScale, ERHIFeatureLevel::Type FeatureLevel);
 
@@ -42,3 +44,34 @@ void UFluidSimulationFunctionLibrary::SimulateFluid3D(const UObject* WorldContex
 		});
 	}
 }
+
+void UFluidSimulationFunctionLibrary::SimulateIntearctiveWater01(const UObject* WorldContextObject, const FVector2D& InMoveDir, class UTextureRenderTarget* HeightField01, class UTextureRenderTarget* HeightField02, float DeltaTime)
+{
+	if (!GInteractiveWater.IsResourceValid())
+	{
+		GInteractiveWater.SetResource(HeightField01->GameThread_GetRenderTargetResource(), HeightField02->GameThread_GetRenderTargetResource());
+	}
+	UWorld* World = WorldContextObject->GetWorld();
+	if (!GEngine->PreRenderDelegate.IsBoundToObject(World))
+	{
+		UE_LOG(LogTemp, Log, TEXT("------Move Dir: %s------"), *InMoveDir.ToString());
+
+		GEngine->PreRenderDelegate.AddWeakLambda(World, [DeltaTime, InMoveDir]() {
+			GInteractiveWater.DeltaTime = DeltaTime;
+			GInteractiveWater.MoveDir = InMoveDir;
+			UE_LOG(LogTemp, Log, TEXT("------Move Dir: %s------"), *InMoveDir.ToString());
+			GInteractiveWater.UpdateWater();
+		});
+	}
+	/*float InDeltaTime = DeltaTime;
+	ENQUEUE_RENDER_COMMAND(FSimuateWater)([InDeltaTime](FRHICommandListImmediate& RHICmdList)
+	{
+		GInteractiveWater.UpdateWater(InDeltaTime);
+	});*/
+}
+
+void UFluidSimulationFunctionLibrary::BPTest(const UObject* WorldContextObject, const FVector2D& InMoveDir)
+{
+	UE_LOG(LogTemp, Log, TEXT("------Move Dir: %s"), *InMoveDir.ToString());
+}
+
