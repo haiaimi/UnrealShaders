@@ -53,10 +53,10 @@ protected:
 	UPROPERTY(BlueprintReadOnly, VisibleAnywhere, meta=(AllowPrivateAccess = "true"))
 	class UProceduralMeshComponent* FluidRenderingQuadMesh;
 
-	UPROPERTY(BlueprintReadOnly)
+	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
 	class UTextureRenderTarget2D* FluidRenderTarget;
 
-	UPROPERTY(BlueprintReadOnly)
+	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
 	class UTexture2D* FluidRenderResult;
 
 	// The Material that render fluid to the viewport, it is always a transluency material.

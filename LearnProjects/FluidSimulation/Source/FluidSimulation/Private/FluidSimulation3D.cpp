@@ -452,6 +452,8 @@ void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, const FVolumeFluidProxy
 //	
 //}
 
+TGlobalResource<FFluidSmiulationManager> GFluidSmiulationManager;
+
 void FVolumeFluidSceneViewExtension::PreRenderView_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView)
 {
 	FViewInfo* ViewInfo = static_cast<FViewInfo*>(&InView);

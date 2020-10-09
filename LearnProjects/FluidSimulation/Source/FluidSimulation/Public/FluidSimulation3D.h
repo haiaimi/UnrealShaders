@@ -21,6 +21,8 @@
 
 	FIntVector FluidVolumeSize = FIntVector(128);
 
+	FIntPoint RayMarchRTSize;
+
 	uint32 IterationCount = 20u;
 
 	float VorticityScale = 0.2f;
@@ -106,7 +108,5 @@ private:
 
 	friend FVolumeFluidSceneViewExtension;
  };
-
- static TGlobalResource<FFluidSmiulationManager> GFluidSmiulationManager;
 
 void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, const FVolumeFluidProxy& ResourceParam, class FViewInfo* InView);

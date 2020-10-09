@@ -54,6 +54,11 @@ void AFluidSimulator::BeginPlay()
 	}
 
 	CreateFluidProxy();
+	
+	if (VolumeFluidProxy.IsValid())
+	{
+		VolumeFluidProxy->RayMarchRTSize = CurRTSize;
+	}
 }
 
 void AFluidSimulator::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -113,24 +118,33 @@ void AFluidSimulator::Tick(float DeltaTime)
 	}
 }
 
+extern TGlobalResource<FFluidSmiulationManager> GFluidSmiulationManager;
+
 void AFluidSimulator::CreateFluidProxy()
 {
+	if(VolumeFluidProxy.IsValid())
+		return;
+
 	VolumeFluidProxy = MakeShared<FVolumeFluidProxy, ESPMode::ThreadSafe>();
 
-	if(VolumeFluidProxy.IsValid())
-		GFluidSmiulationManager.AddFluidProxy(VolumeFluidProxy);
+	ENQUEUE_RENDER_COMMAND(FEnqueResource)([this](FRHICommandListImmediate& RHICmdList)
+	{
+		if (VolumeFluidProxy.IsValid())
+			GFluidSmiulationManager.AddFluidProxy(VolumeFluidProxy);
+	});
+	
 }
 
 void AFluidSimulator::SubmitDrawToRenderThread(float DeltaTime)
 {
 	if(!VolumeFluidProxy.IsValid())return;
 	FTextureResource* TextureResource = FluidRenderResult ? FluidRenderResult->Resource : nullptr;
-	FTextureRenderTargetResource* RTResource = FluidRenderTarget ? FluidRenderTarget->GetRenderTargetResource() : nullptr;
+	FTextureRenderTargetResource* RTResource = FluidRenderTarget ? FluidRenderTarget->GameThread_GetRenderTargetResource() : nullptr;
 	UWorld* World = GetWorld();
 	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
 	// Update the fluid render resource
 	VolumeFluidProxy->FluidVolumeSize = FluidVolumeSize;
-	VolumeFluidProxy->FluidVolumeTransform = FTransform(GetActorRotation(), GetActorLocation(), FluidProxyBox->GetScaledBoxExtent());
+	VolumeFluidProxy->FluidVolumeTransform = FTransform(GetActorRotation(), GetActorLocation(), FluidProxyBox->GetScaledBoxExtent() * 2.f);
 	VolumeFluidProxy->IterationCount = IterationCount;
 	VolumeFluidProxy->VorticityScale = VorticityScale;
 	VolumeFluidProxy->TimeStep = DeltaTime;
