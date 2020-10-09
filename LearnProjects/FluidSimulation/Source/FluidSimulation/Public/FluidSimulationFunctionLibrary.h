@@ -20,4 +20,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, meta = (WorldContext = "WorldContextObject"))
 	static void BPTest(const UObject* WorldContextObject, const FVector2D& InMoveDir);
+
+	UFUNCTION(BlueprintCallable, meta = (WorldContext = "WorldContextObject"))
+	static FVector2D GetCurCharacterUV(const UObject* WorldContextObject);
+
+	static FVector2D MoveDir;
 };

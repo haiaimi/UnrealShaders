@@ -33,6 +33,9 @@ public:
 
 	FVector2D MoveDir;
 
+	FVector2D ForcePos = FVector2D(0.5f, 0.5f);
+	//FVector2D Offset;
+
 private:
 	class FTextureRenderTargetResource* HeightMapRTs[2];
 

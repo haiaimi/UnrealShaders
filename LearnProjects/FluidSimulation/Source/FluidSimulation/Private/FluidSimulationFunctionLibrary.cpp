@@ -52,14 +52,17 @@ void UFluidSimulationFunctionLibrary::SimulateIntearctiveWater01(const UObject* 
 		GInteractiveWater.SetResource(HeightField01->GameThread_GetRenderTargetResource(), HeightField02->GameThread_GetRenderTargetResource());
 	}
 	UWorld* World = WorldContextObject->GetWorld();
+	GInteractiveWater.DeltaTime = DeltaTime;
+	GInteractiveWater.MoveDir = InMoveDir;
 	if (!GEngine->PreRenderDelegate.IsBoundToObject(World))
 	{
-		UE_LOG(LogTemp, Log, TEXT("------Move Dir: %s------"), *InMoveDir.ToString());
+		//UE_LOG(LogTemp, Log, TEXT("------Move Dir: %s------"), *InMoveDir.ToString());
 
-		GEngine->PreRenderDelegate.AddWeakLambda(World, [DeltaTime, InMoveDir]() {
-			GInteractiveWater.DeltaTime = DeltaTime;
-			GInteractiveWater.MoveDir = InMoveDir;
-			UE_LOG(LogTemp, Log, TEXT("------Move Dir: %s------"), *InMoveDir.ToString());
+		FVector2D NewMoveDir = MoveDir;
+		UE_LOG(LogTemp, Log, TEXT("------Move Dir: %s------"), *NewMoveDir.ToString());
+		GEngine->PreRenderDelegate.AddWeakLambda(World, [DeltaTime, NewMoveDir]() {
+			
+			//UE_LOG(LogTemp, Log, TEXT("------Move Dir: %s------"), *NewMoveDir.ToString());
 			GInteractiveWater.UpdateWater();
 		});
 	}
@@ -73,5 +76,13 @@ void UFluidSimulationFunctionLibrary::SimulateIntearctiveWater01(const UObject* 
 void UFluidSimulationFunctionLibrary::BPTest(const UObject* WorldContextObject, const FVector2D& InMoveDir)
 {
 	UE_LOG(LogTemp, Log, TEXT("------Move Dir: %s"), *InMoveDir.ToString());
+	MoveDir = InMoveDir;
 }
+
+FVector2D UFluidSimulationFunctionLibrary::GetCurCharacterUV(const UObject* WorldContextObject)
+{
+	return GInteractiveWater.ForcePos;
+}
+
+FVector2D UFluidSimulationFunctionLibrary::MoveDir;
 

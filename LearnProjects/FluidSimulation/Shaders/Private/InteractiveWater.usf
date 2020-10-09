@@ -13,6 +13,7 @@ void CommonQuadVS(float2 Position : ATTRIBUTE0,
 float2 ForcePos;
 float Radius;
 float Strength;
+float2 FieldOffset;
 
 Texture2D<half2> HeightField;
 SamplerState WaterSampler;
@@ -20,6 +21,7 @@ SamplerState WaterSampler;
 void ApplyForcePS(in float2 UV : TEXCOORD,
 					out half2 OutColor : SV_Target)
 {
+	UV += FieldOffset;
 	half2 Center = HeightField.Sample(WaterSampler, UV);
 	float2 DeltaPos = ForcePos - UV;
 	float C = exp(-dot(DeltaPos, DeltaPos) / Radius);
@@ -31,9 +33,11 @@ void ApplyForcePS(in float2 UV : TEXCOORD,
 
 float2 GridDelta;
 
+
 void UpdateHeightFieldPS(in float2 UV : TEXCOORD,
 						out half2 OutColor : SV_Target)
 {
+	//UV += FieldOffset;
 	float2 dx = float2(GridDelta.x, 0.f);
 	float2 dy = float2(0.f, GridDelta.y);
 	
@@ -45,12 +49,29 @@ void UpdateHeightFieldPS(in float2 UV : TEXCOORD,
 	half2 Center = HeightField.Sample(WaterSampler, UV);
 	half4 OutHeight = HeightField.GatherRed(WaterSampler, UV, -dx, dx, -dy, dy);
 	//half AverageHeight = (OutHeight.x + OutHeight.y + OutHeight.z, OutHeight.w) * 0.25f;
-	half AverageHeight = (Left.x + Right.x + Bottom.x + Up.x) * 0.25f;
-	Center.y += (AverageHeight - Center.x) * 2.f;
-	Center.y *= 0.98f;
-	Center.x += Center.y;
+
 	
-	OutColor = Center;
+	// #1
+	//half AverageHeight = (Left.x + Right.x + Bottom.x + Up.x) * 0.25f;
+	//Center.y += 0.6f * (AverageHeight - Center.x) * 2.f;
+	//Center.y *= 0.98f;
+	//Center.x += Center.y;
+	
+	// #2
+	//float c = 1.f;
+	//float DeltaT = 0.5f;
+	//half NewHeight = c * c * DeltaT * (Left.x + Right.x + Bottom.x + Up.x) - (2.f - 4.f * c * c * DeltaT * Center.x) - Center.y;
+	//NewHeight *= 0.96f;
+	//OutColor.x = NewHeight;
+	//OutColor.y = Center.x;
+	
+	// #3
+	half NewHeight = ((Left.x + Right.x + Bottom.x + Up.x) - 4 * Center.x + 4 * Center.x) * 0.5f - Center.y;
+	NewHeight *= 0.98f;
+	OutColor.x = NewHeight;
+	OutColor.y = Center.x;
+	
+	//OutColor = Center;
 }
 
 
