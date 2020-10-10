@@ -9,6 +9,7 @@
 #include "FluidSimulation3D.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/TextureRenderTarget2D.h"
+#include "DrawDebugHelpers.h"
 
 // Sets default values
 AFluidSimulator::AFluidSimulator():
@@ -22,8 +23,8 @@ AFluidSimulator::AFluidSimulator():
 	FluidProxyBox = CreateDefaultSubobject<UBoxComponent>(TEXT("FluidProxyBox"));
 	FluidRenderingQuadMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("FluidRenderingQuadMesh"));
 	RootComponent = FluidProxyBox;
+	
 	FluidRenderingQuadMesh->SetupAttachment(RootComponent);
-
 	FluidRenderResult = nullptr;
 }
 
@@ -31,6 +32,11 @@ AFluidSimulator::AFluidSimulator():
 void AFluidSimulator::BeginPlay()
 {
 	Super::BeginPlay();
+
+	//
+	//FluidRenderingQuadMesh->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
+	//FluidRenderingQuadMesh->SetRelativeLocation(FVector::ZeroVector);
+	FluidRenderingQuadMesh->SetComponentToWorld(GetActorTransform());
 
 	APlayerController* Player = UGameplayStatics::GetPlayerController(this, 0);
 	ULocalPlayer* const LP = Player ? Player->GetLocalPlayer() : nullptr;
@@ -40,8 +46,8 @@ void AFluidSimulator::BeginPlay()
 	
 	FluidRenderResult = NewObject<UTexture2D>();
 	FluidRenderTarget = NewObject<UTextureRenderTarget2D>();
-	FluidRenderTarget->SizeX = CurRTSize.X;
-	FluidRenderTarget->SizeY = CurRTSize.Y;
+	FluidRenderTarget->SizeX = CurRTSize.X * 0.5f;
+	FluidRenderTarget->SizeY = CurRTSize.Y * 0.5f;
 	FluidRenderTarget->AddressX = TextureAddress::TA_Clamp;
 	FluidRenderTarget->AddressY = TextureAddress::TA_Clamp;
 	FluidRenderTarget->RenderTargetFormat = ETextureRenderTargetFormat::RTF_RGBA32f;
@@ -51,6 +57,8 @@ void AFluidSimulator::BeginPlay()
 	if (FluidRenderToViewMaterial)
 	{
 		FluidRenderingQuadMesh->SetMaterial(0, FluidRenderToViewMaterial);
+		UMaterialInstanceDynamic* MTInst = FluidRenderingQuadMesh->CreateAndSetMaterialInstanceDynamic(0);
+		MTInst->SetTextureParameterValue(TEXT("RayMarchFluid"), FluidRenderTarget);
 	}
 
 	CreateFluidProxy();
@@ -101,12 +109,24 @@ void AFluidSimulator::Tick(float DeltaTime)
 												  1, 2, 3};
 
 			TArray<FVector> WorldSpaceCorners;
+			TArray<FVector> WorldSpaceCorners_Test;
 			WorldSpaceCorners.Reserve(4);
+			WorldSpaceCorners_Test.Reserve(4);
 			for (auto& Pos : NDCCornerPos)
 			{
-				FVector Result = (InvViewProj * GetActorTransform().ToMatrixNoScale()).TransformPosition(Pos * ViewSpaceVolumePos.Z);
-				WorldSpaceCorners.Add(Result - GetActorLocation());
+				//FVector Result = (InvViewProj * GetActorTransform().ToMatrixNoScale().InverseFast()).TransformPosition(Pos * ViewSpaceVolumePos.Z);
+				/*FMatrix Temp = ProjectionData.ComputeViewProjectionMatrix().InverseFast();
+				FVector Result = ProjectionData.ProjectionMatrix.InverseTransformPosition(Pos * ViewSpaceVolumePos.Z);
+				Result = ProjectionData.ViewRotationMatrix.InverseTransformPosition(Result);
+				Result = FTranslationMatrix(ProjectionData.ViewOrigin).TransformPosition(Result);
+				WorldSpaceCorners_Test.Add(Result);
+				Result = GetActorTransform().InverseTransformPosition(Result);
+				FVector Result_Test = (ProjectionData.ComputeViewProjectionMatrix()).InverseTransformPosition(Pos * ViewSpaceVolumePos.Z);
+				WorldSpaceCorners.Add(Result);*/
+				
 			}
+			DrawDebugMesh(GetWorld(), WorldSpaceCorners_Test, Indices, FColor::Cyan);
+
 			TArray<FVector> EmptyVec;
 			TArray<FVector2D> EmptyUV;
 			TArray<FColor> EmptyColor;
@@ -132,7 +152,6 @@ void AFluidSimulator::CreateFluidProxy()
 		if (VolumeFluidProxy.IsValid())
 			GFluidSmiulationManager.AddFluidProxy(VolumeFluidProxy);
 	});
-	
 }
 
 void AFluidSimulator::SubmitDrawToRenderThread(float DeltaTime)
@@ -142,9 +161,13 @@ void AFluidSimulator::SubmitDrawToRenderThread(float DeltaTime)
 	FTextureRenderTargetResource* RTResource = FluidRenderTarget ? FluidRenderTarget->GameThread_GetRenderTargetResource() : nullptr;
 	UWorld* World = GetWorld();
 	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
+
+	const FQuat BoxQuat = GetActorRotation().Quaternion();
+	const FVector BoxExtent = FluidProxyBox->GetScaledBoxExtent();
+	const FVector BoxOrigin = GetActorLocation() - BoxQuat.GetRightVector() * BoxExtent.Y - BoxQuat.GetUpVector() * BoxExtent.Z - BoxQuat.GetForwardVector() * BoxExtent.X;
 	// Update the fluid render resource
 	VolumeFluidProxy->FluidVolumeSize = FluidVolumeSize;
-	VolumeFluidProxy->FluidVolumeTransform = FTransform(GetActorRotation(), GetActorLocation(), FluidProxyBox->GetScaledBoxExtent() * 2.f);
+	VolumeFluidProxy->FluidVolumeTransform = FTransform(GetActorRotation(), BoxOrigin, BoxExtent * 2.f);
 	VolumeFluidProxy->IterationCount = IterationCount;
 	VolumeFluidProxy->VorticityScale = VorticityScale;
 	VolumeFluidProxy->TimeStep = DeltaTime;
@@ -170,7 +193,7 @@ void AFluidSimulator::UpdateFluidRenderTarget(FViewport* Viewport, uint32 Index)
 	if (FluidRenderTarget && Viewport)
 	{
 		FIntPoint NewRTSize = Viewport->GetRenderTargetTextureSizeXY();
-		FluidRenderTarget->ResizeTarget(NewRTSize.X, NewRTSize.Y);
+		//FluidRenderTarget->ResizeTarget(NewRTSize.X, NewRTSize.Y);
 	}
 }
 

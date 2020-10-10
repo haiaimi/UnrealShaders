@@ -49,7 +49,7 @@ void UFluidSimulationFunctionLibrary::SimulateIntearctiveWater01(const UObject* 
 {
 	if (!GInteractiveWater.IsResourceValid())
 	{
-		GInteractiveWater.SetResource(HeightField01->GameThread_GetRenderTargetResource(), HeightField02->GameThread_GetRenderTargetResource());
+		GInteractiveWater.SetResource(HeightField01, HeightField02);
 	}
 	UWorld* World = WorldContextObject->GetWorld();
 	GInteractiveWater.DeltaTime = DeltaTime;
@@ -82,6 +82,11 @@ void UFluidSimulationFunctionLibrary::BPTest(const UObject* WorldContextObject, 
 FVector2D UFluidSimulationFunctionLibrary::GetCurCharacterUV(const UObject* WorldContextObject)
 {
 	return GInteractiveWater.ForcePos;
+}
+
+UTextureRenderTarget* UFluidSimulationFunctionLibrary::GetCurHeightMap(const UObject* WorldContextObject)
+{
+	return GInteractiveWater.GetCurrentTarget_GameThread();
 }
 
 FVector2D UFluidSimulationFunctionLibrary::MoveDir;

@@ -14,7 +14,7 @@ public:
 	FInteractiveWater();
 	~FInteractiveWater();
 
-	void SetResource(class FTextureRenderTargetResource* Height01, class FTextureRenderTargetResource* Height02);
+	void SetResource(class UTextureRenderTarget* Height01, class UTextureRenderTarget* Height02);
 
 	void UpdateWater();
 
@@ -22,6 +22,12 @@ public:
 	void UpdateHeightField_RenderThread();
 
 	class FRHITexture* GetCurrentTarget();
+
+	FVector2D GetRoleUV(FVector2D CurDir);
+
+	class UTextureRenderTarget* GetCurrentTarget_GameThread();
+
+	class UTextureRenderTarget* GetCurrentTarget_GameThread(FVector2D CurDir);
 
 	class FRHITexture* GetPreHeightField();
 
@@ -31,6 +37,9 @@ public:
 
 	float DeltaTime;
 
+	// #TODO
+	bool bShouldApplyForce;
+
 	FVector2D MoveDir;
 
 	FVector2D ForcePos = FVector2D(0.5f, 0.5f);
@@ -38,6 +47,7 @@ public:
 
 private:
 	class FTextureRenderTargetResource* HeightMapRTs[2];
+	class UTextureRenderTarget* HeightMapRTs_GameThread[2];
 
 	float TimeAccumlator;
 

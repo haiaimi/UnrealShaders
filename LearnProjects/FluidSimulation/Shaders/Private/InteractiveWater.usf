@@ -22,6 +22,7 @@ void ApplyForcePS(in float2 UV : TEXCOORD,
 					out half2 OutColor : SV_Target)
 {
 	UV += FieldOffset;
+	
 	half2 Center = HeightField.Sample(WaterSampler, UV);
 	float2 DeltaPos = ForcePos - UV;
 	float C = exp(-dot(DeltaPos, DeltaPos) / Radius);
@@ -37,7 +38,14 @@ float2 GridDelta;
 void UpdateHeightFieldPS(in float2 UV : TEXCOORD,
 						out half2 OutColor : SV_Target)
 {
-	//UV += FieldOffset;
+	////UV += FieldOffset;
+	//if (UV.x == 0.f || UV.x == 1.f ||
+	//	UV.y == 0.f || UV.y == 1.f)
+	//{
+	//	OutColor = 0.f;
+	//	return;
+	//}
+	
 	float2 dx = float2(GridDelta.x, 0.f);
 	float2 dy = float2(0.f, GridDelta.y);
 	
@@ -67,7 +75,7 @@ void UpdateHeightFieldPS(in float2 UV : TEXCOORD,
 	
 	// #3
 	half NewHeight = ((Left.x + Right.x + Bottom.x + Up.x) - 4 * Center.x + 4 * Center.x) * 0.5f - Center.y;
-	NewHeight *= 0.98f;
+	NewHeight *= 0.995f;
 	OutColor.x = NewHeight;
 	OutColor.y = Center.x;
 	

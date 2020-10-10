@@ -20,6 +20,7 @@
 #include "EngineModule.h"
 #include "TextureResource.h"
 #include "SceneViewExtension.h"
+#include "Engine/TextureRenderTarget.h"
 
 class FInteractiveWaterStreamBuffer : public FRenderResource
 {
@@ -185,6 +186,7 @@ FInteractiveWater::FInteractiveWater(/*, ERHIFeatureLevel::Type InFeatureLevel*/
 	TimeAccumlator = 0.f;
 	ForceTimeAccumlator = 0.f;
 	SimulateTimePerSecond = 60;
+	bShouldApplyForce = false;
 
 	HeightMapRTs[0] = nullptr;
 	HeightMapRTs[1] = nullptr;
@@ -196,12 +198,15 @@ FInteractiveWater::~FInteractiveWater()
 	
 }
 
-void FInteractiveWater::SetResource(class FTextureRenderTargetResource* Height01, class FTextureRenderTargetResource* Height02)
+void FInteractiveWater::SetResource(class UTextureRenderTarget* Height01, class UTextureRenderTarget* Height02)
 {
-	HeightMapRTs[0] = Height01;
-	HeightMapRTs[1] = Height02;
+	HeightMapRTs[0] = Height01->GameThread_GetRenderTargetResource();
+	HeightMapRTs[1] = Height02->GameThread_GetRenderTargetResource();
 
-	RectSize = Height01->GetSizeXY();
+	HeightMapRTs_GameThread[0] = Height01;
+	HeightMapRTs_GameThread[1] = Height02;
+
+	RectSize = HeightMapRTs[0]->GetSizeXY();
 }
 
 void FInteractiveWater::UpdateWater()
@@ -214,7 +219,7 @@ void FInteractiveWater::UpdateWater()
 
 	//if (TimeAccumlator > 1.f / SimulateTimePerSecond)
 	{
-		if( MoveDir.Size() > 0.f)
+		if(MoveDir.Size() > 0.f)
 			ApplyForce_RenderThread();
 		UpdateHeightField_RenderThread();
 		TimeAccumlator = TimeAccumlator - 1.f / SimulateTimePerSecond;
@@ -233,7 +238,7 @@ void FInteractiveWater::ApplyForce_RenderThread()
 	FRHIRenderPassInfo RPInfo(GetCurrentTarget(), ERenderTargetActions::Load_Store);
 	RHICmdList.BeginRenderPass(RPInfo, TEXT("ApplyForce"));
 	{
-		RHICmdList.SetViewport(0, 0, 0, RectSize.X, RectSize.Y, 1);
+		RHICmdList.SetViewport(1, 1, 0, RectSize.X - 1, RectSize.Y - 1, 1);
 
 		FGraphicsPipelineStateInitializer GraphicsPSOInit;
 		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -295,7 +300,7 @@ void FInteractiveWater::UpdateHeightField_RenderThread()
 	FRHIRenderPassInfo RPInfo(GetCurrentTarget(), ERenderTargetActions::Load_Store);
 	RHICmdList.BeginRenderPass(RPInfo, TEXT("UpdateWaterHeight"));
 	{
-		RHICmdList.SetViewport(0, 0, 0, RectSize.X, RectSize.Y, 1);
+		RHICmdList.SetViewport(1, 1, 0, RectSize.X - 1, RectSize.Y - 1, 1);
 
 		FGraphicsPipelineStateInitializer GraphicsPSOInit;
 		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -345,6 +350,41 @@ void FInteractiveWater::ReleaseResource()
 class FRHITexture* FInteractiveWater::GetCurrentTarget()
 {
 	return HeightMapRTs[Switcher]->GetRenderTargetTexture();
+}
+
+FVector2D FInteractiveWater::GetRoleUV(FVector2D CurDir)
+{
+	const float OffsetTolerance = 0.15f;
+	FVector2D DestUV = ForcePos + CurDir;
+	FVector2D Offset = CurDir * 0.5f;
+	float SubX = FMath::Abs(DestUV.X - 0.5f) - OffsetTolerance;
+	if (SubX > 0.f)
+	{
+		Offset.X = (DestUV.X - 0.5f) > 0.f ? SubX : -SubX;
+	}
+
+	float SubY = FMath::Abs(DestUV.Y - 0.5f) - OffsetTolerance;
+	if (SubY > 0.f)
+	{
+		Offset.Y = (DestUV.Y - 0.5f) > 0.f ? SubY : -SubY;
+	}
+
+	DestUV = DestUV - Offset;
+	return FVector2D(FMath::Frac(DestUV.X), FMath::Frac(DestUV.Y));
+}
+
+class UTextureRenderTarget* FInteractiveWater::GetCurrentTarget_GameThread()
+{
+	check(IsInGameThread());
+
+	return HeightMapRTs_GameThread[(Switcher + 1) & 1];
+}
+
+class UTextureRenderTarget* FInteractiveWater::GetCurrentTarget_GameThread(FVector2D CurDir)
+{
+	check(IsInGameThread());
+	
+	return HeightMapRTs_GameThread[CurDir.Size() > 0.f ? (Switcher + 1) & 1 : Switcher];
 }
 
 class FRHITexture* FInteractiveWater::GetPreHeightField()
