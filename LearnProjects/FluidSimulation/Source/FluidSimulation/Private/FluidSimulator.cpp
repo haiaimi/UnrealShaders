@@ -110,9 +110,11 @@ void AFluidSimulator::Tick(float DeltaTime)
 			static const TArray<int32> Indices = {0, 2, 1,
 												  1, 2, 3};
 			
-			const FBox CurrentBox = MeshBounds.GetBox().TransformBy(GetActorTransform());
-			if(CurrentBox.IsInside(ProjectionData.ViewOrigin))
-				ViewSpaceVolumePos.Z = GEngine->NearClipPlane;
+			//const FBox CurrentBox = MeshBounds.GetBox().TransformBy(GetActorTransform());
+			if((ProjectionData.ViewOrigin - GetActorLocation()).Size() <= MeshBounds.SphereRadius + GEngine->NearClipPlane)
+				ViewSpaceVolumePos.Z = GEngine->NearClipPlane + 0.5f;
+
+			//UKismetSystemLibrary::PrintString(this, FString::SanitizeFloat((ProjectionData.ViewOrigin - GetActorLocation()).Size()));
 			TArray<FVector> WorldSpaceCorners;
 			TArray<FVector> WorldSpaceCorners_Test;
 			WorldSpaceCorners.Reserve(4);
