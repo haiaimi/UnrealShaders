@@ -65,8 +65,8 @@ void VolumeRayMarchVS(float2 Position : ATTRIBUTE0,
 						out FRayMarchPixelInput OutResult)
 {
 	OutResult.OutPosition = float4(Position, 0.f, 1.f);
-	OutResult.VolumePosition = mul(float4(Position * NearPlaneDistance, 0.f, NearPlaneDistance), InvWorldViewProjection);
-	OutResult.ViewSpaceDir = mul(float4(Position * NearPlaneDistance, 0.f, NearPlaneDistance), InvProjection);
+	OutResult.VolumePosition = mul(float4(Position * NearPlaneDistance, NearPlaneDistance, NearPlaneDistance), InvWorldViewProjection);
+	OutResult.ViewSpaceDir = mul(float4(Position * NearPlaneDistance, NearPlaneDistance, NearPlaneDistance), InvProjection);
 	OutResult.UV = UV;
 }
 

@@ -91,41 +91,43 @@ void AFluidSimulator::Tick(float DeltaTime)
 	if (LP && LP->ViewportClient)
 	{
 		FSceneViewProjectionData ProjectionData;
+		FBoxSphereBounds MeshBounds = FluidRenderingQuadMesh->CalcLocalBounds();
+		
 		if (LP->GetProjectionData(LP->ViewportClient->Viewport, eSSP_FULL, ProjectionData))
 		{
-			const FMatrix InvViewProj = ProjectionData.ComputeViewProjectionMatrix().InverseFast();
+			const FVector VolumePos = GetActorLocation() + (ProjectionData.ViewOrigin - GetActorLocation()).GetSafeNormal() * MeshBounds.SphereRadius;
 			const FMatrix ViewMatrix = FTranslationMatrix(-ProjectionData.ViewOrigin) * ProjectionData.ViewRotationMatrix;
-			const FVector ViewSpaceVolumePos = ViewMatrix.TransformPosition(GetActorLocation());
+			FVector ViewSpaceVolumePos = ViewMatrix.TransformPosition(VolumePos);
 
-			static const FVector NDCCornerPos[4] = { FVector(-1.f, 1.f, 0.f),
-													FVector(1.f, 1.f, 0.f),
-													FVector(-1.f, -1.f, 0.f),
-													FVector(1.f, -1.f, 0.f)};
+			static const FVector NDCCornerPos[4] = { FVector(-1.f, 1.f, 1.f),
+													FVector(1.f, 1.f, 1.f),
+													FVector(-1.f, -1.f, 1.f),
+													FVector(1.f, -1.f, 1.f)};
 			static const TArray<FVector2D> UVs = { FVector2D(0.f, 0.f),
 												  FVector2D(1.f, 0.f), 
 												  FVector2D(0.f, 1.f),
 												  FVector2D(1.f, 1.f)};
 			static const TArray<int32> Indices = {0, 2, 1,
 												  1, 2, 3};
-
+			
+			const FBox CurrentBox = MeshBounds.GetBox().TransformBy(GetActorTransform());
+			if(CurrentBox.IsInside(ProjectionData.ViewOrigin))
+				ViewSpaceVolumePos.Z = GEngine->NearClipPlane;
 			TArray<FVector> WorldSpaceCorners;
 			TArray<FVector> WorldSpaceCorners_Test;
 			WorldSpaceCorners.Reserve(4);
 			WorldSpaceCorners_Test.Reserve(4);
 			for (auto& Pos : NDCCornerPos)
 			{
-				//FVector Result = (InvViewProj * GetActorTransform().ToMatrixNoScale().InverseFast()).TransformPosition(Pos * ViewSpaceVolumePos.Z);
-				/*FMatrix Temp = ProjectionData.ComputeViewProjectionMatrix().InverseFast();
-				FVector Result = ProjectionData.ProjectionMatrix.InverseTransformPosition(Pos * ViewSpaceVolumePos.Z);
-				Result = ProjectionData.ViewRotationMatrix.InverseTransformPosition(Result);
-				Result = FTranslationMatrix(ProjectionData.ViewOrigin).TransformPosition(Result);
+				//UGameplayStatics::DeprojectScreenToWorld()
+				FVector Result = (GetActorTransform().ToMatrixNoScale() * ProjectionData.ComputeViewProjectionMatrix()).InverseFast().TransformFVector4(FVector4(Pos * FVector(ViewSpaceVolumePos.Z, ViewSpaceVolumePos.Z, GEngine->NearClipPlane), ViewSpaceVolumePos.Z));
 				WorldSpaceCorners_Test.Add(Result);
-				Result = GetActorTransform().InverseTransformPosition(Result);
-				FVector Result_Test = (ProjectionData.ComputeViewProjectionMatrix()).InverseTransformPosition(Pos * ViewSpaceVolumePos.Z);
-				WorldSpaceCorners.Add(Result);*/
+				//Result = GetActorTransform().InverseTransformPosition(Result);
+				//FVector Result_Test = (ProjectionData.ComputeViewProjectionMatrix()).InverseTransformPosition(Pos * ViewSpaceVolumePos.Z);
+				WorldSpaceCorners.Add(Result);
 				
 			}
-			DrawDebugMesh(GetWorld(), WorldSpaceCorners_Test, Indices, FColor::Cyan);
+			//DrawDebugMesh(GetWorld(), WorldSpaceCorners, Indices, FColor::Cyan);
 
 			TArray<FVector> EmptyVec;
 			TArray<FVector2D> EmptyUV;
@@ -134,6 +136,7 @@ void AFluidSimulator::Tick(float DeltaTime)
 			FluidRenderingQuadMesh->CreateMeshSection(0, WorldSpaceCorners, Indices, EmptyVec, UVs, EmptyColor, EmptyTangent, false);
 			FProcMeshSection* MeshSection = FluidRenderingQuadMesh->GetProcMeshSection(0);
 			MeshSection->SectionLocalBox = FluidProxyBox->CalcBounds(FTransform::Identity).GetBox();
+			FluidRenderingQuadMesh->SetProcMeshSection(0, *MeshSection);
 		}
 	}
 }

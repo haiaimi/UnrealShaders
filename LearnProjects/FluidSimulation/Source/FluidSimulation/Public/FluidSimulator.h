@@ -65,4 +65,6 @@ protected:
 
 private:
 	TSharedPtr<class FVolumeFluidProxy, ESPMode::ThreadSafe> VolumeFluidProxy;
+
+	bool bFirst = false;
 };
