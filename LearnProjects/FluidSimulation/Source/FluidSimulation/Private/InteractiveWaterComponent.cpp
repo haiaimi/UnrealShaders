@@ -6,6 +6,7 @@
 #include "InteractiveWater.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
+#include "InteractiveWaterSubsystem.h"
 
 #define SURFACE_WATER SurfaceType10
 
@@ -53,7 +54,14 @@ void UInteractiveWaterComponent::BeginPlay()
 	GetOwner()->OnActorBeginOverlap.AddDynamic(this, &UInteractiveWaterComponent::OnBeginOverlap);
 	GetOwner()->OnActorEndOverlap.AddDynamic(this, &UInteractiveWaterComponent::OnEndOverlap);
 
-	//GetOwner()->GetOverlappingActors()
+	if (!InteractiveWaterSubsystem)
+	{
+		if (UGameInstance* GI = GetWorld()->GetGameInstance<UGameInstance>())
+		{
+			InteractiveWaterSubsystem = GI->GetSubsystem<UInteractiveWaterSubsystem>();
+			InteractiveWaterSubsystem->InteractiveWaterComponent = this;
+		}
+	}
 }
 
 // Called every frame
@@ -66,11 +74,14 @@ void UInteractiveWaterComponent::TickComponent(float DeltaTime, ELevelTick TickT
 	FVector2D DeltaUV = FVector2D(DeltaLocation) / InteractiveAreaSize;
 	if (FMath::IsNearlyZero(DeltaUV.Size()) && DeltaLocation.Size() > 0.f)
 	{
-		DeltaUV = FVector2D(0.0001f, 0.0001f);
+		//DeltaUV = FVector2D(0.0001f, 0.0001f);
 	}
 	FVector2D UVToHeightField = FVector2D(DeltaUV.Y, -DeltaUV.X);
+
 	InteractiveWaterProxy->MoveDir = UVToHeightField;
 	InteractiveWaterProxy->DeltaTime = DeltaTime;
+
+	InteractiveWaterProxy->UpdateForceParams(DeltaTime, UVToHeightField, CurLocation, InteractiveAreaSize, InteractiveWaterSubsystem->ForcePos);
 
 	PreLocation = CurLocation;
 
@@ -79,6 +90,8 @@ void UInteractiveWaterComponent::TickComponent(float DeltaTime, ELevelTick TickT
 		InteractiveWaterProxy->UpdateWater();
 	});
 
+	InteractiveWaterSubsystem->ForcePos.Reset();
+
 	UTextureRenderTarget* CurHeightMap = InteractiveWaterProxy->GetCurrentTarget_GameThread(UVToHeightField);
 
 	if (CurrentWaterMesh)
@@ -86,7 +99,7 @@ void UInteractiveWaterComponent::TickComponent(float DeltaTime, ELevelTick TickT
 		MTInst = CurrentWaterMesh->CreateDynamicMaterialInstance(0, CurrentWaterMesh->GetMaterial(0));
 		//MTInst = CurrentWaterMesh->CreateAndSetMaterialInstanceDynamic(0);
 		MTInst->SetVectorParameterValue(TEXT("RoleLocation"), FLinearColor(CurLocation));
-		MTInst->SetVectorParameterValue(TEXT("RoleUV"), FLinearColor(FVector(InteractiveWaterProxy->GetRoleUV(UVToHeightField), 0.f)));
+		MTInst->SetVectorParameterValue(TEXT("RoleUV"), FLinearColor(FVector(InteractiveWaterProxy->ForcePos, 0.f)));
 		MTInst->SetTextureParameterValue(TEXT("WaterHeightMap"), CurHeightMap);
 	}
 }
@@ -103,6 +116,8 @@ void UInteractiveWaterComponent::OnBeginOverlap(AActor* OverlappedActor, AActor*
 			if (PhysMaterial->SurfaceType == SURFACE_WATER)
 			{
 				CurrentWaterMesh = StaticMesh;
+				if(InteractiveWaterSubsystem)
+					InteractiveWaterSubsystem->CurWaterMesh = CurrentWaterMesh;
 			}
 		}
 		UKismetSystemLibrary::PrintString(this, OtherActor->GetName());
@@ -116,8 +131,14 @@ void UInteractiveWaterComponent::OnEndOverlap(AActor* OverlappedActor, AActor* O
 		UStaticMeshComponent* StaticMesh = OtherActor->FindComponentByClass<UStaticMeshComponent>();
 		if (StaticMesh && StaticMesh == CurrentWaterMesh)
 		{
-			CurrentWaterMesh = nullptr;
+			//CurrentWaterMesh = nullptr;
 		}
 	}
+}
+
+void UInteractiveWaterComponent::TouchWaterSurface(FVector2D UV)
+{
+	TArray<FVector> Pos = { GetOwner()->GetActorLocation() + FVector::OneVector * 1000.f};
+	InteractiveWaterProxy->UpdateForceParams(GetWorld()->DeltaTimeSeconds, FVector2D::ZeroVector, GetOwner()->GetActorLocation(), InteractiveAreaSize, Pos);
 }
 

@@ -30,6 +30,9 @@ public:
 	UFUNCTION()
 	void OnEndOverlap(AActor* OverlappedActor, AActor* OtherActor);
 
+	UFUNCTION(BlueprintCallable)
+	void TouchWaterSurface(FVector2D UV);
+
 public:
 	UPROPERTY(EditDefaultsOnly)
 	FIntPoint FieldSize;
@@ -52,4 +55,9 @@ private:
 	TSharedPtr<class FInteractiveWater> InteractiveWaterProxy;
 
 	class UStaticMeshComponent* CurrentWaterMesh;
+
+	class UInteractiveWaterSubsystem* InteractiveWaterSubsystem;
+
+	TArray<FVector> InteractivePosition;
+	TArray<FVector4> IntearctivePoint;
 };

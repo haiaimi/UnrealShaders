@@ -18,12 +18,14 @@ public:
 
 	void UpdateWater();
 
+	void UpdateForceParams(float DeltaTime, FVector2D CurDir, FVector CenterPos, float AreaSize, const TArray<FVector>& AllForce);
+
 	void ApplyForce_RenderThread();
 	void UpdateHeightField_RenderThread();
 
 	class FRHITexture* GetCurrentTarget();
 
-	FVector2D GetRoleUV(FVector2D CurDir);
+	FVector2D UpdateRoleUV(FVector2D CurDir);
 
 	class UTextureRenderTarget* GetCurrentTarget_GameThread();
 
@@ -43,7 +45,7 @@ public:
 	FVector2D MoveDir;
 
 	FVector2D ForcePos = FVector2D(0.5f, 0.5f);
-	//FVector2D Offset;
+	FVector2D Offset;
 
 private:
 	class FTextureRenderTargetResource* HeightMapRTs[2];
@@ -58,6 +60,8 @@ private:
 	FIntPoint RectSize;
 
 	uint32 SimulateTimePerSecond;
+
+	TArray<FVector4> ForcePointParams;
 
 	//ERHIFeatureLevel::Type FeatureLevel;
 };

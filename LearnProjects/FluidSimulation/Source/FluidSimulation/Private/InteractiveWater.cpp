@@ -113,27 +113,24 @@ public:
 	FApplyForcePS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
 	{
-		ForcePos.Bind(Initializer.ParameterMap, TEXT("ForcePos"));
-		Radius.Bind(Initializer.ParameterMap, TEXT("Radius"));
-		Strength.Bind(Initializer.ParameterMap, TEXT("Strength"));
+		InteractivePointCount.Bind(Initializer.ParameterMap, TEXT("InteractivePointCount"));
+		InteractivePoints.Bind(Initializer.ParameterMap, TEXT("InteractivePoints"));
 		FieldOffset.Bind(Initializer.ParameterMap, TEXT("FieldOffset"));
 		HeightField.Bind(Initializer.ParameterMap, TEXT("HeightField"));
 		WaterSampler.Bind(Initializer.ParameterMap, TEXT("WaterSampler"));
 	}
 
-	void SetParameters(FRHICommandListImmediate& RHICmdList, FVector2D InForcePos, float InRadius, float InStrength, FVector2D InFieldOffset, FRHITexture* InHeightField)
+	void SetParameters(FRHICommandListImmediate& RHICmdList, uint32 PointCount, TArray<FVector4> Points, FVector2D InFieldOffset, FRHITexture* InHeightField)
 	{
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), ForcePos, InForcePos);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), Radius, InRadius);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), Strength, InStrength);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), InteractivePointCount, PointCount);
+		SetShaderValueArray(RHICmdList, RHICmdList.GetBoundPixelShader(), InteractivePoints, Points.GetData(), Points.Num());
 		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), FieldOffset, InFieldOffset);
 		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), HeightField, WaterSampler, TStaticSamplerState<SF_Bilinear, AM_Border, AM_Border, AM_Border>::CreateRHI(), InHeightField);
 	}
 
 private:
-	LAYOUT_FIELD(FShaderParameter, ForcePos)
-	LAYOUT_FIELD(FShaderParameter, Radius)
-	LAYOUT_FIELD(FShaderParameter, Strength)
+	LAYOUT_FIELD(FShaderParameter, InteractivePointCount)
+	LAYOUT_FIELD(FShaderParameter, InteractivePoints)
 	LAYOUT_FIELD(FShaderParameter, FieldOffset)
 	LAYOUT_FIELD(FShaderResourceParameter, HeightField)
 	LAYOUT_FIELD(FShaderResourceParameter, WaterSampler)
@@ -219,7 +216,7 @@ void FInteractiveWater::UpdateWater()
 
 	//if (TimeAccumlator > 1.f / SimulateTimePerSecond)
 	{
-		if(MoveDir.Size() > 0.f)
+		if(ForcePointParams.Num() > 0.f || MoveDir.Size() > 0.f)
 			ApplyForce_RenderThread();
 		UpdateHeightField_RenderThread();
 		TimeAccumlator = TimeAccumlator - 1.f / SimulateTimePerSecond;
@@ -227,6 +224,25 @@ void FInteractiveWater::UpdateWater()
 
 	TimeAccumlator += DeltaTime;
 	ForceTimeAccumlator += DeltaTime;
+}
+
+void FInteractiveWater::UpdateForceParams(float InDeltaTime, FVector2D CurDir, FVector CenterPos, float AreaSize, const TArray<FVector>& AllForce)
+{
+	DeltaTime = InDeltaTime;
+	ForcePointParams.Reset();
+	FVector2D TempForcePos = UpdateRoleUV(CurDir);
+
+	for (auto& Iter : AllForce)
+	{
+		FVector Delta = Iter - CenterPos;
+		Delta /= AreaSize;
+		FVector2D UVToHeightField = TempForcePos + FVector2D(Delta.Y, -Delta.X);
+		if (UVToHeightField.X >= 0.f && UVToHeightField.X <= 1.f &&
+			UVToHeightField.Y >= 0.f && UVToHeightField.Y <= 1.f)
+		{
+			ForcePointParams.Add(FVector4(UVToHeightField, FVector2D(0.008f, 1.f)));
+		}
+	}
 }
 
 void FInteractiveWater::ApplyForce_RenderThread()
@@ -257,31 +273,8 @@ void FInteractiveWater::ApplyForce_RenderThread()
 
 		// Set Shader Params
 		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
-		
-		FVector2D CurDelta = MoveDir;
-		//Offset = Offset + (CurDelta - MoveDir.GetSafeNormal() * DeltaTime * 0.3f);
-
-		const float OffsetTolerance = 0.15f;
-		ForcePos += CurDelta;
-		FVector2D Offset = CurDelta * 0.5f;
-		float SubX = FMath::Abs(ForcePos.X - 0.5f) - OffsetTolerance;
-		if (SubX > 0.f)
-		{
-			Offset.X = (ForcePos.X - 0.5f) > 0.f ? SubX : -SubX;
-		}
-
-		float SubY = FMath::Abs(ForcePos.Y - 0.5f) - OffsetTolerance;
-		if (SubY > 0.f)
-		{
-			Offset.Y = (ForcePos.Y - 0.5f) > 0.f ? SubY : -SubY;
-		}
-
-		ForcePos -= Offset;
-		ForcePos = FVector2D(FMath::Frac(ForcePos.X), FMath::Frac(ForcePos.Y));
-		//FVector2D Offset = (MoveDir * DeltaTime * 0.5f);
-		////UE_LOG(LogTemp, Log, TEXT("%4.4f"), MoveDir.X);
-		//UE_LOG(LogTemp, Log, TEXT("Offset: %s"), *Offset.ToString());
-		PixelShader->SetParameters(RHICmdList, ForcePos, 0.008f, 1.f, /*(MoveDir * DeltaTime * 0.5f)*/Offset, GetPreHeightField());
+		//UE_LOG(LogTemp, Log, TEXT("--------Offset: %s, Force Num: %d-------"), *Offset.ToString(), ForcePointParams.Num());
+		PixelShader->SetParameters(RHICmdList, ForcePointParams.Num(), ForcePointParams, Offset, GetPreHeightField());
 
 		RHICmdList.SetStreamSource(0, GInteractiveWaterStreamBuffer.VertexBuffer, 0);
 		RHICmdList.DrawIndexedPrimitive(GInteractiveWaterStreamBuffer.IndexBuffer, 0, 0, GInteractiveWaterStreamBuffer.GetVertexNum(), 0, GInteractiveWaterStreamBuffer.GetIndexNum() / 3, 1);
@@ -319,13 +312,12 @@ void FInteractiveWater::UpdateHeightField_RenderThread()
 
 		// Set Shader Params
 		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
-		FVector2D Sub = ForcePos - FVector2D(0.5f, 0.5f);
+		/*FVector2D Sub = ForcePos - FVector2D(0.5f, 0.5f);
 		float ClampX = FMath::Clamp(Sub.X, -0.1f, 0.1f);
-		float ClampY = FMath::Clamp(Sub.Y, -0.1f, 0.1f);
-		FVector2D Offset = FVector2D(ClampX, ClampY) - Sub;
+		float ClampY = FMath::Clamp(Sub.Y, -0.1f, 0.1f);*/
+		//FVector2D Offset = FVector2D(ClampX, ClampY) - Sub;
 		//ForcePos += Offset;
-
-		
+		UE_LOG(LogTemp, Log, TEXT("--------Offset: %s, RoleUV: %s-------"), *Offset.ToString(), *ForcePos.ToString());
 		PixelShader->SetParameters(RHICmdList, FVector2D(1.f / RectSize.X, 1.f / RectSize.Y), Offset, GetPreHeightField());
 
 		RHICmdList.SetStreamSource(0, GInteractiveWaterStreamBuffer.VertexBuffer, 0);
@@ -352,25 +344,26 @@ class FRHITexture* FInteractiveWater::GetCurrentTarget()
 	return HeightMapRTs[Switcher]->GetRenderTargetTexture();
 }
 
-FVector2D FInteractiveWater::GetRoleUV(FVector2D CurDir)
+FVector2D FInteractiveWater::UpdateRoleUV(FVector2D CurDir)
 {
 	const float OffsetTolerance = 0.15f;
-	FVector2D DestUV = ForcePos + CurDir;
-	FVector2D Offset = CurDir * 0.5f;
-	float SubX = FMath::Abs(DestUV.X - 0.5f) - OffsetTolerance;
+	ForcePos = ForcePos + CurDir;
+	Offset = CurDir * 0.5f;
+	float SubX = FMath::Abs(ForcePos.X - 0.5f) - OffsetTolerance;
 	if (SubX > 0.f)
 	{
-		Offset.X = (DestUV.X - 0.5f) > 0.f ? SubX : -SubX;
+		Offset.X = (ForcePos.X - 0.5f) > 0.f ? SubX : -SubX;
 	}
 
-	float SubY = FMath::Abs(DestUV.Y - 0.5f) - OffsetTolerance;
+	float SubY = FMath::Abs(ForcePos.Y - 0.5f) - OffsetTolerance;
 	if (SubY > 0.f)
 	{
-		Offset.Y = (DestUV.Y - 0.5f) > 0.f ? SubY : -SubY;
+		Offset.Y = (ForcePos.Y - 0.5f) > 0.f ? SubY : -SubY;
 	}
 
-	DestUV = DestUV - Offset;
-	return FVector2D(FMath::Frac(DestUV.X), FMath::Frac(DestUV.Y));
+	ForcePos -= Offset;
+	ForcePos = FVector2D(FMath::Frac(ForcePos.X), FMath::Frac(ForcePos.Y));
+	return ForcePos;
 }
 
 class UTextureRenderTarget* FInteractiveWater::GetCurrentTarget_GameThread()

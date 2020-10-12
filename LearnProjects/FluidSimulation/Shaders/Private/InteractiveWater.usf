@@ -10,9 +10,8 @@ void CommonQuadVS(float2 Position : ATTRIBUTE0,
 	OutPos = float4(Position, 0.f, 1.f);
 }
 
-float2 ForcePos;
-float Radius;
-float Strength;
+int InteractivePointCount;
+float4 InteractivePoints[10];
 float2 FieldOffset;
 
 Texture2D<half2> HeightField;
@@ -24,10 +23,14 @@ void ApplyForcePS(in float2 UV : TEXCOORD,
 	UV += FieldOffset;
 	
 	half2 Center = HeightField.Sample(WaterSampler, UV);
-	float2 DeltaPos = ForcePos - UV;
-	float C = exp(-dot(DeltaPos, DeltaPos) / Radius);
 	
-	Center.r += 0.5f * (1.f - cos(3.14159f * (max(0.f, 1.f - length(DeltaPos) / Radius)))) * Strength;
+	LOOP
+	for (int i = 0; i < InteractivePointCount; ++i)
+	{
+		float2 DeltaPos = InteractivePoints[i].xy - UV;
+		float C = exp(-dot(DeltaPos, DeltaPos) / InteractivePoints[i].z);
+		Center.r += 0.5f * (1.f - cos(3.14159f * (max(0.f, 1.f - length(DeltaPos) / InteractivePoints[i].z)))) * InteractivePoints[i].w;
+	}
 	
 	OutColor = Center;
 }
@@ -57,7 +60,6 @@ void UpdateHeightFieldPS(in float2 UV : TEXCOORD,
 	half2 Center = HeightField.Sample(WaterSampler, UV);
 	half4 OutHeight = HeightField.GatherRed(WaterSampler, UV, -dx, dx, -dy, dy);
 	//half AverageHeight = (OutHeight.x + OutHeight.y + OutHeight.z, OutHeight.w) * 0.25f;
-
 	
 	// #1
 	//half AverageHeight = (Left.x + Right.x + Bottom.x + Up.x) * 0.25f;
