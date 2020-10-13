@@ -78,6 +78,7 @@ public:
 	virtual void ReleaseRHI() override
 	{
 		VertexDeclarationRHI.SafeRelease();
+		FRenderResource::ReleaseRHI();
 	}
 };
 
@@ -124,6 +125,7 @@ public:
 
 	virtual void ReleaseRHI() override
 	{
+		FRenderResource::ReleaseRHI();
 		VolumeVertexBuffer.SafeRelease();
 		VolumeIndexBuffer.SafeRelease();
 	}
@@ -186,13 +188,13 @@ public:
 
 static TGlobalResource<FVolumeRayMarchStreamBuffer> GVolumeRayMarchBuffer;
 
-enum : int32
+enum EVoulmeRenderDir
 {
 	BackwardVolume = 0,
 	FrontVolume = 1
 };
 
-template<int32 Index>
+template<EVoulmeRenderDir Index>
 class FFluidVolumeVS : public FGlobalShader
 {
 	DECLARE_SHADER_TYPE(FFluidVolumeVS, Global);
@@ -223,8 +225,8 @@ public:
 	LAYOUT_FIELD(FShaderParameter, WorldView)
 };
 
-IMPLEMENT_SHADER_TYPE(, FFluidVolumeVS<BackwardVolume>, TEXT("/Shaders/Private/RenderFluidVolume.usf"), TEXT("VolumeBackVS"), SF_Vertex);
-IMPLEMENT_SHADER_TYPE(, FFluidVolumeVS<FrontVolume>, TEXT("/Shaders/Private/RenderFluidVolume.usf"), TEXT("VolumeFrontVS"), SF_Vertex);
+IMPLEMENT_SHADER_TYPE(template<>, FFluidVolumeVS<BackwardVolume>, TEXT("/Shaders/Private/RenderFluidVolume.usf"), TEXT("VolumeBackVS"), SF_Vertex);
+IMPLEMENT_SHADER_TYPE(template<>, FFluidVolumeVS<FrontVolume>, TEXT("/Shaders/Private/RenderFluidVolume.usf"), TEXT("VolumeFrontVS"), SF_Vertex);
 
 template<int32 Index>
 class FFluidVolumePS : public FGlobalShader
@@ -246,8 +248,8 @@ public:
 	}
 };
 
-IMPLEMENT_SHADER_TYPE(, FFluidVolumePS<BackwardVolume>, TEXT("/Shaders/Private/RenderFluidVolume.usf"), TEXT("VolumeBackPS"), SF_Pixel);
-IMPLEMENT_SHADER_TYPE(, FFluidVolumePS<FrontVolume>, TEXT("/Shaders/Private/RenderFluidVolume.usf"), TEXT("VolumeFrontPS"), SF_Pixel);
+IMPLEMENT_SHADER_TYPE(template<>, FFluidVolumePS<BackwardVolume>, TEXT("/Shaders/Private/RenderFluidVolume.usf"), TEXT("VolumeBackPS"), SF_Pixel);
+IMPLEMENT_SHADER_TYPE(template<>, FFluidVolumePS<FrontVolume>, TEXT("/Shaders/Private/RenderFluidVolume.usf"), TEXT("VolumeFrontPS"), SF_Pixel);
 
 class FFluidVolumeQuadVS : public FGlobalShader
 {
@@ -301,7 +303,8 @@ public:
 		EyePosToVolume.Bind(Initializer.ParameterMap, TEXT("EyePosToVolume"));
 		RayMarchDataTexture.Bind(Initializer.ParameterMap, TEXT("RayMarchDataTexture"));
 		VolumeFluidColor.Bind(Initializer.ParameterMap, TEXT("VolumeFluidColor"));
-		RayMarchSampler.Bind(Initializer.ParameterMap, TEXT("RayMarchSampler"));
+		RayMarchSampler0.Bind(Initializer.ParameterMap, TEXT("RayMarchSampler0"));
+		RayMarchSampler1.Bind(Initializer.ParameterMap, TEXT("RayMarchSampler1"));
 		NearPlaneDistance.Bind(Initializer.ParameterMap, TEXT("NearPlaneDistance"));
 		VolumeBoxScale.Bind(Initializer.ParameterMap, TEXT("VolumeBoxScale"));
 		MaxVolumeBoxSize.Bind(Initializer.ParameterMap, TEXT("MaxVolumeBoxSize"));
@@ -320,8 +323,8 @@ public:
 						FVector VolumeDim)
 	{
 		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), EyePosToVolume, EyePosToVol);
-		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), RayMarchDataTexture, RayMarchSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::CreateRHI(), RayDataTextureRHI);
-		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), VolumeFluidColor, FluidColorTextureRHI);
+		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), RayMarchDataTexture, RayMarchSampler0, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::CreateRHI(), RayDataTextureRHI);
+		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), VolumeFluidColor, RayMarchSampler1, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::CreateRHI(), FluidColorTextureRHI);
 
 		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), NearPlaneDistance, NearPlane);
 		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), VolumeBoxScale, VolumeBoxSl);
@@ -333,7 +336,8 @@ public:
 	LAYOUT_FIELD(FShaderParameter, EyePosToVolume)
 	LAYOUT_FIELD(FShaderResourceParameter, RayMarchDataTexture)
 	LAYOUT_FIELD(FShaderResourceParameter, VolumeFluidColor)
-	LAYOUT_FIELD(FShaderResourceParameter, RayMarchSampler)
+	LAYOUT_FIELD(FShaderResourceParameter, RayMarchSampler0)
+	LAYOUT_FIELD(FShaderResourceParameter, RayMarchSampler1)
 	LAYOUT_FIELD(FShaderParameter, NearPlaneDistance)
 	LAYOUT_FIELD(FShaderParameter, VolumeBoxScale)
 	LAYOUT_FIELD(FShaderParameter, MaxVolumeBoxSize)
@@ -470,12 +474,13 @@ void RayMarchFluidVolume(FRHICommandListImmediate& RHICmdList, FTexture2DRHIRef 
 void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, const FVolumeFluidProxy& ResourceParam, FTextureRHIRef FluidColor, const FViewInfo* InView)
 {
 	GetRendererModule().RegisterPersistentViewUniformBufferExtension(&VolumeFluidViewUniformBufferExtension);
-	if (!VolumeFluidViewUniformBufferExtension.GetViewInfo() && !InView)
-		return;
+	//if (!VolumeFluidViewUniformBufferExtension.GetViewInfo() && !InView)
+		//return;
 
 	const FViewInfo& View = InView ? *InView : *VolumeFluidViewUniformBufferExtension.GetViewInfo();
 	const float ViewportScale = 0.5f;
 	
+	//UE_LOG(LogTemp, Log, TEXT("Raymarch RT size: %s"), *ResourceParam.RayMarchRTSize.ToString());
 	if(ResourceParam.RayMarchRTSize.X <= 0 || ResourceParam.RayMarchRTSize.Y <= 0)
 		return;
 
@@ -500,7 +505,6 @@ void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, const FVolumeFluidP
 		FTexture2DRHIRef FluidRT = ResourceParam.TextureRenderTargetResource->GetRenderTargetTexture();
 		RayMarchFluidVolume(RHICmdList, FluidRT, FluidColor, RayMarchData, View, ResourceParam.RayMarchRTSize, ViewportScale, ResourceParam.FluidVolumeSize, ResourceParam.FluidVolumeTransform, ResourceParam.FeatureLevel);
 	}
-	
 
 	FRHICopyTextureInfo CopyInfo;
 	CopyInfo.Size = FIntVector(ViewportScale * View.ViewRect.Width(), ViewportScale * View.ViewRect.Height(), 1);

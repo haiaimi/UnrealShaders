@@ -15,6 +15,7 @@
 #include "RenderGraphUtils.h"
 #include "RenderTargetPool.h"
 #include "../Private/ScenePrivate.h"
+#include "RenderFluidVolume.h"
 
 #define THREAD_GROUP_SIZE 8
 
@@ -357,7 +358,7 @@ namespace FluidSimulation3D
 	}
 }
 
-extern void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, const FVolumeFluidProxy& ResourceParam, FTextureRHIRef FluidColor, const FViewInfo* InView);
+//extern void RenderFluidVolume(FRHICommandListImmediate& RHICmdList, const FVolumeFluidProxy& ResourceParam, FTextureRHIRef FluidColor, const FViewInfo* InView);
 
 void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, const FVolumeFluidProxy& ResourceParam, FViewInfo* InView)
 {
@@ -409,6 +410,8 @@ void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, const FVolumeFluidProxy
 	FRDGTextureSRVRef DivergenceSRV = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(Divergence));
 	FRDGTextureUAVRef DivergenceUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(Divergence));
 
+	//UE_LOG(LogTemp, Log, TEXT("Current Feature Level: %d"), (int32)ResourceParam.FeatureLevel);
+
 	FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(ResourceParam.FeatureLevel);
 	// The main steps may have some difference with fluid 2D, because this time we don't need to compute Viscous, so we can reduce a jacobi iteration
 	
@@ -441,8 +444,7 @@ void UpdateFluid3D(FRHICommandListImmediate& RHICmdList, const FVolumeFluidProxy
 	FluidSimulation3D::SubstarctPressureGradient(GraphBuilder, ShaderMap, ResourceParam.FluidVolumeSize, 0.5f, VelocityFieldSRV1, PressureFieldSRV0, VelocityFieldUAV0);
 
 	GraphBuilder.Execute();
-
-	//if(CacheView)
+	
 	RenderFluidVolume(RHICmdList, ResourceParam, ColorTexture3D_0->GetRenderTargetItem().TargetableTexture, InView);
 }
 

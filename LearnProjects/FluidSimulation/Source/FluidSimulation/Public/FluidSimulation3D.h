@@ -33,7 +33,7 @@
 
 	FTextureRenderTargetResource* TextureRenderTargetResource = nullptr;
 
-	ERHIFeatureLevel::Type FeatureLevel = ERHIFeatureLevel::SM5;
+	ERHIFeatureLevel::Type FeatureLevel = ERHIFeatureLevel::ES3_1;
  };
 
  class FVolumeFluidSceneViewExtension : public FSceneViewExtensionBase
@@ -85,6 +85,7 @@ public:
 
 	 virtual void ReleaseRHI() override
 	 {
+		FRenderResource::ReleaseRHI();
 		VolumeFluidExtension.Reset();
 	 }
 

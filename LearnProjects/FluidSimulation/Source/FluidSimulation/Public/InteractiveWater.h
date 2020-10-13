@@ -8,13 +8,15 @@
 /**
  * 
  */
-class FLUIDSIMULATION_API FInteractiveWater : public FRenderResource
+class FLUIDSIMULATION_API FInteractiveWater
 {
 public:
 	FInteractiveWater();
 	~FInteractiveWater();
 
-	void SetResource(class UTextureRenderTarget* Height01, class UTextureRenderTarget* Height02);
+	void SetResource(class UTextureRenderTarget* Height01, class UTextureRenderTarget* Height02, class UTextureRenderTarget* InNormalMap, float SimulateDuration, ERHIFeatureLevel::Type InFeatureLevel);
+
+	bool ShouldSimulate(float DeltaTime);
 
 	void UpdateWater();
 
@@ -22,6 +24,7 @@ public:
 
 	void ApplyForce_RenderThread();
 	void UpdateHeightField_RenderThread();
+	void ComputeNormal_RenderThread();
 
 	class FRHITexture* GetCurrentTarget();
 
@@ -35,7 +38,7 @@ public:
 
 	bool IsResourceValid();
 
-	virtual void ReleaseResource();
+	void ReleaseResource();
 
 	float DeltaTime;
 
@@ -49,6 +52,7 @@ public:
 
 private:
 	class FTextureRenderTargetResource* HeightMapRTs[2];
+	class FTextureRenderTargetResource* NormalMap;
 	class UTextureRenderTarget* HeightMapRTs_GameThread[2];
 
 	float TimeAccumlator;
@@ -59,11 +63,13 @@ private:
 
 	FIntPoint RectSize;
 
-	uint32 SimulateTimePerSecond;
+	float PerSimulateDuration;
+
+	bool bShouldUpdate;
 
 	TArray<FVector4> ForcePointParams;
 
-	//ERHIFeatureLevel::Type FeatureLevel;
+	ERHIFeatureLevel::Type FeatureLevel;
 };
 
-static TGlobalResource<FInteractiveWater> GInteractiveWater;
+static FInteractiveWater GInteractiveWater;

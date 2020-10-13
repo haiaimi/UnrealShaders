@@ -43,7 +43,7 @@ void AFluidSimulator::BeginPlay()
 	LP->ViewportClient->Viewport->ViewportResizedEvent.AddUObject(this, &AFluidSimulator::UpdateFluidRenderTarget);
 
 	const FIntPoint CurRTSize = LP->ViewportClient->Viewport->GetRenderTargetTextureSizeXY();
-	
+
 	FluidRenderResult = NewObject<UTexture2D>();
 	FluidRenderTarget = NewObject<UTextureRenderTarget2D>();
 	FluidRenderTarget->SizeX = CurRTSize.X * 0.5f;
@@ -198,7 +198,11 @@ void AFluidSimulator::UpdateFluidRenderTarget(FViewport* Viewport, uint32 Index)
 	if (FluidRenderTarget && Viewport)
 	{
 		FIntPoint NewRTSize = Viewport->GetRenderTargetTextureSizeXY();
-		//FluidRenderTarget->ResizeTarget(NewRTSize.X, NewRTSize.Y);
+		FluidRenderTarget->ResizeTarget(NewRTSize.X / 2, NewRTSize.Y / 2);
+		if (VolumeFluidProxy.IsValid())
+		{
+			VolumeFluidProxy->RayMarchRTSize = NewRTSize;
+		}
 	}
 }
 

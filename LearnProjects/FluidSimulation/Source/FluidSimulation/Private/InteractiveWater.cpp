@@ -59,6 +59,7 @@ public:
 
 	virtual void ReleaseRHI() override
 	{
+		FRenderResource::ReleaseRHI();
 		VertexBuffer.SafeRelease();
 		IndexBuffer.SafeRelease();
 	}
@@ -116,15 +117,17 @@ public:
 		InteractivePointCount.Bind(Initializer.ParameterMap, TEXT("InteractivePointCount"));
 		InteractivePoints.Bind(Initializer.ParameterMap, TEXT("InteractivePoints"));
 		FieldOffset.Bind(Initializer.ParameterMap, TEXT("FieldOffset"));
+		GridDelta.Bind(Initializer.ParameterMap, TEXT("GridDelta"));
 		HeightField.Bind(Initializer.ParameterMap, TEXT("HeightField"));
 		WaterSampler.Bind(Initializer.ParameterMap, TEXT("WaterSampler"));
 	}
 
-	void SetParameters(FRHICommandListImmediate& RHICmdList, uint32 PointCount, TArray<FVector4> Points, FVector2D InFieldOffset, FRHITexture* InHeightField)
+	void SetParameters(FRHICommandListImmediate& RHICmdList, uint32 PointCount, TArray<FVector4> Points, FVector2D InFieldOffset, FVector2D InGridDelta, FRHITexture* InHeightField)
 	{
 		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), InteractivePointCount, PointCount);
 		SetShaderValueArray(RHICmdList, RHICmdList.GetBoundPixelShader(), InteractivePoints, Points.GetData(), Points.Num());
 		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), FieldOffset, InFieldOffset);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), GridDelta, InGridDelta);
 		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), HeightField, WaterSampler, TStaticSamplerState<SF_Bilinear, AM_Border, AM_Border, AM_Border>::CreateRHI(), InHeightField);
 	}
 
@@ -132,6 +135,7 @@ private:
 	LAYOUT_FIELD(FShaderParameter, InteractivePointCount)
 	LAYOUT_FIELD(FShaderParameter, InteractivePoints)
 	LAYOUT_FIELD(FShaderParameter, FieldOffset)
+	LAYOUT_FIELD(FShaderParameter, GridDelta)
 	LAYOUT_FIELD(FShaderResourceParameter, HeightField)
 	LAYOUT_FIELD(FShaderResourceParameter, WaterSampler)
 };
@@ -175,14 +179,47 @@ private:
 
 IMPLEMENT_SHADER_TYPE(, FUpdateHeightFieldPS, TEXT("/Shaders/Private/InteractiveWater.usf"), TEXT("UpdateHeightFieldPS"), SF_Pixel);
 
+class FComputeNormalPS : public FGlobalShader
+{
+	DECLARE_SHADER_TYPE(FComputeNormalPS, Global);
 
-FInteractiveWater::FInteractiveWater(/*, ERHIFeatureLevel::Type InFeatureLevel*/):
-	FRenderResource()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return true;
+	}
+
+	FComputeNormalPS() {}
+
+public:
+	FComputeNormalPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+		: FGlobalShader(Initializer)
+	{
+		GridDelta.Bind(Initializer.ParameterMap, TEXT("GridDelta"));
+		HeightField.Bind(Initializer.ParameterMap, TEXT("HeightField"));
+		WaterSampler.Bind(Initializer.ParameterMap, TEXT("WaterSampler"));
+	}
+
+	void SetParameters(FRHICommandListImmediate& RHICmdList, FVector2D InGridDelta, FRHITexture* InHeightField)
+	{
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), GridDelta, InGridDelta);
+		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), HeightField, WaterSampler, TStaticSamplerState<SF_Bilinear, AM_Border, AM_Border, AM_Border>::CreateRHI(), InHeightField);
+	}
+
+private:
+	LAYOUT_FIELD(FShaderParameter, GridDelta)
+	LAYOUT_FIELD(FShaderResourceParameter, HeightField)
+	LAYOUT_FIELD(FShaderResourceParameter, WaterSampler)
+};
+
+IMPLEMENT_SHADER_TYPE(, FComputeNormalPS, TEXT("/Shaders/Private/InteractiveWater.usf"), TEXT("ComputeNormalPS"), SF_Pixel);
+
+FInteractiveWater::FInteractiveWater(/*, ERHIFeatureLevel::Type InFeatureLevel*/)
 {
 	Switcher = 0;
 	TimeAccumlator = 0.f;
 	ForceTimeAccumlator = 0.f;
-	SimulateTimePerSecond = 60;
+	PerSimulateDuration = 1.f / 30.f;
+	bShouldUpdate = false;
 	bShouldApplyForce = false;
 
 	HeightMapRTs[0] = nullptr;
@@ -195,35 +232,51 @@ FInteractiveWater::~FInteractiveWater()
 	
 }
 
-void FInteractiveWater::SetResource(class UTextureRenderTarget* Height01, class UTextureRenderTarget* Height02)
+void FInteractiveWater::SetResource(class UTextureRenderTarget* Height01, class UTextureRenderTarget* Height02, class UTextureRenderTarget* InNormalMap, float SimulateDuration, ERHIFeatureLevel::Type InFeatureLevel)
 {
 	HeightMapRTs[0] = Height01->GameThread_GetRenderTargetResource();
 	HeightMapRTs[1] = Height02->GameThread_GetRenderTargetResource();
+	NormalMap = InNormalMap->GameThread_GetRenderTargetResource();
 
 	HeightMapRTs_GameThread[0] = Height01;
 	HeightMapRTs_GameThread[1] = Height02;
 
 	RectSize = HeightMapRTs[0]->GetSizeXY();
+
+	PerSimulateDuration = SimulateDuration;
+	FeatureLevel = InFeatureLevel;
+}
+
+bool FInteractiveWater::ShouldSimulate(float InDeltaTime)
+{
+	TimeAccumlator += InDeltaTime;
+
+	if (TimeAccumlator >= PerSimulateDuration)
+	{
+		TimeAccumlator = 0.f;
+		bShouldUpdate = true;
+	}
+	else
+		bShouldUpdate = false;
+	return bShouldUpdate;
 }
 
 void FInteractiveWater::UpdateWater()
 {
+	if(!bShouldUpdate) return;
+	UE_LOG(LogTemp, Log, TEXT("---------TickSimulate---------"));
 	if (ForceTimeAccumlator >= 0.1f && MoveDir.Size() > 0.f)
 	{
 		//ApplyForce_RenderThread();
 		ForceTimeAccumlator = 0.f;
 	}
-
-	//if (TimeAccumlator > 1.f / SimulateTimePerSecond)
+	
 	{
-		if(ForcePointParams.Num() > 0.f || MoveDir.Size() > 0.f)
+		if(ForcePointParams.Num() > 0 || MoveDir.Size() > 0.f)
 			ApplyForce_RenderThread();
 		UpdateHeightField_RenderThread();
-		TimeAccumlator = TimeAccumlator - 1.f / SimulateTimePerSecond;
+		ComputeNormal_RenderThread();
 	}
-
-	TimeAccumlator += DeltaTime;
-	ForceTimeAccumlator += DeltaTime;
 }
 
 void FInteractiveWater::UpdateForceParams(float InDeltaTime, FVector2D CurDir, FVector CenterPos, float AreaSize, const TArray<FVector>& AllForce)
@@ -240,7 +293,7 @@ void FInteractiveWater::UpdateForceParams(float InDeltaTime, FVector2D CurDir, F
 		if (UVToHeightField.X >= 0.f && UVToHeightField.X <= 1.f &&
 			UVToHeightField.Y >= 0.f && UVToHeightField.Y <= 1.f)
 		{
-			ForcePointParams.Add(FVector4(UVToHeightField, FVector2D(0.008f, 1.f)));
+			ForcePointParams.Add(FVector4(UVToHeightField, FVector2D(0.006f, 1.f)));
 		}
 	}
 }
@@ -262,7 +315,7 @@ void FInteractiveWater::ApplyForce_RenderThread()
 		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
 		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false>::GetRHI();
 
-		FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(GetFeatureLevel());
+		FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(FeatureLevel);
 		TShaderMapRef<FCommonQuadVS> VertexShader(ShaderMap);
 		TShaderMapRef<FApplyForcePS> PixelShader(ShaderMap);
 
@@ -274,7 +327,7 @@ void FInteractiveWater::ApplyForce_RenderThread()
 		// Set Shader Params
 		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 		//UE_LOG(LogTemp, Log, TEXT("--------Offset: %s, Force Num: %d-------"), *Offset.ToString(), ForcePointParams.Num());
-		PixelShader->SetParameters(RHICmdList, ForcePointParams.Num(), ForcePointParams, Offset, GetPreHeightField());
+		PixelShader->SetParameters(RHICmdList, ForcePointParams.Num(), ForcePointParams, Offset, FVector2D(1.f / RectSize.X, 1.f / RectSize.Y), GetPreHeightField());
 
 		RHICmdList.SetStreamSource(0, GInteractiveWaterStreamBuffer.VertexBuffer, 0);
 		RHICmdList.DrawIndexedPrimitive(GInteractiveWaterStreamBuffer.IndexBuffer, 0, 0, GInteractiveWaterStreamBuffer.GetVertexNum(), 0, GInteractiveWaterStreamBuffer.GetIndexNum() / 3, 1);
@@ -301,7 +354,7 @@ void FInteractiveWater::UpdateHeightField_RenderThread()
 		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
 		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false>::GetRHI();
 		
-		FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(GetFeatureLevel());
+		FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(FeatureLevel);
 		TShaderMapRef<FCommonQuadVS> VertexShader(ShaderMap);
 		TShaderMapRef<FUpdateHeightFieldPS> PixelShader(ShaderMap);
 
@@ -317,7 +370,7 @@ void FInteractiveWater::UpdateHeightField_RenderThread()
 		float ClampY = FMath::Clamp(Sub.Y, -0.1f, 0.1f);*/
 		//FVector2D Offset = FVector2D(ClampX, ClampY) - Sub;
 		//ForcePos += Offset;
-		UE_LOG(LogTemp, Log, TEXT("--------Offset: %s, RoleUV: %s-------"), *Offset.ToString(), *ForcePos.ToString());
+		//UE_LOG(LogTemp, Log, TEXT("--------Offset: %s, RoleUV: %s-------"), *Offset.ToString(), *ForcePos.ToString());
 		PixelShader->SetParameters(RHICmdList, FVector2D(1.f / RectSize.X, 1.f / RectSize.Y), Offset, GetPreHeightField());
 
 		RHICmdList.SetStreamSource(0, GInteractiveWaterStreamBuffer.VertexBuffer, 0);
@@ -326,6 +379,45 @@ void FInteractiveWater::UpdateHeightField_RenderThread()
 	RHICmdList.EndRenderPass();
 
 	Switcher += 1;
+}
+
+void FInteractiveWater::ComputeNormal_RenderThread()
+{
+	check(IsInRenderingThread());
+
+	FRHICommandListImmediate& RHICmdList = GetImmediateCommandList_ForRenderCommand();
+
+	FRHIRenderPassInfo RPInfo(NormalMap->GetRenderTargetTexture(), ERenderTargetActions::Load_Store);
+	RHICmdList.BeginRenderPass(RPInfo, TEXT("ComputeWaterNormal"));
+	{
+		RHICmdList.SetViewport(1, 1, 0, RectSize.X - 1, RectSize.Y - 1, 1);
+
+		FGraphicsPipelineStateInitializer GraphicsPSOInit;
+		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+		GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
+		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
+		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false>::GetRHI();
+		
+		FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(FeatureLevel);
+		TShaderMapRef<FCommonQuadVS> VertexShader(ShaderMap);
+		TShaderMapRef<FComputeNormalPS> PixelShader(ShaderMap);
+
+		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GScreenVertexDeclaration.VertexDeclarationRHI;
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
+
+		// Set Shader Params
+		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+		
+		PixelShader->SetParameters(RHICmdList, FVector2D(1.f / RectSize.X, 1.f / RectSize.Y), GetPreHeightField());
+
+		RHICmdList.SetStreamSource(0, GInteractiveWaterStreamBuffer.VertexBuffer, 0);
+		RHICmdList.DrawIndexedPrimitive(GInteractiveWaterStreamBuffer.IndexBuffer, 0, 0, GInteractiveWaterStreamBuffer.GetVertexNum(), 0, GInteractiveWaterStreamBuffer.GetIndexNum() / 3, 1);
+	}
+	UE_LOG(LogTemp, Log, TEXT("ComputeNormal_RenderThread"));
+
+	RHICmdList.EndRenderPass();
 }
 
 bool FInteractiveWater::IsResourceValid()

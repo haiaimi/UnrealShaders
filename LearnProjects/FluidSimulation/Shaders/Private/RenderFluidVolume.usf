@@ -72,7 +72,8 @@ void VolumeRayMarchVS(float2 Position : ATTRIBUTE0,
 
 float3 EyePosToVolume;
 Texture2D<float4> RayMarchDataTexture;
-SamplerState RayMarchSampler;
+SamplerState RayMarchSampler0;
+SamplerState RayMarchSampler1;
 Texture3D<float4> VolumeFluidColor;
 float VolumeBoxScale;
 float MaxVolumeBoxSize;
@@ -81,7 +82,7 @@ float3 VolumeDimension;
 
 float4 SampleColor(float4 Color, float3 SamplePos, float Weight)
 {
-	float4 VoxelColor = VolumeFluidColor.SampleLevel(RayMarchSampler, SamplePos, 0);
+	float4 VoxelColor = VolumeFluidColor.SampleLevel(RayMarchSampler0, SamplePos, 0);
 	float TempAlpha = VoxelColor.r * (1.f - Color.a) * Weight;
 	Color.rgb += VoxelColor.r * TempAlpha;
 	Color.a += TempAlpha * Weight;
@@ -91,7 +92,7 @@ float4 SampleColor(float4 Color, float3 SamplePos, float Weight)
 void VolumeRayMarchPS(in FRayMarchPixelInput Input,
 						out float4 OutColor : SV_Target)
 {
-	float4 RayData = RayMarchDataTexture.Sample(RayMarchSampler, Input.UV);
+	float4 RayData = RayMarchDataTexture.Sample(RayMarchSampler1, Input.UV);
 	BRANCH
 	if (RayData.w <= 0.f)
 	{

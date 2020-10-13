@@ -35,6 +35,9 @@ public:
 
 public:
 	UPROPERTY(EditDefaultsOnly)
+	int32 InterationTimesPerSecond;
+
+	UPROPERTY(EditDefaultsOnly)
 	FIntPoint FieldSize;
 
 	UPROPERTY(EditDefaultsOnly)
@@ -45,6 +48,9 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
 	class UTextureRenderTarget2D* HeightFieldRT1;
+
+	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
+	class UTextureRenderTarget2D* NormalMap;
 
 	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
 	class UMaterialInstanceDynamic* MTInst;

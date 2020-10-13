@@ -12,6 +12,7 @@
 
 // Sets default values for this component's properties
 UInteractiveWaterComponent::UInteractiveWaterComponent() : 
+	InterationTimesPerSecond(30.f),
 	FieldSize(512),
 	InteractiveAreaSize(5000.f),
 	HeightFieldRT0(nullptr),
@@ -49,7 +50,16 @@ void UInteractiveWaterComponent::BeginPlay()
 		RT->UpdateResource();
 	}
 
-	InteractiveWaterProxy->SetResource(HeightFieldRT0, HeightFieldRT1);
+	NormalMap = NewObject<UTextureRenderTarget2D>();
+	NormalMap->SizeX = FieldSize.X;
+	NormalMap->SizeY = FieldSize.Y;
+	NormalMap->AddressX = TextureAddress::TA_Clamp;
+	NormalMap->AddressY = TextureAddress::TA_Clamp;
+	NormalMap->RenderTargetFormat = ETextureRenderTargetFormat::RTF_RGBA16f;
+	NormalMap->ClearColor = FLinearColor::Transparent;
+	NormalMap->UpdateResource();
+	
+	InteractiveWaterProxy->SetResource(HeightFieldRT0, HeightFieldRT1, NormalMap, 1.f / InterationTimesPerSecond, GetWorld()->Scene->GetFeatureLevel());
 
 	GetOwner()->OnActorBeginOverlap.AddDynamic(this, &UInteractiveWaterComponent::OnBeginOverlap);
 	GetOwner()->OnActorEndOverlap.AddDynamic(this, &UInteractiveWaterComponent::OnEndOverlap);
@@ -69,12 +79,17 @@ void UInteractiveWaterComponent::TickComponent(float DeltaTime, ELevelTick TickT
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	
+	UE_LOG(LogTemp, Log, TEXT("---------TickComponent---------"));
+
 	const FVector CurLocation = GetOwner()->GetActorLocation();
+	if(!InteractiveWaterProxy->ShouldSimulate(DeltaTime))
+		return;
+	
 	const FVector DeltaLocation = CurLocation - PreLocation;
 	FVector2D DeltaUV = FVector2D(DeltaLocation) / InteractiveAreaSize;
 	if (FMath::IsNearlyZero(DeltaUV.Size()) && DeltaLocation.Size() > 0.f)
 	{
-		//DeltaUV = FVector2D(0.0001f, 0.0001f);
+		DeltaUV = FVector2D(0.0001f, 0.0001f);
 	}
 	FVector2D UVToHeightField = FVector2D(DeltaUV.Y, -DeltaUV.X);
 
@@ -100,7 +115,7 @@ void UInteractiveWaterComponent::TickComponent(float DeltaTime, ELevelTick TickT
 		//MTInst = CurrentWaterMesh->CreateAndSetMaterialInstanceDynamic(0);
 		MTInst->SetVectorParameterValue(TEXT("RoleLocation"), FLinearColor(CurLocation));
 		MTInst->SetVectorParameterValue(TEXT("RoleUV"), FLinearColor(FVector(InteractiveWaterProxy->ForcePos, 0.f)));
-		MTInst->SetTextureParameterValue(TEXT("WaterHeightMap"), CurHeightMap);
+		MTInst->SetTextureParameterValue(TEXT("NormalMap"), NormalMap);
 	}
 }
 

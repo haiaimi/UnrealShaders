@@ -47,11 +47,12 @@ void UFluidSimulationFunctionLibrary::SimulateFluid3D(const UObject* WorldContex
 
 void UFluidSimulationFunctionLibrary::SimulateIntearctiveWater01(const UObject* WorldContextObject, const FVector2D& InMoveDir, class UTextureRenderTarget* HeightField01, class UTextureRenderTarget* HeightField02, float DeltaTime)
 {
+	UWorld* World = WorldContextObject->GetWorld();
 	if (!GInteractiveWater.IsResourceValid())
 	{
-		GInteractiveWater.SetResource(HeightField01, HeightField02);
+		GInteractiveWater.SetResource(HeightField01, HeightField02, nullptr, 0.1f, World->Scene->GetFeatureLevel());
 	}
-	UWorld* World = WorldContextObject->GetWorld();
+	
 	GInteractiveWater.DeltaTime = DeltaTime;
 	GInteractiveWater.MoveDir = InMoveDir;
 	if (!GEngine->PreRenderDelegate.IsBoundToObject(World))
