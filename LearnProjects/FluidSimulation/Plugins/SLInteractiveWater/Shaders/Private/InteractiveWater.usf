@@ -1,0 +1,101 @@
+#include "/Engine/Public/Platform.ush"
+
+
+void CommonQuadVS(float2 Position : ATTRIBUTE0,
+				  float2 UV : ATTRIBUTE1,
+				  out float2 OutUV : TEXCOORD,
+				  out float4 OutPos : SV_Position)
+{
+	OutUV = UV;
+	OutPos = float4(Position, 0.f, 1.f);
+}
+
+int InteractivePointCount;
+float4 InteractivePoints[10];
+float2 FieldOffset;
+float2 GridDelta;
+
+Texture2D<half2> HeightField;
+SamplerState WaterSampler;
+
+void ApplyForcePS(in float2 UV : TEXCOORD,
+					out half2 OutColor : SV_Target)
+{
+	UV += FieldOffset;
+	float2 SampleUV = GridDelta + (1.f - 2 * GridDelta) * UV;
+	half2 Center = HeightField.Sample(WaterSampler, SampleUV);
+	LOOP
+	for (int i = 0; i < InteractivePointCount; ++i)
+	{
+		float2 DeltaPos = InteractivePoints[i].xy - UV;
+		float C = exp(-dot(DeltaPos, DeltaPos) / InteractivePoints[i].z);
+		Center.r += 0.5f * (1.f - cos(3.14159f * (max(0.f, 1.f - length(DeltaPos) / InteractivePoints[i].z)))) * InteractivePoints[i].w;
+	}
+	
+	OutColor = Center;
+}
+
+
+void UpdateHeightFieldPS(in float2 UV : TEXCOORD,
+						out half2 OutColor : SV_Target)
+{
+	float2 UsefulRegion = (1.f - 2.f * GridDelta);
+	
+	float2 dx = float2(GridDelta.x, 0.f) * UsefulRegion;
+	float2 dy = float2(0.f, GridDelta.y) * UsefulRegion;
+	
+	float2 SampleUV = GridDelta + UsefulRegion * UV;
+	
+	half2 Left = HeightField.Sample(WaterSampler, SampleUV - dx);
+	half2 Right = HeightField.Sample(WaterSampler, SampleUV + dx);
+	half2 Bottom = HeightField.Sample(WaterSampler, SampleUV - dy);
+	half2 Up = HeightField.Sample(WaterSampler, SampleUV + dy);
+
+	half2 Center = HeightField.Sample(WaterSampler, SampleUV);
+	//half4 OutHeight = HeightField.GatherRed(WaterSampler, SampleUV, -dx, dx, -dy, dy);
+	
+	//half AverageHeight = (OutHeight.x + OutHeight.y + OutHeight.z, OutHeight.w) * 0.25f;
+	
+	// #1
+	//half AverageHeight = (Left.x + Right.x + Bottom.x + Up.x) * 0.25f;
+	//Center.y += 0.6f * (AverageHeight - Center.x) * 2.f;
+	//Center.y *= 0.98f;
+	//Center.x += Center.y;
+	
+	// #2
+	//float c = 1.f;
+	//float DeltaT = 0.5f;
+	//half NewHeight = c * c * DeltaT * (Left.x + Right.x + Bottom.x + Up.x) - (2.f - 4.f * c * c * DeltaT * Center.x) - Center.y;
+	//NewHeight *= 0.96f;
+	//OutColor.x = NewHeight;
+	//OutColor.y = Center.x;
+	
+	// #3
+	half FourCenter = 4 * Center.x;
+	half NewHeight = (Left.x + Right.x + Bottom.x + Up.x) * 0.5f - Center.y;
+	
+	//half NewHeight = (OutHeight.x + OutHeight.y + OutHeight.z + OutHeight.w /*- FourCenter * 1.0f + FourCenter*/) * 0.5f - Center.y;
+	NewHeight = NewHeight * 0.96f;
+	OutColor.x = NewHeight;
+	OutColor.y = Center.x;
+}
+
+void ComputeNormalPS(in float2 UV : TEXCOORD,
+					out half4 OutColor : SV_Target)
+{
+	float2 UsefulRegion = (1.f - 2.f * GridDelta);
+	
+	float2 dx = float2(GridDelta.x, 0.f) * UsefulRegion;
+	float2 dy = float2(0.f, GridDelta.y) * UsefulRegion;
+	float2 SampleUV = GridDelta + UsefulRegion * UV;
+	
+	half2 Left = HeightField.Sample(WaterSampler, SampleUV - dx);
+	half2 Right = HeightField.Sample(WaterSampler, SampleUV + dx);
+	half2 Bottom = HeightField.Sample(WaterSampler, SampleUV - dy);
+	half2 Up = HeightField.Sample(WaterSampler, SampleUV + dy);
+	
+	float2 GradTemp = float2(Right.x - Left.x, Up.x - Bottom.x) * 0.01f;
+	float3 GradX = float3(GridDelta.x * 2.f, 0.f, GradTemp.x);
+	float3 GradY = float3(0.f, GridDelta.y * 2.f, GradTemp.y);
+	OutColor = half4(normalize(cross(GradX, GradY)), 0.f);
+}

@@ -1,0 +1,141 @@
+#include "/Engine/Public/Platform.ush"
+
+Texture2D<float> SceneDepth;
+
+void DepthDownSamplePS(in float2 UV : TEXCOORD,
+						out float Depth : SV_Depth)
+{
+	uint2 SampleLocation = floor(UV);
+}
+
+float4x4 WorldViewProjection;
+float4x4 WorldView;
+
+struct FVolumePixelInput
+{
+	float4 OutPosition : SV_Position;
+	float4 VolumePosition : COLOR;
+};
+
+void VolumeBackVS(float3 VertexPosition : ATTRIBUTE0,
+					out float4 OutPosition : SV_Position)
+{
+	OutPosition = mul(float4(VertexPosition, 1), WorldViewProjection);
+}
+
+void VolumeBackPS(in float4 Position : SV_Position,
+					out float4 OutColor : SV_Target0)
+{
+	float3 BackMark = float3(0.f, -1.f, 0.f);
+	OutColor.xyz = BackMark;
+	OutColor.w = Position.w;
+}
+
+void VolumeFrontVS(float3 VertexPosition : ATTRIBUTE0,
+					out FVolumePixelInput Result)
+{
+	Result.VolumePosition.xyz = VertexPosition;
+	float4 ClipSpace = mul(float4(VertexPosition, 1), WorldViewProjection);
+	Result.VolumePosition.w = ClipSpace.w;
+	Result.OutPosition = ClipSpace;
+}
+
+
+void VolumeFrontPS(in FVolumePixelInput Input,
+					out float4 OutColor : SV_Target0)
+{
+	OutColor.xyz = Input.VolumePosition.xyz;
+	OutColor.w = Input.VolumePosition.w;
+}
+
+float NearPlaneDistance;
+float4x4 InvWorldViewProjection;
+float4x4 InvProjection;
+
+struct FRayMarchPixelInput
+{
+	float4 OutPosition : SV_Position;
+	float4 VolumePosition : COLOR;
+	float4 ViewSpaceDir : COLOR1;
+	float2 UV : TEXCOORD;
+};
+
+void VolumeRayMarchVS(float2 Position : ATTRIBUTE0,
+						float2 UV : ATTRIBUTE1,
+						out FRayMarchPixelInput OutResult)
+{
+	OutResult.OutPosition = float4(Position, 0.f, 1.f);
+	OutResult.VolumePosition = mul(float4(Position * NearPlaneDistance, NearPlaneDistance, NearPlaneDistance), InvWorldViewProjection);
+	OutResult.ViewSpaceDir = mul(float4(Position * NearPlaneDistance, NearPlaneDistance, NearPlaneDistance), InvProjection);
+	OutResult.UV = UV;
+}
+
+float3 EyePosToVolume;
+Texture2D<float4> RayMarchDataTexture;
+SamplerState RayMarchSampler0;
+SamplerState RayMarchSampler1;
+Texture3D<float4> VolumeFluidColor;
+float VolumeBoxScale;
+float MaxVolumeBoxSize;
+float3 PerGridSize;
+float3 VolumeDimension;
+
+float4 SampleColor(float4 Color, float3 SamplePos, float Weight)
+{
+	float4 VoxelColor = VolumeFluidColor.SampleLevel(RayMarchSampler0, SamplePos, 0);
+	float TempAlpha = VoxelColor.r * (1.f - Color.a) * Weight;
+	Color.rgb += VoxelColor.r * TempAlpha;
+	Color.a += TempAlpha * Weight;
+	return Color;
+}
+
+void VolumeRayMarchPS(in FRayMarchPixelInput Input,
+						out float4 OutColor : SV_Target)
+{
+	float4 RayData = RayMarchDataTexture.Sample(RayMarchSampler1, Input.UV);
+	BRANCH
+	if (RayData.w <= 0.f)
+	{
+		OutColor = 0.f;
+		return;
+	}
+	
+	float3 StartPos = RayData.xyz;
+	BRANCH
+	float Depth = RayData.w;
+	if(RayData.y < 0)  // It means that the view nearplane is in the volume
+	{
+		RayData.xyz = Input.VolumePosition.xyz;
+		RayData.w = RayData.w - NearPlaneDistance;
+	}
+	Input.ViewSpaceDir /= Input.ViewSpaceDir.z;
+	RayData.w *= length(Input.ViewSpaceDir.xyz);
+	
+	float StepLength = length(PerGridSize);
+	float TSampleCount = (RayData.w / (StepLength * VolumeBoxScale)) * 2.f;
+	//float TSampleCount = (RayData.w / VolumeBoxScale) * MaxVolumeBoxSize * 2.f + 100.f;
+	float SampleCount = floor(TSampleCount);
+	
+	float3 SampleStep = normalize((RayData.xyz - EyePosToVolume) /* * VolumeDimension*/) * StepLength * 0.5f;
+	float3 SamplePos = RayData.xyz + SampleStep;
+	
+	float4 Color = 0;
+	
+	int i = 0;
+	for (; i < SampleCount; ++i)
+	{
+		Color = SampleColor(Color, SamplePos, 1.f);
+		SamplePos += SampleStep;
+		
+		// ww do not need to do more compution if alpha is almost 1 
+		if(Color.a > 0.99f)
+			break;
+	}
+	
+	if (i == SampleCount)
+	{
+		Color = SampleColor(Color, SamplePos, frac(TSampleCount));
+	}
+	
+	OutColor = Color;
+}

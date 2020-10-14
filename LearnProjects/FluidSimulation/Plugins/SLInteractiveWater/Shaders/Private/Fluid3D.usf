@@ -1,0 +1,328 @@
+#include "/Engine/Public/Platform.ush"
+
+RWTexture3D<float4> RWVelocityField;
+Texture3D<float4> VelocityField;
+Texture3D<float4> TempVelocityField;
+
+float TimeStep;
+
+void LinearSampleTexture3D(Texture3D<float4> InTexture, float3 Coord, out float4 OutResult)
+{
+	uint3 TextureDim;
+	InTexture.GetDimensions(TextureDim.x, TextureDim.y, TextureDim.z);
+	uint3 FloorCoord = uint3(floor(Coord));
+	uint3 RoundUpCoord = clamp(FloorCoord + 1u, 0, TextureDim - 1);
+	
+	// Two bilinear Interpolation 
+	float4 Value0 = lerp(lerp(InTexture.Load(uint4(FloorCoord, 0)), InTexture.Load(uint4(RoundUpCoord.x, FloorCoord.y, FloorCoord.z, 0)), frac(Coord.x)),
+						 lerp(InTexture.Load(uint4(FloorCoord.x, RoundUpCoord.y, FloorCoord.z, 0)), InTexture.Load(uint4(RoundUpCoord.x, RoundUpCoord.y, FloorCoord.z, 0)), frac(Coord.x)),
+						 frac(Coord.y));
+	
+	float4 Value1 = lerp(lerp(InTexture.Load(uint4(FloorCoord.x, FloorCoord.y, RoundUpCoord.z, 0)), InTexture.Load(uint4(RoundUpCoord.x, FloorCoord.y, RoundUpCoord.z, 0)), frac(Coord.x)),
+						 lerp(InTexture.Load(uint4(FloorCoord.x, RoundUpCoord.y, RoundUpCoord.z, 0)), InTexture.Load(uint4(RoundUpCoord, 0)), frac(Coord.x)),
+						 frac(Coord.y));
+
+	OutResult = lerp(Value0, Value1, frac(Coord.z));
+}
+
+Texture3D<float4> SrcTexture;
+RWTexture3D<float4> RWDstTexture;
+
+[numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, THREAD_GROUP_SIZE)]
+void AdvectVelocity(uint3 GroupId : SV_GroupID,
+					uint3 DispatchThreadId : SV_DispatchThreadID,
+					uint3 GroupThreadId : SV_GroupThreadID)
+{
+	float4 PreVelocity = VelocityField.Load(uint4(DispatchThreadId, 0));
+	float3 PreCoord = (float3) DispatchThreadId - PreVelocity.xyz * TimeStep;
+
+	float4 Result;
+	LinearSampleTexture3D(SrcTexture, PreCoord, Result);
+	RWDstTexture[DispatchThreadId] = Result;
+}
+
+// #MacCormack Advection Scheme. The more order-accuracy advection scheme, we will use two intermediate values, it may be used to optimize final appearance
+
+//float4 PS_ADVECT_MACCORMACK(GS_OUTPUT_FLUIDSIM in, float timestep) : SV_Target
+//{ 
+//	// Trace back along the initial characteristic - we'll use    
+//	// values near this semi-Lagrangian "particle" to clamp our    
+//	// final advected value.    
+//	float3 cellVelocity = velocity.Sample(samPointClamp, in.CENTERCELL).xyz; 
+//	float3 npos = in.cellIndex - timestep * cellVelocity; // Find the cell corner closest to the "particle" and compute the    
+//	// texture coordinate corresponding to that location. 
+//	npos = floor(npos + float3(0.5f, 0.5f, 0.5f)); 
+//	npos = cellIndex2TexCoord(npos); 
+//	// Get the values of nodes that contribute to the interpolated value.    
+//	// Texel centers will be a half-texel away from the cell corner.    
+//	float3 ht = float3(0.5f / textureWidth, 0.5f / textureHeight, 0.5f / textureDepth); 
+//	float4 nodeValues[8]; 
+//	nodeValues[0] = phi_n.Sample(samPointClamp, npos + float3(-ht.x, -ht.y, -ht.z)); 
+//	nodeValues[1] = phi_n.Sample(samPointClamp, npos + float3(-ht.x, -ht.y, ht.z)); 
+//	nodeValues[2] = phi_n.Sample(samPointClamp, npos + float3(-ht.x, ht.y, -ht.z)); 
+//	nodeValues[3] = phi_n.Sample(samPointClamp, npos + float3(-ht.x, ht.y, ht.z)); 
+//	nodeValues[4] = phi_n.Sample(samPointClamp, npos + float3(ht.x, -ht.y, -ht.z)); 
+//	nodeValues[5] = phi_n.Sample(samPointClamp, npos + float3(ht.x, -ht.y, ht.z)); 
+//	nodeValues[6] = phi_n.Sample(samPointClamp, npos + float3(ht.x, ht.y, -ht.z));
+//	nodeValues[7] = phi_n.Sample(samPointClamp, npos + float3(ht.x, ht.y, ht.z)); // Determine a valid range for the result.    
+//	float4 phiMin = min(min(min(min(min(min(min(nodeValues[0], nodeValues [1]), nodeValues [2]), nodeValues [3]), nodeValues[4]), nodeValues [5]), nodeValues [6]), nodeValues [7]); 
+//	float4 phiMax = max(max(max(max(max(max(max(nodeValues[0], nodeValues [1]), nodeValues [2]), nodeValues [3]), nodeValues[4]), nodeValues [5]), nodeValues [6]), nodeValues [7]); 
+	
+//	// Perform final advection, combining values from intermediate    
+//	// advection steps.    
+//	float4 r = phi_n_1_hat.Sample(samLinear, nposTC) + 0.5 * (phi_n.Sample(samPointClamp, in.CENTERCELL) - phi_n_hat.Sample(samPointClamp, in.CENTERCELL)); 
+//	// Clamp result to the desired range. 
+//	r = max(min(r, phiMax), phiMin); 
+//	return r; 
+//} 
+
+void LoadTexture3DNeighbors4(Texture3D<float4> InTexture, uint3 Coord, out float4 Left, out float4 Forward, out float4 Right, out float4 Back, out float4 Up, out float4 Bottom)
+{
+	uint3 TextureDim;
+	InTexture.GetDimensions(TextureDim.x, TextureDim.y, TextureDim.z);
+	
+	Left = InTexture.Load(clamp(uint4(Coord - uint3(1, 0, 0), 0), 0, uint4(TextureDim - 1, 0)));
+	Forward = InTexture.Load(clamp(uint4(Coord + uint3(0, 0, 1), 0), 0, uint4(TextureDim - 1, 0)));
+	Right = InTexture.Load(clamp(uint4(Coord + uint3(1, 0, 0), 0), 0, uint4(TextureDim - 1, 0)));
+	Back = InTexture.Load(clamp(uint4(Coord - uint3(0, 0, 1), 0), 0, uint4(TextureDim - 1, 0)));
+	Up = InTexture.Load(clamp(uint4(Coord + uint3(0, 1, 0), 0), 0, uint4(TextureDim - 1, 0)));
+	Bottom = InTexture.Load(clamp(uint4(Coord - uint3(0, 1, 0), 0), 0, uint4(TextureDim - 1, 0)));
+}
+
+void LoadTexture3DNeighbors(Texture3D<float> InTexture, uint3 Coord, out float Left, out float Forward, out float Right, out float Back, out float Up, out float Bottom)
+{
+	uint3 TextureDim;
+	InTexture.GetDimensions(TextureDim.x, TextureDim.y, TextureDim.z);
+	
+	Left = InTexture.Load(clamp(uint4(Coord - uint3(1, 0, 0), 0), 0, uint4(TextureDim - 1, 0)));
+	Forward = InTexture.Load(clamp(uint4(Coord + uint3(0, 0, 1), 0), 0, uint4(TextureDim - 1, 0)));
+	Right = InTexture.Load(clamp(uint4(Coord + uint3(1, 0, 0), 0), 0, uint4(TextureDim - 1, 0)));
+	Back = InTexture.Load(clamp(uint4(Coord - uint3(0, 0, 1), 0), 0, uint4(TextureDim - 1, 0)));
+	Up = InTexture.Load(clamp(uint4(Coord + uint3(0, 1, 0), 0), 0, uint4(TextureDim - 1, 0)));
+	Bottom = InTexture.Load(clamp(uint4(Coord - uint3(0, 1, 0), 0), 0, uint4(TextureDim - 1, 0)));
+}
+
+
+float Halfrdx;
+RWTexture3D<float4> RWVorticityField;
+
+// Compute curl of the velocity field
+[numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, THREAD_GROUP_SIZE)]
+void ComputeVorticity(uint3 GroupId : SV_GroupID,
+			   uint3 DispatchThreadId : SV_DispatchThreadID,
+			   uint3 GroupThreadId : SV_GroupThreadID)
+{
+	float4 Left, Forward, Right, Back, Up, Bottom;
+	LoadTexture3DNeighbors4(VelocityField, DispatchThreadId, Left, Forward, Right, Back, Up, Bottom);
+	RWVorticityField[DispatchThreadId + 1] = -0.5f * float4((Forward.y - Back.y) - (Up.z - Bottom.z),
+														  (Right.z - Left.z) - (Forward.x - Back.x),
+														  (Up.x - Bottom.x) - (Right.y - Left.y), 0.f);
+}
+
+Texture3D<float4> VorticityField;
+float ConfinementScale;
+
+// Apply vorticity force
+[numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, THREAD_GROUP_SIZE)]
+void VorticityForce(uint3 GroupId : SV_GroupID,
+			   uint3 DispatchThreadId : SV_DispatchThreadID,
+			   uint3 GroupThreadId : SV_GroupThreadID)
+{
+	float4 VC = VorticityField.Load(uint4(DispatchThreadId, 0));
+	float4 Left, Forward, Right, Back, Up, Bottom;
+	LoadTexture3DNeighbors4(VorticityField, DispatchThreadId, Left, Forward, Right, Back, Up, Bottom);
+	float4 CurVelocity = VelocityField.Load(uint4(DispatchThreadId, 0));
+	
+	// Compute normalize force vector nabla|omega|
+	float4 Force = Halfrdx * float4(length(Right) - length(Left), length(Up) - length(Bottom), length(Forward) - length(Back), 0);
+	Force = normalize(max(0.001f, Force));
+	// We need do cross prroduct with current vorticity, see more in VorticityConfinement formula.
+	Force.xyz = TimeStep * ConfinementScale * float3(Force.y * VC.z - Force.z * VC.y, Force.z * VC.x - Force.x * VC.z, Force.x * VC.y - Force.y * VC.x);
+	RWVelocityField[DispatchThreadId] = VelocityField.Load(uint4(DispatchThreadId, 0)) + Force;
+}
+
+float4 ForceParam;
+int3 ForcePos;
+float Radius;
+
+// Add force or color density to fluid
+[numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, THREAD_GROUP_SIZE)]
+void AddImpluse(uint3 GroupId : SV_GroupID,
+			   uint3 DispatchThreadId : SV_DispatchThreadID,
+			   uint3 GroupThreadId : SV_GroupThreadID)
+{
+	float3 DeltaPos = float3(ForcePos - (int3) DispatchThreadId);
+	float c = exp(-dot(DeltaPos, DeltaPos) / Radius);
+	RWDstTexture[DispatchThreadId] = SrcTexture.Load(uint4(DispatchThreadId, 0)) + ForceParam * c;
+}
+
+// #TODO Now only consider fluid volume boundary
+bool IsBoundary(uint3 FieldDim, uint3 Coord)
+{
+	FieldDim += 1u;
+	return (Coord.x == 0 || Coord.y == 0 || Coord.z == 0 ||
+			Coord.x == FieldDim.x || Coord.y == FieldDim.y || Coord.z == FieldDim.z);
+}
+
+float4 GetBoundaryVelocity(uint3 Coord)
+{
+	return 0.f;
+}
+
+RWTexture3D<float> RWDivergence;
+
+// Compute divergence of velocity field
+[numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, THREAD_GROUP_SIZE)]
+void DivergenceCS(uint3 GroupId : SV_GroupID,
+			   uint3 DispatchThreadId : SV_DispatchThreadID,
+			   uint3 GroupThreadId : SV_GroupThreadID)
+{
+	float4 Left, Forward, Right, Back, Up, Bottom;
+	LoadTexture3DNeighbors4(VelocityField, DispatchThreadId, Left, Forward, Right, Back, Up, Bottom);
+	
+	uint3 FieldDim;
+	VelocityField.GetDimensions(FieldDim.x, FieldDim.y, FieldDim.z);
+	
+	uint3 BoundaryCoord = DispatchThreadId + 1u - uint3(1, 0, 0);
+	BRANCH
+	if (IsBoundary(FieldDim, BoundaryCoord))
+	Left = GetBoundaryVelocity(BoundaryCoord);
+	BoundaryCoord = DispatchThreadId + 1u + uint3(0, 0, 1);
+	BRANCH
+	if (IsBoundary(FieldDim, BoundaryCoord))
+	Forward = GetBoundaryVelocity(BoundaryCoord);
+	BoundaryCoord = DispatchThreadId + 1u + uint3(1, 0, 0);
+	BRANCH
+	if (IsBoundary(FieldDim, BoundaryCoord))
+	Right = GetBoundaryVelocity(BoundaryCoord);
+	BoundaryCoord = DispatchThreadId + 1u - uint3(0, 0, 1);
+	BRANCH
+	if (IsBoundary(FieldDim, BoundaryCoord))
+	Back = GetBoundaryVelocity(BoundaryCoord);
+	BoundaryCoord = DispatchThreadId + 1u + uint3(0, 1, 0);
+	BRANCH
+	if (IsBoundary(FieldDim, BoundaryCoord))
+	Up = GetBoundaryVelocity(BoundaryCoord);
+	BoundaryCoord = DispatchThreadId + 1u - uint3(0, 1, 0);
+	BRANCH
+	if (IsBoundary(FieldDim, BoundaryCoord))
+	Bottom = GetBoundaryVelocity(BoundaryCoord);
+	
+	RWDivergence[DispatchThreadId] = 0.5f * ((Right.x - Left.x) + (Up.y - Bottom.y) + (Forward.z - Back.z));
+}
+
+Texture3D<float> DivergenceField;
+Texture3D<float> PressureField;
+RWTexture3D<float> RWPressureField;
+
+[numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, THREAD_GROUP_SIZE)]
+void Jacobi(uint3 GroupId : SV_GroupID,
+			uint3 DispatchThreadId : SV_DispatchThreadID,
+			uint3 GroupThreadId : SV_GroupThreadID)
+{
+	float Center = PressureField.Load(uint4(DispatchThreadId, 0));
+	float b = DivergenceField.Load(uint4(DispatchThreadId, 0));
+	float Left, Forward, Right, Back, Up, Bottom;
+	LoadTexture3DNeighbors(PressureField, DispatchThreadId, Left, Forward, Right, Back, Up, Bottom);
+	
+	uint3 FieldDim;
+	PressureField.GetDimensions(FieldDim.x, FieldDim.y, FieldDim.z);
+	
+	uint3 BoundaryCoord = DispatchThreadId + 1u - uint3(1, 0, 0);
+	BRANCH
+	if (IsBoundary(FieldDim, BoundaryCoord)) Left = Center;
+	BoundaryCoord = DispatchThreadId + 1u + uint3(0, 0, 1);
+	BRANCH 
+	if (IsBoundary(FieldDim, BoundaryCoord)) Forward = Center;
+	BoundaryCoord = DispatchThreadId + 1u + uint3(1, 0, 0);
+	BRANCH
+	if (IsBoundary(FieldDim, BoundaryCoord)) Right = Center;
+	BoundaryCoord = DispatchThreadId + 1u - uint3(0, 0, 1);
+	BRANCH 
+	if (IsBoundary(FieldDim, BoundaryCoord)) Back = Center;
+	BoundaryCoord = DispatchThreadId + 1u + uint3(0, 1, 0);
+	BRANCH 
+	if (IsBoundary(FieldDim, BoundaryCoord)) Up = Center;
+	BoundaryCoord = DispatchThreadId + 1u - uint3(0, 1, 0);
+	BRANCH 
+	if (IsBoundary(FieldDim, BoundaryCoord)) Bottom = Center;
+	
+	RWPressureField[DispatchThreadId] = (Left + Forward + Right + Back + Up + Bottom - b) / 6.f;
+}
+
+
+// Project velocity field to divergence-free field
+[numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, THREAD_GROUP_SIZE)]
+void SubstractGradient(uint3 GroupId : SV_GroupID,
+					   uint3 DispatchThreadId : SV_DispatchThreadID,
+			           uint3 GroupThreadId : SV_GroupThreadID)
+{
+	uint3 FieldDim;
+	PressureField.GetDimensions(FieldDim.x, FieldDim.y, FieldDim.z);
+	
+	BRANCH
+	if (IsBoundary(FieldDim, DispatchThreadId + 1u))
+		RWVelocityField[DispatchThreadId] = GetBoundaryVelocity(DispatchThreadId + 1u);
+
+	float Center = PressureField.Load(uint4(DispatchThreadId, 0u));
+	float Left, Forward, Right, Back, Up, Bottom;
+	LoadTexture3DNeighbors(PressureField, DispatchThreadId, Left, Forward, Right, Back, Up, Bottom);
+	
+	float3 ObstacleVelocity = 0.f;
+	float3 VelocityMask = 1.f;
+	uint3 BoundaryCoord = 0;
+	BoundaryCoord = DispatchThreadId + 1u - uint3(1, 0, 0);
+	BRANCH
+	if (IsBoundary(FieldDim, BoundaryCoord))
+	{
+		Left = Center;
+		ObstacleVelocity.x = GetBoundaryVelocity(BoundaryCoord).x;
+		VelocityMask.x = 0.f;
+	}
+	BoundaryCoord = DispatchThreadId + 1u + uint3(0, 0, 1);
+	BRANCH
+	if (IsBoundary(FieldDim, BoundaryCoord))
+	{
+		Forward = Center;
+		ObstacleVelocity.z = GetBoundaryVelocity(BoundaryCoord).z;
+		VelocityMask.z = 0.f;
+	}
+	BoundaryCoord = DispatchThreadId + 1u - uint3(0, 0, 1);
+	BRANCH
+	if (IsBoundary(FieldDim, BoundaryCoord))
+	{
+		Back = Center;
+		ObstacleVelocity.z = GetBoundaryVelocity(BoundaryCoord).z;
+		VelocityMask.z = 0.f;
+	}
+	BoundaryCoord = DispatchThreadId + 1u + uint3(1, 0, 0);
+	BRANCH
+	if (IsBoundary(FieldDim, BoundaryCoord))
+	{
+		Right = Center;
+		ObstacleVelocity.x = GetBoundaryVelocity(BoundaryCoord).x;
+		VelocityMask.x = 0.f;
+	}
+	BoundaryCoord = DispatchThreadId + 1u - uint3(0, 1, 0);
+	BRANCH
+	if (IsBoundary(FieldDim, BoundaryCoord))
+	{
+		Bottom = Center;
+		ObstacleVelocity.y = GetBoundaryVelocity(BoundaryCoord).y;
+		VelocityMask.y = 0.f;
+	}
+	BoundaryCoord = DispatchThreadId + 1u + uint3(0, 1, 0);
+	BRANCH
+	if (IsBoundary(FieldDim, BoundaryCoord))
+	{
+		Up = Center;
+		ObstacleVelocity.y = GetBoundaryVelocity(BoundaryCoord).y;
+		VelocityMask.y = 0.f;
+	}
+	
+	// Substract current velocity with the gradient of pressure 
+	float3 Velocity = VelocityField.Load(uint4(DispatchThreadId, 0u)).xyz - (0.5f * float3(Right - Left, Up - Bottom, Forward - Back));
+	Velocity = VelocityMask * Velocity + ObstacleVelocity;
+	
+	RWVelocityField[DispatchThreadId] = float4(Velocity, 0.f);
+}
