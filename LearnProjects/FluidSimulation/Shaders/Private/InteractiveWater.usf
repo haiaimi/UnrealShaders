@@ -46,10 +46,10 @@ void UpdateHeightFieldPS(in float2 UV : TEXCOORD,
 	
 	float2 SampleUV = GridDelta + UsefulRegion * UV;
 	
-	float2 Left = HeightField.Sample(WaterSampler, SampleUV - dx);
-	float2 Right = HeightField.Sample(WaterSampler, SampleUV + dx);
-	float2 Bottom = HeightField.Sample(WaterSampler, SampleUV - dy);
-	float2 Up = HeightField.Sample(WaterSampler, SampleUV + dy);
+	half2 Left = HeightField.Sample(WaterSampler, SampleUV - dx);
+	half2 Right = HeightField.Sample(WaterSampler, SampleUV + dx);
+	half2 Bottom = HeightField.Sample(WaterSampler, SampleUV - dy);
+	half2 Up = HeightField.Sample(WaterSampler, SampleUV + dy);
 
 	half2 Center = HeightField.Sample(WaterSampler, SampleUV);
 	//half4 OutHeight = HeightField.GatherRed(WaterSampler, SampleUV, -dx, dx, -dy, dy);
@@ -94,8 +94,8 @@ void ComputeNormalPS(in float2 UV : TEXCOORD,
 	half2 Bottom = HeightField.Sample(WaterSampler, SampleUV - dy);
 	half2 Up = HeightField.Sample(WaterSampler, SampleUV + dy);
 	
-	half2 GradTemp = half2(Right.x - Left.x, Up.x - Bottom.x) * 0.01f;
-	half3 GradX = half3(0.f, GridDelta.x * 2.f, GradTemp.y);
-	half3 GradY = half3(GridDelta.y * 2.f, 0.f, GradTemp.x);
-	OutColor = half4(normalize(cross(GradY, GradX)), 0.f);
+	float2 GradTemp = float2(Right.x - Left.x, Up.x - Bottom.x) * 0.01f;
+	float3 GradX = float3(GridDelta.x * 2.f, 0.f, GradTemp.x);
+	float3 GradY = float3(0.f, GridDelta.y * 2.f, GradTemp.y);
+	OutColor = half4(normalize(cross(GradX, GradY)), 0.f);
 }

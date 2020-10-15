@@ -47,3 +47,16 @@
    }
    ```
 7. unroll, flatten是静态的，loop, branch偏动态。
+
+8. 在移动平台Opengl es上cross函数需要传入float3类型的向量，half3会出错。
+
+9. 在UE4中使用RenderGraph时需要注意shader参数名不能和函数名重合，如下：
+    ```
+    	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+			SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture3D<float4>, VelocityField) // 1
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<float>, RWDivergence) // 2
+		END_SHADER_PARAMETER_STRUCT()
+
+        IMPLEMENT_SHADER_TYPE(, FDivergenceCS, TEXT("/SLShaders/Fluid3D.usf"), TEXT("Divergence"), SF_Compute)
+    ```
+    上面这种声明方式在一些平台上会导致Shader编译错误，因为在*RWDivergence*可能在翻译时会以*Divergence*查找，这样就和函数名一致，从而导致编译报错。所以尽量要注意参数命名。
