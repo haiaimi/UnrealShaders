@@ -35,7 +35,7 @@ public:
  * 
  */
 UCLASS()
-class FLUIDSIMULATIONLIBRARY_API UFluidSimulationCommon : public UBlueprintFunctionLibrary
+class UFluidSimulationCommon : public UBlueprintFunctionLibrary
 {
 	GENERATED_BODY()
 

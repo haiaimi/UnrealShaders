@@ -99,7 +99,7 @@ public:
 	}
 };
 
-IMPLEMENT_SHADER_TYPE(, FCommonQuadVS, TEXT("/FluidShaders/InteractiveWater.usf"), TEXT("CommonQuadVS"), SF_Vertex);
+IMPLEMENT_SHADER_TYPE(, FCommonQuadVS, TEXT("/SLShaders/InteractiveWater.usf"), TEXT("CommonQuadVS"), SF_Vertex);
 
 class FApplyForcePS : public FGlobalShader
 {
@@ -159,20 +159,23 @@ public:
 	FUpdateHeightFieldPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
 	{
+		AttenuationRatio.Bind(Initializer.ParameterMap, TEXT("AttenuationRatio"));
 		GridDelta.Bind(Initializer.ParameterMap, TEXT("GridDelta"));
 		FieldOffset.Bind(Initializer.ParameterMap, TEXT("FieldOffset"));
 		HeightField.Bind(Initializer.ParameterMap, TEXT("HeightField"));
 		WaterSampler.Bind(Initializer.ParameterMap, TEXT("WaterSampler"));
 	}
 
-	void SetParameters(FRHICommandListImmediate& RHICmdList, FVector2D InGridDelta, FVector2D InFieldOffset, FRHITexture* InHeightField)
+	void SetParameters(FRHICommandListImmediate& RHICmdList, float Attenuation, FVector2D InGridDelta, FVector2D InFieldOffset, FRHITexture* InHeightField)
 	{
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), AttenuationRatio, Attenuation);
 		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), GridDelta, InGridDelta);
 		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), FieldOffset, InFieldOffset);
 		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), HeightField, WaterSampler, TStaticSamplerState<SF_Bilinear, AM_Border, AM_Border, AM_Border>::CreateRHI(), InHeightField);
 	}
 
 private:
+	LAYOUT_FIELD(FShaderParameter, AttenuationRatio)
 	LAYOUT_FIELD(FShaderParameter, GridDelta)
 	LAYOUT_FIELD(FShaderParameter, FieldOffset)
 	LAYOUT_FIELD(FShaderResourceParameter, HeightField)
@@ -270,7 +273,7 @@ bool FInteractiveWater::ShouldSimulateWater()
 
 void FInteractiveWater::UpdateWater()
 {
-	if(!bShouldUpdate) return;
+	//if(!bShouldUpdate) return;
 	//UE_LOG(LogTemp, Log, TEXT("---------TickSimulate---------"));
 	if (ForceTimeAccumlator >= 0.1f && MoveDir.Size() > 0.f)
 	{
@@ -288,6 +291,7 @@ void FInteractiveWater::UpdateWater()
 
 void FInteractiveWater::UpdateForceParams(float InDeltaTime, FVector2D CurDir, FVector CenterPos, float AreaSize, const TArray<FApplyForceParam>& AllForce)
 {
+	WaterAreaSize = AreaSize;
 	DeltaTime = InDeltaTime;
 	ForcePointParams.Reset();
 	FVector2D TempForcePos = UpdateRoleUV(CurDir);
@@ -300,8 +304,8 @@ void FInteractiveWater::UpdateForceParams(float InDeltaTime, FVector2D CurDir, F
 		if (UVToHeightField.X >= 0.f && UVToHeightField.X <= 1.f &&
 			UVToHeightField.Y >= 0.f && UVToHeightField.Y <= 1.f)
 		{
-			float LengthInTexture = Iter.ForceRadius / AreaSize * 2.f;
-			ForcePointParams.Add(FVector4(UVToHeightField, FVector2D(LengthInTexture, 1.f)));
+			float RadiusInTexture = Iter.ForceRadius / AreaSize;
+			ForcePointParams.Add(FVector4(UVToHeightField, FVector2D(RadiusInTexture, 1.f)));
 		}
 	}
 }
@@ -335,7 +339,7 @@ void FInteractiveWater::ApplyForce_RenderThread()
 		// Set Shader Params
 		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 		//UE_LOG(LogTemp, Log, TEXT("--------Offset: %s, Force Num: %d-------"), *Offset.ToString(), ForcePointParams.Num());
-		PixelShader->SetParameters(RHICmdList, ForcePointParams.Num(), ForcePointParams, Offset, FVector2D(1.f / RectSize.X, 1.f / RectSize.Y), GetPreHeightField());
+		PixelShader->SetParameters(RHICmdList, ForcePointParams.Num(), ForcePointParams, Offset, 1.f * FVector2D(1.f / RectSize.X, 1.f / RectSize.Y), GetPreHeightField());
 
 		RHICmdList.SetStreamSource(0, GInteractiveWaterStreamBuffer.VertexBuffer, 0);
 		RHICmdList.DrawIndexedPrimitive(GInteractiveWaterStreamBuffer.IndexBuffer, 0, 0, GInteractiveWaterStreamBuffer.GetVertexNum(), 0, GInteractiveWaterStreamBuffer.GetIndexNum() / 3, 1);
@@ -379,7 +383,9 @@ void FInteractiveWater::UpdateHeightField_RenderThread()
 		//FVector2D Offset = FVector2D(ClampX, ClampY) - Sub;
 		//ForcePos += Offset;
 		//UE_LOG(LogTemp, Log, TEXT("--------Offset: %s, RoleUV: %s-------"), *Offset.ToString(), *ForcePos.ToString());
-		PixelShader->SetParameters(RHICmdList, FVector2D(1.f / RectSize.X, 1.f / RectSize.Y), Offset, GetPreHeightField());
+		float Attenuation = bShouldUpdate ? 0.95f : 1.f;
+		//UE_LOG(LogTemp, Log, TEXT("--------Current attenuation: %4.4f-------"), Attenuation);
+		PixelShader->SetParameters(RHICmdList, Attenuation, (DeltaTime / PerSimulateDuration) * FVector2D(1.f / RectSize.X, 1.f / RectSize.Y), Offset, GetPreHeightField());
 
 		RHICmdList.SetStreamSource(0, GInteractiveWaterStreamBuffer.VertexBuffer, 0);
 		RHICmdList.DrawIndexedPrimitive(GInteractiveWaterStreamBuffer.IndexBuffer, 0, 0, GInteractiveWaterStreamBuffer.GetVertexNum(), 0, GInteractiveWaterStreamBuffer.GetIndexNum() / 3, 1);
@@ -418,7 +424,7 @@ void FInteractiveWater::ComputeNormal_RenderThread()
 		// Set Shader Params
 		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 		
-		PixelShader->SetParameters(RHICmdList, FVector2D(1.f / RectSize.X, 1.f / RectSize.Y), GetPreHeightField());
+		PixelShader->SetParameters(RHICmdList, 1.f * FVector2D(1.f / RectSize.X, 1.f / RectSize.Y), GetPreHeightField());
 
 		RHICmdList.SetStreamSource(0, GInteractiveWaterStreamBuffer.VertexBuffer, 0);
 		RHICmdList.DrawIndexedPrimitive(GInteractiveWaterStreamBuffer.IndexBuffer, 0, 0, GInteractiveWaterStreamBuffer.GetVertexNum(), 0, GInteractiveWaterStreamBuffer.GetIndexNum() / 3, 1);

@@ -76,7 +76,7 @@ void UWaveTrigger_SkeletalMesh::TickComponent(float DeltaTime, ELevelTick TickTy
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	if (SkeletalMesh && InteractiveWaterSubsystem->ShouldSimulateWater())
+	if (SkeletalMesh/* && InteractiveWaterSubsystem->ShouldSimulateWater()*/)
 	{
 		UStaticMeshComponent* WaterMesh = InteractiveWaterSubsystem->GetCurrentWaterMesh();
 
@@ -91,6 +91,8 @@ void UWaveTrigger_SkeletalMesh::TickComponent(float DeltaTime, ELevelTick TickTy
 			}
 		}
 		InteractiveWaterSubsystem->AddForcePos(ForcePos);
+
+		//UE_LOG(LogTemp, Log, TEXT("Force num: %d"), ForcePos.Num());
 
 		for (int32 i = 0; i < TriggerBones.Num(); ++i)
 		{

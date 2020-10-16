@@ -104,7 +104,7 @@ void UInteractiveWaterComponent::TickComponent(float DeltaTime, ELevelTick TickT
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	
 	InteractiveWaterProxy->UpdateSimulateTimeAccumlator(DeltaTime);
-	if(!ShouldSimulateWater()) return;
+	//if(!ShouldSimulateWater()) return;
 
 	//UE_LOG(LogTemp, Log, TEXT("---------TickComponent---------"));
 
@@ -209,7 +209,7 @@ void UInteractiveWaterComponent::TouchWaterSurface(FVector2D UV)
 
 bool UInteractiveWaterComponent::ShouldSimulateWater()
 {
-	UE_LOG(LogTemp, Log, TEXT("Is Dedicated Server: %d, Owner Role: %d"), (int32)UKismetSystemLibrary::IsDedicatedServer(this), (int32)GetOwnerRole());
+	//UE_LOG(LogTemp, Log, TEXT("Is Dedicated Server: %d, Owner Role: %d"), (int32)UKismetSystemLibrary::IsDedicatedServer(this), (int32)GetOwnerRole());
 	return InteractiveWaterProxy->ShouldSimulateWater() && !UKismetSystemLibrary::IsDedicatedServer(this) && GetOwnerRole() >= ROLE_Authority;
 }
 

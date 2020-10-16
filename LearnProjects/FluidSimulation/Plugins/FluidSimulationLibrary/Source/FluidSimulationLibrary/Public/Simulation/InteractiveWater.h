@@ -63,6 +63,8 @@ private:
 
 	float ForceTimeAccumlator;
 
+	float WaterAreaSize;
+
 	uint8 Switcher : 1;
 
 	FIntPoint RectSize;
