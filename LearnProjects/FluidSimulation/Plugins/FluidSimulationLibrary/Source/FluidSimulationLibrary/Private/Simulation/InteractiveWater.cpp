@@ -99,7 +99,7 @@ public:
 	}
 };
 
-IMPLEMENT_SHADER_TYPE(, FCommonQuadVS, TEXT("/SLShaders/InteractiveWater.usf"), TEXT("CommonQuadVS"), SF_Vertex);
+IMPLEMENT_SHADER_TYPE(, FCommonQuadVS, TEXT("/FluidShaders/InteractiveWater.usf"), TEXT("CommonQuadVS"), SF_Vertex);
 
 class FApplyForcePS : public FGlobalShader
 {
