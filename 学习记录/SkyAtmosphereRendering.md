@@ -129,3 +129,107 @@ $=I_S\beta(\lambda)P(\theta)\int_A^Bexp\{-\beta(\lambda)\{D(\overline{CP})+D(\ov
   
   公式如下：
   $I_A=R_BT_{extinction}+I_{inscatter}$
+
+## UE4中的大气散射实现
+
+其中会用到一些系数：
+
+Extinction Coefficient $\sigma_t$ 湮灭系数
+
+Absorption Coefficient $\sigma_a$ 吸收系数
+
+Scattering Coefficient $\sigma_S$ 散射系数
+
+Phase Function $p$ 相位函数，表示光子在Scattering后朝各个方向出射的概率，单位是$sr^{-1}$，下面$p_r$是Rayleigh散射，$p_m$是Mie散射，$p_u$是各向同性散射的Phase Function。
+
+Transmittance，$T(a,b)$，两个点a,b之间的透光度，通过对路径上的$\sigma_t(h)$进行积分得到，这个会通过预计算得到，公式如下：
+
+$T(a,b)=exp(-\int_a^b\sigma_t(h)ds$
+
+Scattering，$G(x,v)$，在某点$x$上，各个方向的入射光朝着方向$v$出射散射强度之和，如下：
+
+$G_n(x,v)=\int_{\Omega}L_{n-1}(x,-w)pdw$
+
+In-Scattering，$L_{scat}$，在$x$点朝$v$方向到达另一点的散射强度，就是Scattering乘上Transmiitance，如下公式：
+
+$L_{scat}(x,v,c=G(x,v)T(c,x)$
+
+Luminance，L，在路径上对In-Scattering做积分得到的光照强度，如下：
+
+1阶情况：
+$L_1(x,v)=\int_{t=0}^{\left\| p-x\right \|}\sigma_s(x)T(x,x-tv)T(x-tv,toSun)p(v,sunDir)E_{sun}dt$
+
+n阶情况：
+$L_n^{(x,v)}=\int_{t=0}^{\left\| p-x\right \|}\sigma_s(x)T(x,x-tv)G_n(x-tv,-v)dt$
+
+下标$n$表示第几阶散射。
+
+上面是一些基本理论，在UE4中主要有下面几个部分：
+
+1. Transmittance LUT计算
+2. Sky-View LUT
+3. Aerial Perspective LUT
+4. Multiple Scattering LUT
+
+### Sky-View LUT
+计算当前相机位置接收到的各个角度的*Luminance*，根据视线方向做RayMarch，并且是包含所有阶的Scattering。由于靠近地平线部分大气散射会变得高频，所以UV映射不是线性的，所以这个方法需要实时RayMarch。映射曲线如下：
+
+$v=0.5+0.5*sign(l)*\sqrt{\frac{\left| l \right|}{\pi/2}}, l\in[-\frac{\pi}{2},\frac{\pi}{2}].$
+
+上面的$l$就是纬度（latitude）。
+
+### Aerial Perspective LUT
+计算相机和远处物体之间的大气散射
+1. 分割Camera Frustum，就像Cluster Lighting那样
+2. 在Z方向上根据Transmittance累加In-Scattering，每个格子存储的是到Camera的Luminance
+3. 该计算会使用到Transmittance LUT和Multiple Scattering LUT
+
+### Multiple Scattering LUT
+这里是预计算多级Scattering，也是本文的核心部分，多级计算是十分耗时的部分，一般实时计算就算一级，但是这里使用了一些Trick，做出如下设定:
+1. 大于等于2阶的散射，Rayleigh和Mie散射都被视为各向同性散射。
+2. 计算某点大于2阶的Scattering时，认为该点周围任意一点的Illuminance是相同的。
+
+以前预计算多级散射会有4维的信息，但是现在各向同性以后就直接少了两个维度。
+上面第二点的意思就是在计算某点的Scattering时，空间中任意一点的某一阶的Scattering都视作与该点相同。Multiple Scattering LUT计算结果输出到一张32*32的LUT上，在不同高度和不同光照角度的情况下。
+
+首先要计算$L_{2ndorder}$，就是对PhaseFunction*Luminance做球面积分，下面就是$G_2$，公式如下：
+
+$G_2=\int_{\Omega}L_1(x_s-\omega)p_ud\omega$
+
+$L_1=T(x,p)L_0(p,v)+\int_{t=0}^{\left\| p-x\right \|}\sigma_s(x)T(x,x-tv)S(x,\omega_s)p_uE_Idt$
+
+这里$T(x,p)L_0(p,v)$是地面反射光，$S(x,\omega_s)$是阳光到达x的照度，$E_I$是一个单位值的阳光照度。
+
+在得到$G_2$后还要计算$G_n$，也就是更高阶的散射，这就需要*Transform Function*$f_{ms}$，其对应的公式就是：
+
+$f_{ms}=\int_\Omega L_f(x_s,-\omega)p_ud\omega$
+
+$L_f(x,v)=\int_{t=0}^{\left\|p-x\right\|}\sigma_s(x)T(x,x-tv)1dt$
+
+通过$f_{ms}$就可知$G_{n+1}=G_{n}*f_{ms}$，下面就对$f_{ms}$进行推导：
+
+传统散射计算方法：
+
+$G_n(x,v)=\int_{\Omega}L_{n-1}(x,-\omega)pd\omega$
+
+$L_{n-1}(x,v)=\int_{t=0}^{\left\| p-x\right \|}\sigma_s(x)T(x,x-tv)G_{n-1}(x-tv,-v)dt$
+
+根据前面的简化方式，$G_{n-1}$在任意一点都是固定的数值，$L_{n-1}$可以如下：
+
+$L_{n-1}(x，v)=G_{n-1}\int_{t=0}^{\left\| p-x\right \|}\sigma_s(x)T(x,x-tv)dt$
+
+简化为$L_{n-1}(x，v)=G_{n-1}L_f(x,v)$代到$G_n$中可得：
+
+$G_n(x,v)=\int_{\Omega}G_{n-1}L_f(x,v)pd\omega$，那么两边同时除以$G_{n-1}$，将$p$替换为$p_u$得：
+
+$\frac{G_n}{G_{n-1}}=\int_{\Omega}L_f(x,v)p_ud\omega=f_{ms}$
+
+由于$f_{ms}$小于1，这样就可以得到无穷阶数的$G_n$之和，如下：
+$F_{ms}=1+f_{ms}+f_{ms}^2+f_{ms}^3+...=\frac{1}{1-f_{ms}}$
+
+$G_2+G_3+G_4+G_5+G_6+...=G_2*F_{ms}=\Psi_{ms}$.
+
+
+最终计算任意点所有阶数的Scattering之和，包括一阶和高阶之和，如下：
+
+$G_{all}=\sum_{i=1}^{N_{light}}(T(c,x)S(x,l_i)p(v,l_i)+\Psi_{ms})E_i$
