@@ -160,15 +160,17 @@ public:
 		: FGlobalShader(Initializer)
 	{
 		AttenuationRatio.Bind(Initializer.ParameterMap, TEXT("AttenuationRatio"));
+		DeltaUV.Bind(Initializer.ParameterMap, TEXT("DeltaUV"));
 		GridDelta.Bind(Initializer.ParameterMap, TEXT("GridDelta"));
 		FieldOffset.Bind(Initializer.ParameterMap, TEXT("FieldOffset"));
 		HeightField.Bind(Initializer.ParameterMap, TEXT("HeightField"));
 		WaterSampler.Bind(Initializer.ParameterMap, TEXT("WaterSampler"));
 	}
 
-	void SetParameters(FRHICommandListImmediate& RHICmdList, float Attenuation, FVector2D InGridDelta, FVector2D InFieldOffset, FRHITexture* InHeightField)
+	void SetParameters(FRHICommandListImmediate& RHICmdList, float Attenuation, FVector2D InDeltaUV, FVector2D InGridDelta, FVector2D InFieldOffset, FRHITexture* InHeightField)
 	{
 		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), AttenuationRatio, Attenuation);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), DeltaUV, InDeltaUV);
 		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), GridDelta, InGridDelta);
 		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), FieldOffset, InFieldOffset);
 		SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), HeightField, WaterSampler, TStaticSamplerState<SF_Bilinear, AM_Border, AM_Border, AM_Border>::CreateRHI(), InHeightField);
@@ -176,6 +178,7 @@ public:
 
 private:
 	LAYOUT_FIELD(FShaderParameter, AttenuationRatio)
+	LAYOUT_FIELD(FShaderParameter, DeltaUV)
 	LAYOUT_FIELD(FShaderParameter, GridDelta)
 	LAYOUT_FIELD(FShaderParameter, FieldOffset)
 	LAYOUT_FIELD(FShaderResourceParameter, HeightField)
@@ -383,9 +386,10 @@ void FInteractiveWater::UpdateHeightField_RenderThread()
 		//FVector2D Offset = FVector2D(ClampX, ClampY) - Sub;
 		//ForcePos += Offset;
 		//UE_LOG(LogTemp, Log, TEXT("--------Offset: %s, RoleUV: %s-------"), *Offset.ToString(), *ForcePos.ToString());
-		float Attenuation = bShouldUpdate ? 0.95f : 1.f;
+		float Attenuation = bShouldUpdate ? 0.925f : 1.f;
 		//UE_LOG(LogTemp, Log, TEXT("--------Current attenuation: %4.4f-------"), Attenuation);
-		PixelShader->SetParameters(RHICmdList, Attenuation, (DeltaTime / PerSimulateDuration) * FVector2D(1.f / RectSize.X, 1.f / RectSize.Y), Offset, GetPreHeightField());
+		FVector2D DeltaUV = FVector2D(1.f / RectSize.X, 1.f / RectSize.Y);
+		PixelShader->SetParameters(RHICmdList, Attenuation, DeltaUV, (DeltaTime / PerSimulateDuration) * DeltaUV, Offset, GetPreHeightField());
 
 		RHICmdList.SetStreamSource(0, GInteractiveWaterStreamBuffer.VertexBuffer, 0);
 		RHICmdList.DrawIndexedPrimitive(GInteractiveWaterStreamBuffer.IndexBuffer, 0, 0, GInteractiveWaterStreamBuffer.GetVertexNum(), 0, GInteractiveWaterStreamBuffer.GetIndexNum() / 3, 1);

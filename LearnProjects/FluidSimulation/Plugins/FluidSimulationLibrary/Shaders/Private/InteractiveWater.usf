@@ -13,6 +13,7 @@ void CommonQuadVS(float2 Position : ATTRIBUTE0,
 int InteractivePointCount;
 float4 InteractivePoints[10];
 float2 FieldOffset;
+float2 DeltaUV;
 float2 GridDelta;
 
 Texture2D<half2> HeightField;
@@ -29,22 +30,23 @@ void ApplyForcePS(in float2 UV : TEXCOORD,
 	{
 		float2 DeltaPos = InteractivePoints[i].xy - UV;
 		float C = exp(-dot(DeltaPos, DeltaPos) / InteractivePoints[i].z);
-		Center.r += 0.5f * (1.f - cos(3.14159f * (max(0.f, 1.f - length(DeltaPos) / InteractivePoints[i].z)))) * InteractivePoints[i].w;
+		Center.r += 0.5f * (1.f - cos(3.14159f * max(0.f, 1.f - length(DeltaPos) / InteractivePoints[i].z))) * InteractivePoints[i].w;
 	}
 	
 	OutColor = Center;
 }
 
+float AttenuationRatio;
 
 void UpdateHeightFieldPS(in float2 UV : TEXCOORD,
 						out half2 OutColor : SV_Target)
 {
-	float2 UsefulRegion = (1.f - 2.f * GridDelta);
+	float2 UsefulRegion = (1.f - 2.f * DeltaUV);
 	
 	float2 dx = float2(GridDelta.x, 0.f) * UsefulRegion;
 	float2 dy = float2(0.f, GridDelta.y) * UsefulRegion;
 	
-	float2 SampleUV = GridDelta + UsefulRegion * UV;
+	float2 SampleUV = DeltaUV + UsefulRegion * UV;
 	
 	half2 Left = HeightField.Sample(WaterSampler, SampleUV - dx);
 	half2 Right = HeightField.Sample(WaterSampler, SampleUV + dx);
@@ -75,7 +77,8 @@ void UpdateHeightFieldPS(in float2 UV : TEXCOORD,
 	half NewHeight = (Left.x + Right.x + Bottom.x + Up.x) * 0.5f - Center.y;
 	
 	//half NewHeight = (OutHeight.x + OutHeight.y + OutHeight.z + OutHeight.w /*- FourCenter * 1.0f + FourCenter*/) * 0.5f - Center.y;
-	NewHeight = NewHeight * 0.96f;
+
+	NewHeight = NewHeight * AttenuationRatio;
 	OutColor.x = NewHeight;
 	OutColor.y = Center.x;
 }

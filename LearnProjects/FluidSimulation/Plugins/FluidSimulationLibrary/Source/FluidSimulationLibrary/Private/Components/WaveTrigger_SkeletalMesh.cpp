@@ -76,7 +76,7 @@ void UWaveTrigger_SkeletalMesh::TickComponent(float DeltaTime, ELevelTick TickTy
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	if (SkeletalMesh/* && InteractiveWaterSubsystem->ShouldSimulateWater()*/)
+	if (SkeletalMesh && InteractiveWaterSubsystem->ShouldSimulateWater())
 	{
 		UStaticMeshComponent* WaterMesh = InteractiveWaterSubsystem->GetCurrentWaterMesh();
 

@@ -3,7 +3,6 @@
 
 #include "SubSystem/InteractiveWaterSubsystem.h"
 #include "Components/InteractiveWaterComponent.h"
-#include "Common/FluidSimulationCommon.h"
 #include "Components/StaticMeshComponent.h"
 
 void UInteractiveWaterSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -49,7 +48,7 @@ void UInteractiveWaterSubsystem::UpdateInteractivePoint(class UStaticMeshCompone
 {
 	if (!InteractiveWaterComponent && !CheckWaterMesh(WaterMesh)) return;
 	auto Mesh = GetCurrentWaterMesh();
-	if(Mesh != nullptr && InteractiveWaterComponent->CanUpdateWaterMesh()) return;
+	if(Mesh != WaterMesh && InteractiveWaterComponent->CanUpdateWaterMesh()) return;
 
 	if (InteractiveWaterComponent->CheckPosInSimulateArea(InForcePos.ForcePos))
 	{

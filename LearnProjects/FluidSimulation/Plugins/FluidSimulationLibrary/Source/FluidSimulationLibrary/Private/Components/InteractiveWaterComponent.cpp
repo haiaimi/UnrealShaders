@@ -24,6 +24,7 @@ UInteractiveWaterComponent::UInteractiveWaterComponent() :
 	HeightFieldRT0(nullptr),
 	HeightFieldRT1(nullptr),
 	CurrentWaterMesh(nullptr),
+	InteractiveWaterSubsystem(nullptr),
 	StopTimeAccumlator(0.f),
 	bCanChangeWaterMesh(true)
 {
@@ -103,8 +104,18 @@ void UInteractiveWaterComponent::TickComponent(float DeltaTime, ELevelTick TickT
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	
+	if(!ShouldSimulateWater()) return;
+
+	if (!InteractiveWaterSubsystem)
+	{
+		if (UGameInstance* GI = GetWorld()->GetGameInstance<UGameInstance>())
+		{
+			InteractiveWaterSubsystem = GI->GetSubsystem<UInteractiveWaterSubsystem>();
+			InteractiveWaterSubsystem->SetInteractiveWaterComponent(this);
+		}
+	}
+
 	InteractiveWaterProxy->UpdateSimulateTimeAccumlator(DeltaTime);
-	//if(!ShouldSimulateWater()) return;
 
 	//UE_LOG(LogTemp, Log, TEXT("---------TickComponent---------"));
 
@@ -210,7 +221,7 @@ void UInteractiveWaterComponent::TouchWaterSurface(FVector2D UV)
 bool UInteractiveWaterComponent::ShouldSimulateWater()
 {
 	//UE_LOG(LogTemp, Log, TEXT("Is Dedicated Server: %d, Owner Role: %d"), (int32)UKismetSystemLibrary::IsDedicatedServer(this), (int32)GetOwnerRole());
-	return InteractiveWaterProxy->ShouldSimulateWater() && !UKismetSystemLibrary::IsDedicatedServer(this) && GetOwnerRole() >= ROLE_Authority;
+	return /*InteractiveWaterProxy->ShouldSimulateWater() && */!UKismetSystemLibrary::IsDedicatedServer(this) && GetOwnerRole() > ROLE_SimulatedProxy;
 }
 
 FVector2D UInteractiveWaterComponent::ConvertWorldToUVSpace(FVector DeltaPos)

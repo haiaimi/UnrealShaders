@@ -26,10 +26,6 @@ public:
 
 	void UpdateForceParams(float DeltaTime, FVector2D CurDir, FVector CenterPos, float AreaSize, const TArray<FApplyForceParam>& AllForce);
 
-	void ApplyForce_RenderThread();
-	void UpdateHeightField_RenderThread();
-	void ComputeNormal_RenderThread();
-
 	class FRHITexture* GetCurrentTarget();
 
 	FVector2D UpdateRoleUV(FVector2D CurDir);
@@ -53,6 +49,10 @@ public:
 
 	FVector2D ForcePos = FVector2D(0.5f, 0.5f);
 	FVector2D Offset;
+private:
+	void ApplyForce_RenderThread();
+	void UpdateHeightField_RenderThread();
+	void ComputeNormal_RenderThread();
 
 private:
 	class FTextureRenderTargetResource* HeightMapRTs[2];

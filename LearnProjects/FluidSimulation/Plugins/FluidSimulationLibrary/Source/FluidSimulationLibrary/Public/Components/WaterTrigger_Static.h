@@ -32,7 +32,7 @@ public:
 
 private:
 	UPROPERTY()
-	class UShapeComponent* WaterTriggerShape;
+	class UPrimitiveComponent* WaterTriggerShape;
 
 	class UInteractiveWaterSubsystem* InteractiveWaterSubsystem;
 
@@ -48,4 +48,7 @@ protected:
 
 	UFUNCTION()
 	void OnShapeEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
+	UFUNCTION()
+	void OnShapeBlocked(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 };

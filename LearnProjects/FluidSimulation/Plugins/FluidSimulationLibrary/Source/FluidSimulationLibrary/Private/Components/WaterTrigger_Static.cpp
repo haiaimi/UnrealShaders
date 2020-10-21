@@ -5,6 +5,7 @@
 #include "SubSystem/InteractiveWaterSubsystem.h"
 #include "Components/StaticMeshComponent.h"
 #include "Common/FluidSimulationCommon.h"
+#include "Components/PrimitiveComponent.h"
 
 // Sets default values for this component's properties
 UWaterTrigger_Static::UWaterTrigger_Static() : 
@@ -25,12 +26,13 @@ void UWaterTrigger_Static::BeginPlay()
 {
 	Super::BeginPlay();
 
-	WaterTriggerShape = GetOwner()->FindComponentByClass<UShapeComponent>();
-
+	//WaterTriggerShape = GetOwner()->FindComponentByClass<UShapeComponent>();
+	WaterTriggerShape = Cast<UPrimitiveComponent>(GetOwner()->GetRootComponent());
 	if (WaterTriggerShape)
 	{
 		WaterTriggerShape->OnComponentBeginOverlap.AddDynamic(this, &UWaterTrigger_Static::OnShapeBeginOverlap);
 		WaterTriggerShape->OnComponentEndOverlap.AddDynamic(this, &UWaterTrigger_Static::OnShapeEndOverlap);
+		WaterTriggerShape->OnComponentHit.AddDynamic(this, &UWaterTrigger_Static::OnShapeBlocked);
 	}
 
 	UWorld* World = GetWorld();
@@ -84,5 +86,12 @@ void UWaterTrigger_Static::OnShapeEndOverlap(UPrimitiveComponent* OverlappedComp
 {
 	if(InteractiveWaterSubsystem->GetCurrentWaterMesh() == OtherComp)
 		bInWater = false;
+}
+
+void UWaterTrigger_Static::OnShapeBlocked(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+{
+	UStaticMeshComponent* WaterMesh = Cast<UStaticMeshComponent>(OtherComp);
+	TriggerRadius = WaterTriggerShape->CalcLocalBounds().SphereRadius;
+	InteractiveWaterSubsystem->UpdateInteractivePoint(WaterMesh, FApplyForceParam(WaterTriggerShape->GetComponentLocation(), TriggerRadius));
 }
 
