@@ -170,6 +170,9 @@ $L_n^{(x,v)}=\int_{t=0}^{\left\| p-x\right \|}\sigma_s(x)T(x,x-tv)G_n(x-tv,-v)dt
 2. Sky-View LUT
 3. Aerial Perspective LUT
 4. Multiple Scattering LUT
+   
+### Transmittance LUT
+Transmittance LUT计算入口是*RenderTransmittanceLutCS*，默认尺寸就是256x64，
 
 ### Sky-View LUT
 计算当前相机位置接收到的各个角度的*Luminance*，根据视线方向做RayMarch，并且是包含所有阶的Scattering。由于靠近地平线部分大气散射会变得高频，所以UV映射不是线性的，所以这个方法需要实时RayMarch。映射曲线如下：
