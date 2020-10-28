@@ -1,4 +1,4 @@
-As the light travels from a point $p$ to a point $q$ in the atmosphere,
+`As the light travels from a point $p$ to a point $q$ in the atmosphere,
 it is partially absorbed and scattered out of its initial direction because of
 the air molecules and the aerosol particles. Thus, the light arriving at $q$
 is only a fraction of the light from $p$, and this fraction, which depends on
@@ -776,112 +776,45 @@ RadianceSpectrum GetScattering(
 
 ### Multiple scattering
 
-The multiply scattered radiance is the light arriving from the Sun at some
-point in the atmosphere after two or more <i>bounces</i> (where a bounce is
-either a scattering event or a reflection from the ground). The following
-sections describe how we compute it, how we store it in a precomputed texture,
-and how we read it back.
+The multiply scattered radiance is the light arriving from the Sun at some point in the atmosphere after two or more <i>bounces</i> (where a bounce is either a scattering event or a reflection from the ground). The following sections describe how we compute it, how we store it in a precomputed texture, and how we read it back.
 
-
-
-Note that, as for single scattering, we exclude here the light paths whose
-<i>last</i> bounce is a reflection on the ground. The contribution from these
-paths is computed separately, at rendering time, in order to take the actual
-ground albedo into account (for intermediate reflections on the ground, which
-are precomputed, we use an average, uniform albedo).
-
-
+Note that, as for single scattering, we exclude here the light paths whose <i>last</i> bounce is a reflection on the ground. The contribution from these paths is computed separately, at rendering time, in order to take the actual ground albedo into account (for intermediate reflections on the ground, which are precomputed, we use an average, uniform albedo).
 
 #### Computation
 
-Multiple scattering can be decomposed into the sum of double scattering,
-triple scattering, etc, where each term corresponds to the light arriving from
-the Sun at some point in the atmosphere after <i>exactly</i> 2, 3, etc bounces.
-Moreover, each term can be computed from the previous one. Indeed, the light
-arriving at some point $p$ from direction $w$ after $n$ bounces is an
-integral over all the possible points $q$ for the last bounce, which involves
-the light arriving at $q$ from any direction, after $n-1$ bounces.
+Multiple scattering can be decomposed into the sum of double scattering, triple scattering, etc, where each term corresponds to the light arriving from the Sun at some point in the atmosphere after <i>exactly</i> 2, 3, etc bounces. Moreover, each term can be computed from the previous one. Indeed, the light arriving at some point $p$ from direction $w$ after $n$ bounces is an integral over all the possible points $q$ for the last bounce, which involves the light arriving at $q$ from any direction, after $n-1$ bounces.
 
-
-
-This description shows that each scattering order requires a triple integral
-to be computed from the previous one (one integral over all the points $q$
-on the segment from $p$ to the nearest atmosphere boundary in direction $w$,
-and a nested double integral over all directions at each point $q$).
-Therefore, if we wanted to compute each order "from scratch", we would need a
-triple integral for double scattering, a sextuple integral for triple
-scattering, etc. This would be clearly inefficient, because of all the redundant
-computations (the computations for order $n$ would basically redo all the
-computations for all previous orders, leading to quadratic complexity in the
-total number of orders). Instead, it is much more efficient to proceed as
-follows:
+This description shows that each scattering order requires a triple integral to be computed from the previous one (one integral over all the points $q$ on the segment from $p$ to the nearest atmosphere boundary in direction $w$, and a nested double integral over all directions at each point $q$). Therefore, if we wanted to compute each order "from scratch", we would need a triple integral for double scattering, a sextuple integral for triple scattering, etc. This would be clearly inefficient, because of all the redundant computations (the computations for order $n$ would basically redo all the computations for all previous orders, leading to quadratic complexity in the total number of orders). Instead, it is much more efficient to proceed as follows:
 
 * precompute single scattering in a texture (as described above),
 
 * for $n \ge 2$:
 
-  precompute the $n$-th scattering in a texture, with a triple integral whose
-  integrand uses lookups in the $(n-1)$-th scattering texture
+  precompute the $n$-th scattering in a texture, with a triple integral whose integrand uses lookups in the $(n-1)$-th scattering texture
 
-This strategy avoids many redundant computations but does not eliminate all
-of them. Consider for instance the points $p$ and $p'$ in the figure below,
-and the computations which are necessary to compute the light arriving at these
-two points from direction $w$ after $n$ bounces. These computations involve,
-in particular, the evaluation of the radiance $L$ which is scattered at $q$ in
-direction $-w$, and coming from all directions after $n-1$ bounces:
+This strategy avoids many redundant computations but does not eliminate all of them. Consider for instance the points $p$ and $p'$ in the figure below, and the computations which are necessary to compute the light arriving at these two points from direction $w$ after $n$ bounces. These computations involve, in particular, the evaluation of the radiance $L$ which is scattered at $q$ in direction $-w$, and coming from all directions after $n-1$ bounces:
 
+Therefore, if we computed the n-th scattering with a triple integral as described above, we would compute $L$ redundantly (in fact, for all points $p$ between $q$ and the nearest atmosphere boundary in direction $-w$). To avoid this, and thus increase the efficiency of the multiple scattering computations, we refine the above algorithm as follows:
 
+* precompute single scattering in a texture (as described above),
+* for $n \ge 2$:
+  * for each point $q$ and direction $w$, precompute the light which is scattered at $q$ towards direction $-w$, coming from any direction  after $n-1$ bounces (this involves only a double integral, whose integrand uses lookups in the $(n-1)$-th scattering texture),
+  * for each point $p$ and direction $w$, precompute the light coming from direction $w$ after $n$ bounces (this involves only a single integral, whose integrand uses lookups in the texture computed at the previous line)
 
-Therefore, if we computed the n-th scattering with a triple integral as
-described above, we would compute $L$ redundantly (in fact, for all points $p$
-between $q$ and the nearest atmosphere boundary in direction $-w$). To avoid
-this, and thus increase the efficiency of the multiple scattering computations,
-we refine the above algorithm as follows:
-
-
-
-precompute single scattering in a texture (as described above),for $n \ge 2$:
-
->for each point $q$ and direction $w$, precompute the light which is
->scattered at $q$ towards direction $-w$, coming from any direction after
->$n-1$ bounces (this involves only a double integral, whose integrand uses
->lookups in the $(n-1)$-th scattering texture),</li>
-><li>for each point $p$ and direction $w$, precompute the light coming from
->direction $w$ after $n$ bounces (this involves only a single integral, whose
->integrand uses lookups in the texture computed at the previous line)
-
-To get a complete algorithm, we must now specify how we implement the two
-steps in the above loop. This is what we do in the rest of this section.
-
-
+To get a complete algorithm, we must now specify how we implement the two steps in the above loop. This is what we do in the rest of this section.
 
 #### First Step
 
-The first step computes the radiance which is scattered at some point $q$
-inside the atmosphere, towards some direction $-w$. Furthermore, we assume
-that this scattering event is the $n$-th bounce.
+The first step computes the radiance which is scattered at some point $q$ inside the atmosphere, towards some direction $-w$. Furthermore, we assume that this scattering event is the $n$-th bounce.
 
+This radiance is the integral over all the possible incident directions $w_i$, of the product of the incident radiance $L_i$ arriving at $q$ from direction $w_i$ after $n-1$ bounces, which is the sum of:
 
-
-This radiance is the integral over all the possible incident directions
-$w_i$, of the product ofthe incident radiance $L_i$ arriving at $q$ from direction $w_i$ after
-$n-1$ bounces, which is the sum of:
-
-* a term given by the precomputed scattering texture for the $(n-1)$-th
-  order,
-* if the ray $[q, w_i)$ intersects the ground at $r$, the contribution
-  from the light paths with $n-1$ bounces and whose last bounce is at $r$, i.e.
-  on the ground (these paths are excluded, by definition, from our precomputed
-  textures, but we must take them into account here since the bounce on the ground
-  is followed by a bounce at $q$). This contribution, in turn, is the product
-  of:
+* a term given by the precomputed scattering texture for the $(n-1)$-th order,
+* if the ray $[q, w_i)$ intersects the ground at $r$, the contribution from the light paths with $n-1$ bounces and whose last bounce is at $r$, i.e. on the ground (these paths are excluded, by definition, from our precomputed textures, but we must take them into account here since the bounce on the ground is followed by a bounce at $q$). This contribution, in turn, is the product of:
   * the transmittance between $q$ and $r$,
   * the (average) ground albedo,
   * the <a href="https://www.cs.princeton.edu/~smr/cs348c-97/surveypaper.html">Lambertian BRDF</a> $1/\pi$,
-  * the irradiance received on the ground after $n-2$ bounces. We explain in the
-    <a href="#irradiance">next section</a> how we precompute it in a texture. For
-    now, we assume that we can use the following function to retrieve this
-    irradiance from a precomputed texture:
+  * the irradiance received on the ground after $n-2$ bounces. We explain in the<a href="#irradiance">next section</a> how we precompute it in a texture. For now, we assume that we can use the following function to retrieve this irradiance from a precomputed texture:
 
 ```glsl
 IrradianceSpectrum GetIrradiance(
@@ -890,19 +823,13 @@ IrradianceSpectrum GetIrradiance(
     Length r, Number mu_s);
 ```
 
-
-
 * the scattering coefficient at $q$
+
 * the scattering phase function for the directions $w$ and $w_i$
 
+  
 
-
-
-
-This leads to the following implementation (where
-<code>multiple_scattering_texture</code> is supposed to contain the $(n-1)$-th
-order of scattering, if $n>2$, <code>irradiance_texture</code> is the irradiance
-received on the ground after $n-2$ bounces, and <code>scattering_order</code> is
+This leads to the following implementation (where <code>multiple_scattering_texture</code> is supposed to contain the $(n-1)$-th order of scattering, if $n>2$, <code>irradiance_texture</code> is the irradiance received on the ground after $n-2$ bounces, and <code>scattering_order</code> is
 equal to $n$):
 
 ```glsl
@@ -979,9 +906,7 @@ RadianceDensitySpectrum ComputeScatteringDensity(
       // the irradiance received on the ground after n-2 bounces.
       vec3 ground_normal =
           normalize(zenith_direction * r + omega_i * distance_to_ground);
-      IrradianceSpectrum ground_irradiance = GetIrradiance(
-          atmosphere, irradiance_texture, atmosphere.bottom_radius,
-          dot(ground_normal, omega_s));
+      IrradianceSpectrum ground_irradiance = GetIrradiance(atmosphere, irradiance_texture, atmosphere.bottom_radius, dot(ground_normal, omega_s));
       incident_radiance += transmittance_to_ground *
           ground_albedo * (1.0 / (PI * sr)) * ground_irradiance;
 
@@ -1010,31 +935,16 @@ RadianceDensitySpectrum ComputeScatteringDensity(
 
 #### Second step
 
-he second step to compute the $n$-th order of scattering is to compute for
-each point $p$ and direction $w$, the radiance coming from direction $w$
-after $n$ bounces, using a texture precomputed with the previous function.
+The second step to compute the $n$-th order of scattering is to compute for each point $p$ and direction $w$, the radiance coming from direction $w$ after $n$ bounces, using a texture precomputed with the previous function.
 
+This radiance is the integral over all points $q$ between $p$ and the nearest atmosphere boundary in direction $w$ of the product of:
 
+* a term given by a texture precomputed with the previous function, namely the radiance scattered at $q$ towards $p$, coming from any direction after$n-1$ bounces,
+* the transmittance betweeen $p$ and $q$
 
-This radiance is the integral over all points $q$ between $p$ and the
-nearest atmosphere boundary in direction $w$ of the product of:
-
-<ul>
-<li>a term given by a texture precomputed with the previous function, namely
-the radiance scattered at $q$ towards $p$, coming from any direction after
-$n-1$ bounces,</li>
-<li>the transmittance betweeen $p$ and $q$</li>
-</ul>
-Note that this excludes the light paths with $n$ bounces and whose last
-bounce is on the ground, on purpose. Indeed, we chose to exclude these paths
-from our precomputed textures so that we can compute them at render time
-instead, using the actual ground albedo.
-
-
+Note that this excludes the light paths with $n$ bounces and whose last bounce is on the ground, on purpose. Indeed, we chose to exclude these paths from our precomputed textures so that we can compute them at render time instead, using the actual ground albedo.
 
 The implementation for this second step is straightforward:
-
-
 
 ```glsl
 RadianceSpectrum ComputeMultipleScattering(
@@ -1088,7 +998,7 @@ RadianceSpectrum ComputeMultipleScattering(
 
 #### Precomputation
 
-As explained in the <a href="#multiple_scattering">overall algorithm</a> to compute multiple scattering, we need to precompute each order of scattering in a texture to save computations while computing the next order. And, in order to store a function in a texture, we need a mapping from the function parameters to texture coordinates. Fortunately, all the orders of scattering depend on the same $(r,\mu,\mu_s,\nu)$ parameters as single scattering, so we can simple reuse the mappings defined for single scattering. This immediately leads to the following simplefunctions to precompute a texel of the textures for the
+As explained in the <a href="#multiple_scattering">overall algorithm</a> to compute multiple scattering, we need to precompute each order of scattering in a texture to save computations while computing the next order. And, in order to store a function in a texture, we need a mapping from the function parameters to texture coordinates. Fortunately, all the orders of scattering depend on the same $(r,\mu,\mu_s,\nu)$ parameters as single scattering, so we can simple reuse the mappings defined for single scattering. This immediately leads to the following simple functions to precompute a texel of the textures for the
 <a href="#multiple_scattering_first_step">first</a> and<a href="#multiple_scattering_second_step">second</a> steps of each iteration over the number of bounces:
 
 ```glsl
@@ -1134,5 +1044,493 @@ RadianceSpectrum ComputeMultipleScatteringTexture(
 
 #### Lookup
 
-Likewise, we can simply reuse the lookup function <code>GetScattering</code> implemented for single scattering to read a value from the precomputed textures for multiple scattering. In fact, this is what we did above in the
-<code>ComputeScatteringDensity</code> and <code>ComputeMultipleScattering</code> functions.
+Likewise, we can simply reuse the lookup function <code>GetScattering</code> implemented for single scattering to read a value from the precomputed textures for multiple scattering. In fact, this is what we did above in the<code>ComputeScatteringDensity</code> and <code>ComputeMultipleScattering</code> functions.
+
+### Ground irradiance
+
+The ground irradiance is the Sun light received on the ground after $n \ge 0$
+bounces (where a bounce is either a scattering event or a reflection on the
+ground). We need this for two purposes:
+
+* while precomputing the $n$-th order of scattering, with $n \ge 2$, in order to compute the contribution of light paths whose $(n-1)$-th bounce is on the ground (which requires the ground irradiance after $n-2$ bounces - see the <a href="#multiple_scattering_computation">Multiple scattering</a>
+section),
+* at rendering time, to compute the contribution of light paths whose last bounce is on the ground (these paths are excluded, by definition, from our precomputed scattering textures)
+
+In the first case we only need the ground irradiance for horizontal surfaces at the bottom of the atmosphere (during precomputations we assume a perfectly spherical ground with a uniform albedo). In the second case, however, we need the ground irradiance for any altitude and any surface normal, and we want to precompute it for efficiency. In fact, as described in our <a href="https://hal.inria.fr/inria-00288758/en">paper</a> we precompute it only
+for horizontal surfaces, at any altitude (which requires only 2D textures, instead of 4D textures for the general case), and we use approximations for non-horizontal surfaces.
+
+The following sections describe how we compute the ground irradiance, how we store it in a precomputed texture, and how we read it back.
+
+
+
+#### Computation
+
+The ground irradiance computation is different for the direct irradiance, i.e. the light received directly from the Sun, without any intermediate bounce, and for the indirect irradiance (at least one bounce). We start here with the direct irradiance.
+
+The irradiance is the integral over an hemisphere of the incident radiance,
+times a cosine factor. For the direct ground irradiance, the incident radiance
+is the Sun radiance at the top of the atmosphere, times the transmittance
+through the atmosphere. And, since the Sun solid angle is small, we can
+approximate the transmittance with a constant, i.e. we can move it outside the
+irradiance integral, which can be performed over (the visible fraction of) the
+Sun disc rather than the hemisphere. Then the integral becomes equivalent to the
+ambient occlusion due to a sphere, also called a view factor, which is given in
+<a href="http://webserver.dmt.upm.es/~isidoro/tc3/Radiation%20View%20factors.pdf
+">Radiative view factors</a> (page 10). For a small solid angle, these complex
+equations can be simplified as follows:
+
+```glsl
+IrradianceSpectrum ComputeDirectIrradiance(
+    IN(AtmosphereParameters) atmosphere,
+    IN(TransmittanceTexture) transmittance_texture,
+    Length r, Number mu_s) {
+  assert(r >= atmosphere.bottom_radius && r <= atmosphere.top_radius);
+  assert(mu_s >= -1.0 && mu_s <= 1.0);
+
+  Number alpha_s = atmosphere.sun_angular_radius / rad;
+  // Approximate average of the cosine factor mu_s over the visible fraction of
+  // the Sun disc.
+  Number average_cosine_factor =
+    mu_s < -alpha_s ? 0.0 : (mu_s > alpha_s ? mu_s :
+        (mu_s + alpha_s) * (mu_s + alpha_s) / (4.0 * alpha_s));
+
+  return atmosphere.solar_irradiance *
+      GetTransmittanceToTopAtmosphereBoundary(
+          atmosphere, transmittance_texture, r, mu_s) * average_cosine_factor;
+
+}
+```
+
+For the indirect ground irradiance the integral over the hemisphere must be
+computed numerically. More precisely we need to compute the integral over all
+the directions $w$ of the hemisphere, of the product of:
+
+* the radiance arriving from direction $w$ after $n$ bounces,
+* the cosine factor, i.e. $\omega _z$
+
+This leads to the following implementation (where <code>multiple_scattering_texture</code> is supposed to contain the $n$-th
+order of scattering, if $n>1$, and <code>scattering_order</code> is equal to $n$):
+
+```glsl
+IrradianceSpectrum ComputeIndirectIrradiance(
+    IN(AtmosphereParameters) atmosphere,
+    IN(ReducedScatteringTexture) single_rayleigh_scattering_texture,
+    IN(ReducedScatteringTexture) single_mie_scattering_texture,
+    IN(ScatteringTexture) multiple_scattering_texture,
+    Length r, Number mu_s, int scattering_order) {
+  assert(r >= atmosphere.bottom_radius && r <= atmosphere.top_radius);
+  assert(mu_s >= -1.0 && mu_s <= 1.0);
+  assert(scattering_order >= 1);
+
+  const int SAMPLE_COUNT = 32;
+  const Angle dphi = pi / Number(SAMPLE_COUNT);
+  const Angle dtheta = pi / Number(SAMPLE_COUNT);
+
+  IrradianceSpectrum result =
+      IrradianceSpectrum(0.0 * watt_per_square_meter_per_nm);
+  vec3 omega_s = vec3(sqrt(1.0 - mu_s * mu_s), 0.0, mu_s);
+  for (int j = 0; j < SAMPLE_COUNT / 2; ++j) {
+    Angle theta = (Number(j) + 0.5) * dtheta;
+    for (int i = 0; i < 2 * SAMPLE_COUNT; ++i) {
+      Angle phi = (Number(i) + 0.5) * dphi;
+      vec3 omega =
+          vec3(cos(phi) * sin(theta), sin(phi) * sin(theta), cos(theta));
+      SolidAngle domega = (dtheta / rad) * (dphi / rad) * sin(theta) * sr;
+
+      Number nu = dot(omega, omega_s);
+      result += GetScattering(atmosphere, single_rayleigh_scattering_texture,
+          single_mie_scattering_texture, multiple_scattering_texture,
+          r, omega.z, mu_s, nu, false /* ray_r_theta_intersects_ground */,
+          scattering_order) *
+              omega.z * domega;
+    }
+
+  }
+  return result;
+}
+```
+
+#### Precomputation
+
+In order to precompute the ground irradiance in a texture we need a mapping
+from the ground irradiance parameters to texture coordinates. Since we
+precompute the ground irradiance only for horizontal surfaces, this irradiance
+depends only on $r$ and $\mu_s$, so we need a mapping from $(r,\mu_s)$ to
+$(u,v)$ texture coordinates. The simplest, affine mapping is sufficient here,
+because the ground irradiance function is very smooth:
+
+```glsl
+vec2 GetIrradianceTextureUvFromRMuS(IN(AtmosphereParameters) atmosphere,
+    Length r, Number mu_s) {
+  assert(r >= atmosphere.bottom_radius && r <= atmosphere.top_radius);
+  assert(mu_s >= -1.0 && mu_s <= 1.0);
+  Number x_r = (r - atmosphere.bottom_radius) /
+      (atmosphere.top_radius - atmosphere.bottom_radius);
+  Number x_mu_s = mu_s * 0.5 + 0.5;
+  return vec2(GetTextureCoordFromUnitRange(x_mu_s, IRRADIANCE_TEXTURE_WIDTH),
+              GetTextureCoordFromUnitRange(x_r, IRRADIANCE_TEXTURE_HEIGHT));
+}
+```
+
+The inverse mapping follows immediately:
+
+```glsl
+void GetRMuSFromIrradianceTextureUv(IN(AtmosphereParameters) atmosphere,
+    IN(vec2) uv, OUT(Length) r, OUT(Number) mu_s) {
+  assert(uv.x >= 0.0 && uv.x <= 1.0);
+  assert(uv.y >= 0.0 && uv.y <= 1.0);
+  Number x_mu_s = GetUnitRangeFromTextureCoord(uv.x, IRRADIANCE_TEXTURE_WIDTH);
+  Number x_r = GetUnitRangeFromTextureCoord(uv.y, IRRADIANCE_TEXTURE_HEIGHT);
+  r = atmosphere.bottom_radius +
+      x_r * (atmosphere.top_radius - atmosphere.bottom_radius);
+  mu_s = ClampCosine(2.0 * x_mu_s - 1.0);
+}
+```
+
+It is now easy to define a fragment shader function to precompute a texel of the ground irradiance texture, for the direct irradiance:
+
+```glsl
+const vec2 IRRADIANCE_TEXTURE_SIZE = vec2(IRRADIANCE_TEXTURE_WIDTH, IRRADIANCE_TEXTURE_HEIGHT);
+
+IrradianceSpectrum ComputeDirectIrradianceTexture(
+    IN(AtmosphereParameters) atmosphere,
+    IN(TransmittanceTexture) transmittance_texture,
+    IN(vec2) frag_coord) {
+  Length r;
+  Number mu_s;
+  GetRMuSFromIrradianceTextureUv(
+      atmosphere, frag_coord / IRRADIANCE_TEXTURE_SIZE, r, mu_s);
+  return ComputeDirectIrradiance(atmosphere, transmittance_texture, r, mu_s);
+}
+```
+
+and the indirect one:
+
+```glsl
+IrradianceSpectrum ComputeIndirectIrradianceTexture(
+    IN(AtmosphereParameters) atmosphere,
+    IN(ReducedScatteringTexture) single_rayleigh_scattering_texture,
+    IN(ReducedScatteringTexture) single_mie_scattering_texture,
+    IN(ScatteringTexture) multiple_scattering_texture,
+    IN(vec2) frag_coord, int scattering_order) {
+  Length r;
+  Number mu_s;
+  GetRMuSFromIrradianceTextureUv(
+      atmosphere, frag_coord / IRRADIANCE_TEXTURE_SIZE, r, mu_s);
+  return ComputeIndirectIrradiance(atmosphere,
+      single_rayleigh_scattering_texture, single_mie_scattering_texture,
+      multiple_scattering_texture, r, mu_s, scattering_order);
+}
+```
+
+#### Lookup
+
+Thanks to these precomputed textures, we can now get the ground irradiance
+with a single texture lookup:
+
+```
+IrradianceSpectrum GetIrradiance(
+    IN(AtmosphereParameters) atmosphere,
+    IN(IrradianceTexture) irradiance_texture,
+    Length r, Number mu_s) {
+  vec2 uv = GetIrradianceTextureUvFromRMuS(atmosphere, r, mu_s);
+  return IrradianceSpectrum(texture(irradiance_texture, uv));
+}
+```
+
+### Rendering
+
+Here we assume that the transmittance, scattering and irradiance textures
+have been precomputed, and we provide functions using them to compute the sky
+color, the aerial perspective, and the ground radiance.
+
+More precisely, we assume that the single Rayleigh scattering, without its phase function term, plus the multiple scattering terms (divided by the Rayleigh phase function for dimensional homogeneity) are stored in a <code>scattering_texture</code>. We also assume that the single Mie scattering is stored, without its phase function term:
+
+<ul>
+<li>either separately, in a <code>single_mie_scattering_texture</code> (this
+option was not provided our <a href=
+"http://evasion.inrialpes.fr/~Eric.Bruneton/PrecomputedAtmosphericScattering2.zip"
+>original implementation</a>),</li>
+<li>or, if the <code>COMBINED_SCATTERING_TEXTURES</code> preprocessor
+macro is defined, in the <code>scattering_texture</code>. In this case, which is
+only available with a GLSL compiler, Rayleigh and multiple scattering are stored
+in the RGB channels, and the red component of the single Mie scattering is
+stored in the alpha channel).
+
+In the second case, the green and blue components of the single Mie scattering are extrapolated as described in our<a href="https://hal.inria.fr/inria-00288758/en">paper</a>, with the following function:
+
+```glsl
+#ifdef COMBINED_SCATTERING_TEXTURES
+
+vec3 GetExtrapolatedSingleMieScattering(
+    IN(AtmosphereParameters) atmosphere, IN(vec4) scattering) {
+  // Algebraically this can never be negative, but rounding errors can produce
+  // that effect for sufficiently short view rays.
+  if (scattering.r <= 0.0) {
+    return vec3(0.0);
+  }
+  return scattering.rgb * scattering.a / scattering.r *
+	    (atmosphere.rayleigh_scattering.r / atmosphere.mie_scattering.r) *
+	    (atmosphere.mie_scattering / atmosphere.rayleigh_scattering);
+}
+#endif
+```
+
+
+
+<p>We can then retrieve all the scattering components (Rayleigh + multiple
+scattering on one side, and single Mie scattering on the other side) with the
+following function, based on
+<a href="#single_scattering_lookup"><code>GetScattering</code></a> (we duplicate
+some code here, instead of using two calls to <code>GetScattering</code>, to
+make sure that the texture coordinates computation is shared between the lookups
+in <code>scattering_texture</code> and
+<code>single_mie_scattering_texture</code>):
+
+```glsl
+IrradianceSpectrum GetCombinedScattering(
+    IN(AtmosphereParameters) atmosphere,
+    IN(ReducedScatteringTexture) scattering_texture,
+    IN(ReducedScatteringTexture) single_mie_scattering_texture,
+    Length r, Number mu, Number mu_s, Number nu,
+    bool ray_r_mu_intersects_ground,
+    OUT(IrradianceSpectrum) single_mie_scattering) {
+  vec4 uvwz = GetScatteringTextureUvwzFromRMuMuSNu(
+      atmosphere, r, mu, mu_s, nu, ray_r_mu_intersects_ground);
+  Number tex_coord_x = uvwz.x * Number(SCATTERING_TEXTURE_NU_SIZE - 1);
+  Number tex_x = floor(tex_coord_x);
+  Number lerp = tex_coord_x - tex_x;
+  vec3 uvw0 = vec3((tex_x + uvwz.y) / Number(SCATTERING_TEXTURE_NU_SIZE),
+      uvwz.z, uvwz.w);
+  vec3 uvw1 = vec3((tex_x + 1.0 + uvwz.y) / Number(SCATTERING_TEXTURE_NU_SIZE),
+      uvwz.z, uvwz.w);
+
+#ifdef COMBINED_SCATTERING_TEXTURES
+
+  vec4 combined_scattering =
+      texture(scattering_texture, uvw0) * (1.0 - lerp) +
+      texture(scattering_texture, uvw1) * lerp;
+  IrradianceSpectrum scattering = IrradianceSpectrum(combined_scattering);
+  single_mie_scattering =
+      GetExtrapolatedSingleMieScattering(atmosphere, combined_scattering);
+
+#else
+
+  IrradianceSpectrum scattering = IrradianceSpectrum(
+      texture(scattering_texture, uvw0) * (1.0 - lerp) +
+      texture(scattering_texture, uvw1) * lerp);
+  single_mie_scattering = IrradianceSpectrum(
+      texture(single_mie_scattering_texture, uvw0) * (1.0 - lerp) +
+      texture(single_mie_scattering_texture, uvw1) * lerp);
+
+#endif
+
+  return scattering;
+}
+```
+
+
+
+#### Sky
+
+To render the sky we simply need to display the sky radiance, which we can
+get with a lookup in the precomputed scattering texture(s), multiplied by the
+phase function terms that were omitted during precomputation. We can also return
+the transmittance of the atmosphere (which we can get with a single lookup in
+the precomputed transmittance texture), which is needed to correctly render the
+objects in space (such as the Sun and the Moon). This leads to the following
+function, where most of the computations are used to correctly handle the case
+of viewers outside the atmosphere, and the case of light shafts:
+
+```glsl
+RadianceSpectrum GetSkyRadiance(
+    IN(AtmosphereParameters) atmosphere,
+    IN(TransmittanceTexture) transmittance_texture,
+    IN(ReducedScatteringTexture) scattering_texture,
+    IN(ReducedScatteringTexture) single_mie_scattering_texture,
+    Position camera, IN(Direction) view_ray, Length shadow_length,
+    IN(Direction) sun_direction, OUT(DimensionlessSpectrum) transmittance) {
+  // Compute the distance to the top atmosphere boundary along the view ray,
+  // assuming the viewer is in space (or NaN if the view ray does not intersect
+  // the atmosphere).
+  Length r = length(camera);
+  Length rmu = dot(camera, view_ray);
+  Length distance_to_top_atmosphere_boundary = -rmu -
+      sqrt(rmu * rmu - r * r + atmosphere.top_radius * atmosphere.top_radius);
+  // If the viewer is in space and the view ray intersects the atmosphere, move
+  // the viewer to the top atmosphere boundary (along the view ray):
+  if (distance_to_top_atmosphere_boundary > 0.0 * m) {
+    camera = camera + view_ray * distance_to_top_atmosphere_boundary;
+    r = atmosphere.top_radius;
+    rmu += distance_to_top_atmosphere_boundary;
+  } else if (r > atmosphere.top_radius) {
+    // If the view ray does not intersect the atmosphere, simply return 0.
+    transmittance = DimensionlessSpectrum(1.0);
+    return RadianceSpectrum(0.0 * watt_per_square_meter_per_sr_per_nm);
+  }
+  // Compute the r, mu, mu_s and nu parameters needed for the texture lookups.
+  Number mu = rmu / r;
+  Number mu_s = dot(camera, sun_direction) / r;
+  Number nu = dot(view_ray, sun_direction);
+  bool ray_r_mu_intersects_ground = RayIntersectsGround(atmosphere, r, mu);
+
+  transmittance = ray_r_mu_intersects_ground ? DimensionlessSpectrum(0.0) :
+      GetTransmittanceToTopAtmosphereBoundary(
+          atmosphere, transmittance_texture, r, mu);
+  IrradianceSpectrum single_mie_scattering;
+  IrradianceSpectrum scattering;
+  if (shadow_length == 0.0 * m) {
+    scattering = GetCombinedScattering(
+        atmosphere, scattering_texture, single_mie_scattering_texture,
+        r, mu, mu_s, nu, ray_r_mu_intersects_ground,
+        single_mie_scattering);
+  } else {
+    // Case of light shafts (shadow_length is the total length noted l in our
+    // paper): we omit the scattering between the camera and the point at
+    // distance l, by implementing Eq. (18) of the paper (shadow_transmittance
+    // is the T(x,x_s) term, scattering is the S|x_s=x+lv term).
+    Length d = shadow_length;
+    Length r_p = ClampRadius(atmosphere, sqrt(d * d + 2.0 * r * mu * d + r * r));
+    Number mu_p = (r * mu + d) / r_p;
+    Number mu_s_p = (r * mu_s + d * nu) / r_p;
+
+    scattering = GetCombinedScattering(
+        atmosphere, scattering_texture, single_mie_scattering_texture,
+        r_p, mu_p, mu_s_p, nu, ray_r_mu_intersects_ground,
+        single_mie_scattering);
+    DimensionlessSpectrum shadow_transmittance =
+        GetTransmittance(atmosphere, transmittance_texture,
+            r, mu, shadow_length, ray_r_mu_intersects_ground);
+    scattering = scattering * shadow_transmittance;
+    single_mie_scattering = single_mie_scattering * shadow_transmittance;
+
+  }
+  return scattering * RayleighPhaseFunction(nu) + single_mie_scattering *
+      MiePhaseFunction(atmosphere.mie_phase_function_g, nu);
+}
+```
+
+#### Aerial perspective
+
+To render the aerial perspective we need the transmittance and the scattering
+between two points (i.e. between the viewer and a point on the ground, which can
+at an arbibrary altitude). We already have a function to compute the
+transmittance between two points (using 2 lookups in a texture which only
+contains the transmittance to the top of the atmosphere), but we don't have one
+for the scattering between 2 points. Hopefully, the scattering between 2 points
+can be computed from two lookups in a texture which contains the scattering to
+the nearest atmosphere boundary, as for the transmittance (except that here the
+two lookup results must be subtracted, instead of divided). This is what we
+implement in the following function (the initial computations are used to
+correctly handle the case of viewers outside the atmosphere):
+
+```glsl
+RadianceSpectrum GetSkyRadianceToPoint(
+    IN(AtmosphereParameters) atmosphere,
+    IN(TransmittanceTexture) transmittance_texture,
+    IN(ReducedScatteringTexture) scattering_texture,
+    IN(ReducedScatteringTexture) single_mie_scattering_texture,
+    Position camera, IN(Position) point, Length shadow_length,
+    IN(Direction) sun_direction, OUT(DimensionlessSpectrum) transmittance) {
+  // Compute the distance to the top atmosphere boundary along the view ray,
+  // assuming the viewer is in space (or NaN if the view ray does not intersect
+  // the atmosphere).
+  Direction view_ray = normalize(point - camera);
+  Length r = length(camera);
+  Length rmu = dot(camera, view_ray);
+  Length distance_to_top_atmosphere_boundary = -rmu -
+      sqrt(rmu * rmu - r * r + atmosphere.top_radius * atmosphere.top_radius);
+  // If the viewer is in space and the view ray intersects the atmosphere, move
+  // the viewer to the top atmosphere boundary (along the view ray):
+  if (distance_to_top_atmosphere_boundary > 0.0 * m) {
+    camera = camera + view_ray * distance_to_top_atmosphere_boundary;
+    r = atmosphere.top_radius;
+    rmu += distance_to_top_atmosphere_boundary;
+  }
+
+  // Compute the r, mu, mu_s and nu parameters for the first texture lookup.
+  Number mu = rmu / r;
+  Number mu_s = dot(camera, sun_direction) / r;
+  Number nu = dot(view_ray, sun_direction);
+  Length d = length(point - camera);
+  bool ray_r_mu_intersects_ground = RayIntersectsGround(atmosphere, r, mu);
+
+  transmittance = GetTransmittance(atmosphere, transmittance_texture,
+      r, mu, d, ray_r_mu_intersects_ground);
+
+  IrradianceSpectrum single_mie_scattering;
+  IrradianceSpectrum scattering = GetCombinedScattering(
+      atmosphere, scattering_texture, single_mie_scattering_texture,
+      r, mu, mu_s, nu, ray_r_mu_intersects_ground,
+      single_mie_scattering);
+
+  // Compute the r, mu, mu_s and nu parameters for the second texture lookup.
+  // If shadow_length is not 0 (case of light shafts), we want to ignore the
+  // scattering along the last shadow_length meters of the view ray, which we
+  // do by subtracting shadow_length from d (this way scattering_p is equal to
+  // the S|x_s=x_0-lv term in Eq. (17) of our paper).
+  d = max(d - shadow_length, 0.0 * m);
+  Length r_p = ClampRadius(atmosphere, sqrt(d * d + 2.0 * r * mu * d + r * r));
+  Number mu_p = (r * mu + d) / r_p;
+  Number mu_s_p = (r * mu_s + d * nu) / r_p;
+
+  IrradianceSpectrum single_mie_scattering_p;
+  IrradianceSpectrum scattering_p = GetCombinedScattering(
+      atmosphere, scattering_texture, single_mie_scattering_texture,
+      r_p, mu_p, mu_s_p, nu, ray_r_mu_intersects_ground,
+      single_mie_scattering_p);
+
+  // Combine the lookup results to get the scattering between camera and point.
+  DimensionlessSpectrum shadow_transmittance = transmittance;
+  if (shadow_length > 0.0 * m) {
+    // This is the T(x,x_s) term in Eq. (17) of our paper, for light shafts.
+    shadow_transmittance = GetTransmittance(atmosphere, transmittance_texture,
+        r, mu, d, ray_r_mu_intersects_ground);
+  }
+  scattering = scattering - shadow_transmittance * scattering_p;
+  single_mie_scattering =
+      single_mie_scattering - shadow_transmittance * single_mie_scattering_p;
+
+#ifdef COMBINED_SCATTERING_TEXTURES
+
+  single_mie_scattering = GetExtrapolatedSingleMieScattering(
+      atmosphere, vec4(scattering, single_mie_scattering.r));
+
+#endif
+
+  // Hack to avoid rendering artifacts when the sun is below the horizon.
+  single_mie_scattering = single_mie_scattering *
+      smoothstep(Number(0.0), Number(0.01), mu_s);
+
+  return scattering * RayleighPhaseFunction(nu) + single_mie_scattering *
+      MiePhaseFunction(atmosphere.mie_phase_function_g, nu);
+}
+```
+
+#### Ground
+
+To render the ground we need the irradiance received on the ground after 0 or more bounce(s) in the atmosphere or on the ground. The direct irradiance can be computed with a lookup in the transmittance texture, via <code>GetTransmittanceToSun</code>, while the indirect irradiance is given by a lookup in the precomputed irradiance texture (this texture only contains the irradiance for horizontal surfaces; we use the approximation defined in our <a href="https://hal.inria.fr/inria-00288758/en">paper</a> for the other cases).
+The function below returns the direct and indirect irradiances separately:
+
+```glsl
+IrradianceSpectrum GetSunAndSkyIrradiance(
+    IN(AtmosphereParameters) atmosphere,
+    IN(TransmittanceTexture) transmittance_texture,
+    IN(IrradianceTexture) irradiance_texture,
+    IN(Position) point, IN(Direction) normal, IN(Direction) sun_direction,
+    OUT(IrradianceSpectrum) sky_irradiance) {
+  Length r = length(point);
+  Number mu_s = dot(point, sun_direction) / r;
+
+  // Indirect irradiance (approximated if the surface is not horizontal).
+  sky_irradiance = GetIrradiance(atmosphere, irradiance_texture, r, mu_s) *
+      (1.0 + dot(normal, point) / r) * 0.5;
+
+  // Direct irradiance.
+  return atmosphere.solar_irradiance *
+      GetTransmittanceToSun(
+          atmosphere, transmittance_texture, r, mu_s) *
+      max(dot(normal, sun_direction), 0.0);
+}
+```
+
