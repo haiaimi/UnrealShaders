@@ -915,16 +915,10 @@ RadianceDensitySpectrum ComputeScatteringDensity(
       // coefficient, and the phase function for directions omega and omega_i
       // (all this summed over all particle types, i.e. Rayleigh and Mie).
       Number nu2 = dot(omega, omega_i);
-      Number rayleigh_density = GetProfileDensity(
-          atmosphere.rayleigh_density, r - atmosphere.bottom_radius);
-      Number mie_density = GetProfileDensity(
-          atmosphere.mie_density, r - atmosphere.bottom_radius);
-      rayleigh_mie += incident_radiance * (
-          atmosphere.rayleigh_scattering * rayleigh_density *
-              RayleighPhaseFunction(nu2) +
-          atmosphere.mie_scattering * mie_density *
-              MiePhaseFunction(atmosphere.mie_phase_function_g, nu2)) *
-          domega_i;
+      Number rayleigh_density = GetProfileDensity(atmosphere.rayleigh_density, r - atmosphere.bottom_radius);
+      Number mie_density = GetProfileDensity(atmosphere.mie_density, r - atmosphere.bottom_radius);
+      rayleigh_mie += incident_radiance * (atmosphere.rayleigh_scattering * rayleigh_density * RayleighPhaseFunction(nu2) +
+          atmosphere.mie_scattering * mie_density * MiePhaseFunction(atmosphere.mie_phase_function_g, nu2)) * domega_i;
 	}
   }
   return rayleigh_mie;
@@ -979,13 +973,8 @@ RadianceSpectrum ComputeMultipleScattering(
 
     // The Rayleigh and Mie multiple scattering at the current sample point.
     RadianceSpectrum rayleigh_mie_i =
-        GetScattering(
-            atmosphere, scattering_density_texture, r_i, mu_i, mu_s_i, nu,
-            ray_r_mu_intersects_ground) *
-        GetTransmittance(
-            atmosphere, transmittance_texture, r, mu, d_i,
-            ray_r_mu_intersects_ground) *
-        dx;
+        GetScattering(atmosphere, scattering_density_texture, r_i, mu_i, mu_s_i, nu, ray_r_mu_intersects_ground) *
+        GetTransmittance(atmosphere, transmittance_texture, r, mu, d_i,ray_r_mu_intersects_ground) * dx;
     // Sample weight (from the trapezoidal rule).
     Number weight_i = (i == 0 || i == SAMPLE_COUNT) ? 0.5 : 1.0;
     rayleigh_mie_sum += rayleigh_mie_i * weight_i;
@@ -1048,16 +1037,13 @@ Likewise, we can simply reuse the lookup function <code>GetScattering</code> imp
 
 ### Ground irradiance
 
-The ground irradiance is the Sun light received on the ground after $n \ge 0$
-bounces (where a bounce is either a scattering event or a reflection on the
-ground). We need this for two purposes:
+The ground irradiance is the Sun light received on the ground after $n \ge 0$ bounces (where a bounce is either a scattering event or a reflection on the ground). We need this for two purposes:
 
 * while precomputing the $n$-th order of scattering, with $n \ge 2$, in order to compute the contribution of light paths whose $(n-1)$-th bounce is on the ground (which requires the ground irradiance after $n-2$ bounces - see the <a href="#multiple_scattering_computation">Multiple scattering</a>
 section),
 * at rendering time, to compute the contribution of light paths whose last bounce is on the ground (these paths are excluded, by definition, from our precomputed scattering textures)
 
-In the first case we only need the ground irradiance for horizontal surfaces at the bottom of the atmosphere (during precomputations we assume a perfectly spherical ground with a uniform albedo). In the second case, however, we need the ground irradiance for any altitude and any surface normal, and we want to precompute it for efficiency. In fact, as described in our <a href="https://hal.inria.fr/inria-00288758/en">paper</a> we precompute it only
-for horizontal surfaces, at any altitude (which requires only 2D textures, instead of 4D textures for the general case), and we use approximations for non-horizontal surfaces.
+In the first case we only need the ground irradiance for horizontal surfaces at the bottom of the atmosphere (during precomputations we assume a perfectly spherical ground with a uniform albedo). In the second case, however, we need the ground irradiance for any altitude and any surface normal, and we want to precompute it for efficiency. In fact, as described in our <a href="https://hal.inria.fr/inria-00288758/en">paper</a> we precompute it only for horizontal surfaces, at any altitude (which requires only 2D textures, instead of 4D textures for the general case), and we use approximations for non-horizontal surfaces.
 
 The following sections describe how we compute the ground irradiance, how we store it in a precomputed texture, and how we read it back.
 
@@ -1067,17 +1053,8 @@ The following sections describe how we compute the ground irradiance, how we sto
 
 The ground irradiance computation is different for the direct irradiance, i.e. the light received directly from the Sun, without any intermediate bounce, and for the indirect irradiance (at least one bounce). We start here with the direct irradiance.
 
-The irradiance is the integral over an hemisphere of the incident radiance,
-times a cosine factor. For the direct ground irradiance, the incident radiance
-is the Sun radiance at the top of the atmosphere, times the transmittance
-through the atmosphere. And, since the Sun solid angle is small, we can
-approximate the transmittance with a constant, i.e. we can move it outside the
-irradiance integral, which can be performed over (the visible fraction of) the
-Sun disc rather than the hemisphere. Then the integral becomes equivalent to the
-ambient occlusion due to a sphere, also called a view factor, which is given in
-<a href="http://webserver.dmt.upm.es/~isidoro/tc3/Radiation%20View%20factors.pdf
-">Radiative view factors</a> (page 10). For a small solid angle, these complex
-equations can be simplified as follows:
+The irradiance is the integral over an hemisphere of the incident radiance, times a cosine factor. For the direct ground irradiance, the incident radiance is the Sun radiance at the top of the atmosphere, times the transmittance through the atmosphere. And, since the Sun solid angle is small, we can approximate the transmittance with a constant, i.e. we can move it outside the irradiance integral, which can be performed over (the visible fraction of) the Sun disc rather than the hemisphere. Then the integral becomes equivalent to the ambient occlusion due to a sphere, also called a view factor, which is given in <a href="http://webserver.dmt.upm.es/~isidoro/tc3/Radiation%20View%20factors.pdf
+">Radiative view factors</a> (page 10). For a small solid angle, these complex equations can be simplified as follows:
 
 ```glsl
 IrradianceSpectrum ComputeDirectIrradiance(
@@ -1101,8 +1078,7 @@ IrradianceSpectrum ComputeDirectIrradiance(
 }
 ```
 
-For the indirect ground irradiance the integral over the hemisphere must be
-computed numerically. More precisely we need to compute the integral over all
+For the indirect ground irradiance the integral over the hemisphere must be computed numerically. More precisely we need to compute the integral over all
 the directions $w$ of the hemisphere, of the product of:
 
 * the radiance arriving from direction $w$ after $n$ bounces,
@@ -1133,18 +1109,13 @@ IrradianceSpectrum ComputeIndirectIrradiance(
     Angle theta = (Number(j) + 0.5) * dtheta;
     for (int i = 0; i < 2 * SAMPLE_COUNT; ++i) {
       Angle phi = (Number(i) + 0.5) * dphi;
-      vec3 omega =
-          vec3(cos(phi) * sin(theta), sin(phi) * sin(theta), cos(theta));
+      vec3 omega = vec3(cos(phi) * sin(theta), sin(phi) * sin(theta), cos(theta));
       SolidAngle domega = (dtheta / rad) * (dphi / rad) * sin(theta) * sr;
 
       Number nu = dot(omega, omega_s);
-      result += GetScattering(atmosphere, single_rayleigh_scattering_texture,
-          single_mie_scattering_texture, multiple_scattering_texture,
-          r, omega.z, mu_s, nu, false /* ray_r_theta_intersects_ground */,
-          scattering_order) *
-              omega.z * domega;
+      result += GetScattering(atmosphere, single_rayleigh_scattering_texture,single_mie_scattering_texture, multiple_scattering_texture,
+          r, omega.z, mu_s, nu, false /* ray_r_theta_intersects_ground */,scattering_order) * omega.z * domega;
     }
-
   }
   return result;
 }
@@ -1164,8 +1135,7 @@ vec2 GetIrradianceTextureUvFromRMuS(IN(AtmosphereParameters) atmosphere,
     Length r, Number mu_s) {
   assert(r >= atmosphere.bottom_radius && r <= atmosphere.top_radius);
   assert(mu_s >= -1.0 && mu_s <= 1.0);
-  Number x_r = (r - atmosphere.bottom_radius) /
-      (atmosphere.top_radius - atmosphere.bottom_radius);
+  Number x_r = (r - atmosphere.bottom_radius) / (atmosphere.top_radius - atmosphere.bottom_radius);
   Number x_mu_s = mu_s * 0.5 + 0.5;
   return vec2(GetTextureCoordFromUnitRange(x_mu_s, IRRADIANCE_TEXTURE_WIDTH),
               GetTextureCoordFromUnitRange(x_r, IRRADIANCE_TEXTURE_HEIGHT));
@@ -1181,8 +1151,7 @@ void GetRMuSFromIrradianceTextureUv(IN(AtmosphereParameters) atmosphere,
   assert(uv.y >= 0.0 && uv.y <= 1.0);
   Number x_mu_s = GetUnitRangeFromTextureCoord(uv.x, IRRADIANCE_TEXTURE_WIDTH);
   Number x_r = GetUnitRangeFromTextureCoord(uv.y, IRRADIANCE_TEXTURE_HEIGHT);
-  r = atmosphere.bottom_radius +
-      x_r * (atmosphere.top_radius - atmosphere.bottom_radius);
+  r = atmosphere.bottom_radius + x_r * (atmosphere.top_radius - atmosphere.bottom_radius);
   mu_s = ClampCosine(2.0 * x_mu_s - 1.0);
 }
 ```
@@ -1240,8 +1209,7 @@ IrradianceSpectrum GetIrradiance(
 
 ### Rendering
 
-Here we assume that the transmittance, scattering and irradiance textures
-have been precomputed, and we provide functions using them to compute the sky
+Here we assume that the transmittance, scattering and irradiance textures have been precomputed, and we provide functions using them to compute the sky
 color, the aerial perspective, and the ground radiance.
 
 More precisely, we assume that the single Rayleigh scattering, without its phase function term, plus the multiple scattering terms (divided by the Rayleigh phase function for dimensional homogeneity) are stored in a <code>scattering_texture</code>. We also assume that the single Mie scattering is stored, without its phase function term:
@@ -1306,23 +1274,13 @@ IrradianceSpectrum GetCombinedScattering(
       uvwz.z, uvwz.w);
 
 #ifdef COMBINED_SCATTERING_TEXTURES
-
-  vec4 combined_scattering =
-      texture(scattering_texture, uvw0) * (1.0 - lerp) +
-      texture(scattering_texture, uvw1) * lerp;
+  vec4 combined_scattering = texture(scattering_texture, uvw0) * (1.0 - lerp) + texture(scattering_texture, uvw1) * lerp;
   IrradianceSpectrum scattering = IrradianceSpectrum(combined_scattering);
-  single_mie_scattering =
-      GetExtrapolatedSingleMieScattering(atmosphere, combined_scattering);
+  single_mie_scattering = GetExtrapolatedSingleMieScattering(atmosphere, combined_scattering);
 
 #else
-
-  IrradianceSpectrum scattering = IrradianceSpectrum(
-      texture(scattering_texture, uvw0) * (1.0 - lerp) +
-      texture(scattering_texture, uvw1) * lerp);
-  single_mie_scattering = IrradianceSpectrum(
-      texture(single_mie_scattering_texture, uvw0) * (1.0 - lerp) +
-      texture(single_mie_scattering_texture, uvw1) * lerp);
-
+  IrradianceSpectrum scattering = IrradianceSpectrum(texture(scattering_texture, uvw0) * (1.0 - lerp) + texture(scattering_texture, uvw1) * lerp);
+  single_mie_scattering = IrradianceSpectrum(texture(single_mie_scattering_texture, uvw0) * (1.0 - lerp) + texture(single_mie_scattering_texture, uvw1) * lerp);
 #endif
 
   return scattering;
