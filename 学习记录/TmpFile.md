@@ -37,7 +37,25 @@ Thus, by definition of $i$, we have
 $\Vert pi\Vert^2+2r\mu\Vert pi\Vert+r^2=r_{\mathrm{top}}^2$,
 from which we deduce the length $\Vert pi\Vert$:
 
+```glsl
+Length DistanceToTopAtmosphereBoundary(IN(AtmosphereParameters) atmosphere,
+    Length r, Number mu) {
+  assert(r <= atmosphere.top_radius);
+  assert(mu >= -1.0 && mu <= 1.0);
+  Area discriminant = r * r * (mu * mu - 1.0) + atmosphere.top_radius * atmosphere.top_radius;
+  return ClampDistance(-r * mu + SafeSqrt(discriminant));
+}
+```
 
+```glsl
+Length DistanceToBottomAtmosphereBoundary(IN(AtmosphereParameters) atmosphere,
+    Length r, Number mu) {
+  assert(r >= atmosphere.bottom_radius);
+  assert(mu >= -1.0 && mu <= 1.0);
+  Area discriminant = r * r * (mu * mu - 1.0) + atmosphere.bottom_radius * atmosphere.bottom_radius;
+  return ClampDistance(-r * mu - SafeSqrt(discriminant));
+}
+```
 
 We can now compute the transmittance between $p$ and $i$. From its
 definition and the
