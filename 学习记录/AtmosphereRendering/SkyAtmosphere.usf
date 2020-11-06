@@ -1550,8 +1550,48 @@ void RenderSkyAtmosphereEditorHudPS(
 #endif
 
 //@StarLight code - BEGIN Precomputed Multi Scattering on mobile, edit by wanghai
+
+// We need to get Transmittance between two point, so we need a new function
+float3 GetTransmittance(in float ViewZenithCosAngle, in float ViewHeight, in float Distance, in bool bIntersectGround)
+{
+	float2 UV0, UV1;
+	float R_d = clamp(sqrt(Distance * Distance + 2.f * ViewHeight * ViewZenithCosAngle * Distance + ViewHeight * ViewHeight), Atmosphere.BottomRadiusKm, Atmosphere.TopRadiusKm);
+	float CosAngle_d = clamp((ViewHeight * ViewZenithCosAngle + Distance) / R_d, -1.f, 1.f);
+	LutTransmittanceParamsToUv(ViewHeight, bIntersectGround ? -ViewZenithCosAngle : ViewZenithCosAngle, UV0);
+	LutTransmittanceParamsToUv(R_d, bIntersectGround ? -CosAngle_d : CosAngle_d, UV1);
+#ifdef WHITE_TRANSMITTANCE
+	float3 TransmittanceToPoint = 1.0f;
+#else
+	float3 TransmittanceToPoint = bIntersectGround ? min(TransmittanceLutTexture.SampleLevel(TransmittanceLutTextureSampler, UV1, 0).rgb / TransmittanceLutTexture.SampleLevel(TransmittanceLutTextureSampler, UV0, 0).rgb, 1.f) : 
+													min(TransmittanceLutTexture.SampleLevel(TransmittanceLutTextureSampler, UV0, 0).rgb / TransmittanceLutTexture.SampleLevel(TransmittanceLutTextureSampler, UV1, 0).rgb, 1.f);
+#endif
+	return TransmittanceToPoint;
+}
+
 void UvwToScatteringParams(float3 DestCoord, out float ViewHeight, out float ViewZenithCosAngle, out float LightZenithCosAngle, out float LightViewCosAngle, out bool bIntersectGround)
 {
+	float4 ScatteringTextureSize = float4(8.f, 32.f, 132.f, 8.f); // nu, mu_s, mu, r
+	float Coord_LightViewCosAngle = floor(DestCoord.x / ScatteringTextureSize.y);
+	float Coord_LightZenithCosAngle = int(DestCoord.x) % int(ScatteringTextureSize.y);
+	float4 Uvwz = (float4(Coord_LightViewCosAngle, Coord_LightZenithCosAngle, DestCoord.y, DestCoord.z) + 0.5f) / ScatteringTextureSize;
+	
+	float H = sqrt(max(0.0f, Atmosphere.TopRadiusKm * Atmosphere.TopRadiusKm - Atmosphere.BottomRadiusKm * Atmosphere.BottomRadiusKm));
+	float Rho = H * Uvwz.w;
+	ViewHeight = sqrt(Rho * Rho + Atmosphere.BottomRadiusKm * Atmosphere.BottomRadiusKm);
+	
+	if(Uvwz.z < 0.5f)
+	{
+				
+	}
+	else
+	{
+		
+	}
+	//float Rho = sqrt(max(0.0f, ViewHeight * ViewHeight - Atmosphere.BottomRadiusKm * Atmosphere.BottomRadiusKm));
+	//float R = sqrt(Rho * Rho + Atmosphere.BottomRadiusKm * Atmosphere.BottomRadiusKm);
+	
+	//float Discriminant = ViewHeight * ViewHeight * (ViewZenithCosAngle * ViewZenithCosAngle - 1.0f) + Atmosphere.TopRadiusKm * Atmosphere.TopRadiusKm;
+	//float D = max(0.0f, (-ViewHeight * ViewZenithCosAngle + sqrt(Discriminant))); // Distance to atmosphere boundary
 	
 }
 
@@ -1571,8 +1611,19 @@ void ComputeSingleScattering(float3 WorldPos, float3 WorldDir, float ViewHeight,
 		float3 Rayleigh = 0.f;
 		float3 Mie = 0.f;
 		
-		float d = sqrt()
-
+		float R_d = clamp(sqrt(StepLength * StepLength + 2.f * ViewHeight * ViewZenithCosAngle * StepLength + ViewHeight * ViewHeight), Atmosphere.BottomRadiusKm, Atmosphere.TopRadiusKm);
+		float LightDCosAngle = clamp((ViewHeight * LightZenithCosAngle + StepLength * LightViewCosAngle) / R_d, -1.f, 1.f);
+	
+		// #TODO Consider the sun disc 
+		float3 Transmittance = GetTransmittance(ViewZenithCosAngle, ViewHeight, StepLength, bIntersectGround) * GetTransmittance(LightDCosAngle, R_d);
+		const float DensityMie = exp(Atmosphere.MieDensityExpScale * (R_d - Atmosphere.BottomRadiusKm));
+		const float DensityRay = exp(Atmosphere.RayleighDensityExpScale * (R_d - Atmosphere.BottomRadiusKm));
+		Rayleigh = Transmittance * DensityRay;
+		Mie = Transmittance * DensityMie;
+		
+		float Weight = (i == 0 || i == SampleCount) ? 0.5f : 1.f;
+		RayleighScatter += Rayleigh * Weight;
+		MieScatter += Mie * Weight;
 	}
 }
 
@@ -1593,7 +1644,7 @@ void RenderSingleScatteringLutCS(uint3 ThreadId : SV_DispatchThreadID)
 	float LightViewCosAngle;
 	bool bIntersectGround;
 	
-	UvwToScatteringParams(UVW, ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround);
+	UvwToScatteringParams(float3(ThreadId), ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround);
 	
 	float3 WorldPos = float3(0.0f, 0.0f, ViewHeight);
 	float3 WorldDir = float3(0.0f, sqrt(1.0f - ViewZenithCosAngle * ViewZenithCosAngle), ViewZenithCosAngle);
