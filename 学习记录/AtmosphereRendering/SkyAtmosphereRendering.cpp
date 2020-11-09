@@ -241,7 +241,9 @@ END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FAtmosphereUniformShaderParameters, "Atmosphere");
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FSkyAtmosphereInternalCommonParameters, "SkyAtmosphere");
-
+//@StarLight code - BEGIN Precomputed Multi Scattering on mobile, edit by wanghai
+IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FPrecomputedAtmosphereUniformShaderParameters, "PrecomputedSkyAtmosphere");
+//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
 #define GET_VALID_DATA_FROM_CVAR \
 	auto ValidateLUTResolution = [](int32 Value) \
@@ -645,6 +647,7 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_STRUCT_REF(FAtmosphereUniformShaderParameters, Atmosphere)
 		SHADER_PARAMETER_STRUCT_REF(FSkyAtmosphereInternalCommonParameters, SkyAtmosphere)
+		SHADER_PARAMETER_STRUCT_REF(FPrecomputedAtmosphereUniformShaderParameters, PrecomputedSkyAtmosphere)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float3>, TransmittanceLutTexture)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<float3>, RayleighSingleScatteringUAV)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<float3>, MieSingleScatteringUAV)
@@ -661,7 +664,139 @@ public:
 		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), GroupSize);
 	}
 };
-IMPLEMENT_GLOBAL_SHADER(FRenderTransmittanceLutCS, "/Engine/Private/SkyAtmosphere.usf", "RenderSingleScatteringLutCS", SF_Compute);
+IMPLEMENT_GLOBAL_SHADER(FRenderSingleScatteringLutCS, "/Engine/Private/SkyAtmosphere.usf", "RenderSingleScatteringLutCS", SF_Compute);
+
+class FRenderScatteringDensityCS : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FRenderScatteringDensityCS);
+	SHADER_USE_PARAMETER_STRUCT(FRenderScatteringDensityCS, FGlobalShader);
+
+	using FPermutationDomain = TShaderPermutationDomain<>;
+
+public:
+	const static uint32 GroupSize = 8;
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_STRUCT_REF(FAtmosphereUniformShaderParameters, Atmosphere)
+		SHADER_PARAMETER_STRUCT_REF(FSkyAtmosphereInternalCommonParameters, SkyAtmosphere)
+		SHADER_PARAMETER_STRUCT_REF(FPrecomputedAtmosphereUniformShaderParameters, PrecomputedSkyAtmosphere)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float3>, TransmittanceLutTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture3D<float3>, RayleighSingleScatteringLut)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture3D<float3>, MieSingleScatteringLut)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture3D<float3>, MultiScatteringLut)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture3D<float3>, IrradianceLut)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<float3>, ScatteringDensityUAV)
+		END_SHADER_PARAMETER_STRUCT()
+
+		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return ShouldPipelineCompileSkyAtmosphereShader(Parameters.Platform);
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), GroupSize);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FRenderScatteringDensityCS, "/Engine/Private/SkyAtmosphere.usf", "RenderScatteringDensityCS", SF_Compute);
+
+class FRenderMultiScatteringCS : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FRenderMultiScatteringCS);
+	SHADER_USE_PARAMETER_STRUCT(FRenderMultiScatteringCS, FGlobalShader);
+
+	using FPermutationDomain = TShaderPermutationDomain<>;
+
+public:
+	const static uint32 GroupSize = 8;
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_STRUCT_REF(FAtmosphereUniformShaderParameters, Atmosphere)
+		SHADER_PARAMETER_STRUCT_REF(FSkyAtmosphereInternalCommonParameters, SkyAtmosphere)
+		SHADER_PARAMETER_STRUCT_REF(FPrecomputedAtmosphereUniformShaderParameters, PrecomputedSkyAtmosphere)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float3>, TransmittanceLutTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture3D<float3>, RadianceDensityLut)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<float3>, MultiScatteringUAV)
+		END_SHADER_PARAMETER_STRUCT()
+
+		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return ShouldPipelineCompileSkyAtmosphereShader(Parameters.Platform);
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), GroupSize);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FRenderMultiScatteringCS, "/Engine/Private/SkyAtmosphere.usf", "RenderMultiScatteringCS", SF_Compute);
+
+class FRenderDirectIrradianceCS : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FRenderDirectIrradianceCS);
+	SHADER_USE_PARAMETER_STRUCT(FRenderDirectIrradianceCS, FGlobalShader);
+
+	using FPermutationDomain = TShaderPermutationDomain<>;
+
+public:
+	const static uint32 GroupSize = 8;
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_STRUCT_REF(FAtmosphereUniformShaderParameters, Atmosphere)
+		SHADER_PARAMETER_STRUCT_REF(FSkyAtmosphereInternalCommonParameters, SkyAtmosphere)
+		SHADER_PARAMETER_STRUCT_REF(FPrecomputedAtmosphereUniformShaderParameters, PrecomputedSkyAtmosphere)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float3>, TransmittanceLutTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(Texture3D<float3>, IrradianceUAV)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return ShouldPipelineCompileSkyAtmosphereShader(Parameters.Platform);
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), GroupSize);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FRenderDirectIrradianceCS, "/Engine/Private/SkyAtmosphere.usf", "RenderDirectIrradianceCS", SF_Compute);
+
+class FRenderIndirectIrradianceCS : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FRenderIndirectIrradianceCS);
+	SHADER_USE_PARAMETER_STRUCT(FRenderIndirectIrradianceCS, FGlobalShader);
+
+	using FPermutationDomain = TShaderPermutationDomain<>;
+
+public:
+	const static uint32 GroupSize = 8;
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_STRUCT_REF(FAtmosphereUniformShaderParameters, Atmosphere)
+		SHADER_PARAMETER_STRUCT_REF(FSkyAtmosphereInternalCommonParameters, SkyAtmosphere)
+		SHADER_PARAMETER_STRUCT_REF(FPrecomputedAtmosphereUniformShaderParameters, PrecomputedSkyAtmosphere)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float3>, TransmittanceLutTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture3D<float3>, RayleighSingleScatteringLut)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture3D<float3>, MieSingleScatteringLut)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture3D<float3>, MultiScatteringLut)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(Texture3D<float3>, IrradianceUAV)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return ShouldPipelineCompileSkyAtmosphereShader(Parameters.Platform);
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), GroupSize);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FRenderIndirectIrradianceCS, "/Engine/Private/SkyAtmosphere.usf", "RenderIndirectIrradianceCS", SF_Compute);
 //@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
 //////////////////////////////////////////////////////////////////////////
@@ -955,6 +1090,10 @@ TGlobalResource<FUniformSphereSamplesBuffer> GUniformSphereSamplesBuffer;
 	FSceneRenderer functions
 =============================================================================*/
 
+//@StarLight code - BEGIN Precomputed Multi Scattering on mobile, edit by wanghai
+FIntVector4 ScatteringTextureSize(8, 32, 132, 8);
+//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
+
 void FSceneRenderer::InitSkyAtmosphereForViews(FRHICommandListImmediate& RHICmdList)
 {
 	InitSkyAtmosphereForScene(RHICmdList, Scene);
@@ -1030,6 +1169,17 @@ void InitSkyAtmosphereForScene(FRHICommandListImmediate& RHICmdList, FScene* Sce
 				TextureLUTFormat, FClearValueBinding::None, TexCreate_HideInVisualizeTexture, TexCreate_ShaderResource | TexCreate_UAV, false);
 			GRenderTargetPool.FindFreeElement(RHICmdList, Desc, DistantSkyLightLutTexture, TEXT("DistantSkyLightLutTexture"), true, ERenderTargetTransience::Transient);
 		}
+
+		//@StarLight code - BEGIN Precomputed Multi Scattering on mobile, edit by wanghai
+		TRefCountPtr<IPooledRenderTarget>& ScatteringLutTexture = SkyInfo.GetMultiScatteringLutTexture();
+		TRefCountPtr<IPooledRenderTarget>& RayleighScatteringLutTexture = SkyInfo.GetRayleighScatteringLutTexture();
+		TRefCountPtr<IPooledRenderTarget>& MieScatteringLutTexture = SkyInfo.GetMieScatteringLutTexture();
+		Desc = FPooledRenderTargetDesc::CreateVolumeDesc(ScatteringTextureSize.X * ScatteringTextureSize.Y, ScatteringTextureSize.Z, ScatteringTextureSize.W, PF_A32B32G32R32F,
+			 FClearValueBinding::None, TexCreate_HideInVisualizeTexture, TexCreate_ShaderResource | TexCreate_UAV, false);
+		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, ScatteringLutTexture, TEXT("MultiScatteringLutTexture"), true, ERenderTargetTransience::Transient);
+		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RayleighScatteringLutTexture, TEXT("RayleighScatteringLutTexture"), true, ERenderTargetTransience::Transient);
+		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, MieScatteringLutTexture, TEXT("MieScatteringLutTexture"), true, ERenderTargetTransience::Transient);
+		//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 	}
 }
 
@@ -1306,6 +1456,33 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& R
 			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("CameraVolumeLut"), ComputeShader, PassParameters, NumGroups);
 		}
 	}
+
+	//@StarLight code - BEGIN Precomputed Multi Scattering on mobile, edit by wanghai
+	{
+		FPrecomputedAtmosphereUniformShaderParameters PrecomputedCommonParameters;
+		PrecomputedCommonParameters.LightZenithCosMin = -0.2f;
+		PrecomputedCommonParameters.ScatteringTextureSize = ScatteringTextureSize;
+		TUniformBufferRef<FPrecomputedAtmosphereUniformShaderParameters> PrecomputedCommonParametersRef = TUniformBufferRef<FPrecomputedAtmosphereUniformShaderParameters>::CreateUniformBufferImmediate(PrecomputedCommonParameters, UniformBuffer_MultiFrame);
+
+		FRDGTextureRef RayleighScatteringLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetRayleighScatteringLutTexture());
+		FRDGTextureUAVRef RayleighScatteringLutUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(RayleighScatteringLut, 0));
+		FRDGTextureRef MieScatteringLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetMieScatteringLutTexture());
+		FRDGTextureUAVRef MieScatteringLutUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(MieScatteringLut, 0));
+
+		TShaderMapRef<FRenderSingleScatteringLutCS> ComputeShader(GlobalShaderMap);
+		FRenderSingleScatteringLutCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FRenderSingleScatteringLutCS::FParameters>();
+		PassParameters->Atmosphere = Scene->GetSkyAtmosphereSceneInfo()->GetAtmosphereUniformBuffer();
+		PassParameters->SkyAtmosphere = InternalCommonParametersRef;
+		PassParameters->PrecomputedSkyAtmosphere = PrecomputedCommonParametersRef;
+		PassParameters->RayleighSingleScatteringUAV = RayleighScatteringLutUAV;
+		PassParameters->MieSingleScatteringUAV = MieScatteringLutUAV;
+		PassParameters->TransmittanceLutTexture = TransmittanceLut;
+
+		FIntVector TextureSize(ScatteringTextureSize.X * ScatteringTextureSize.Y, ScatteringTextureSize.Z, ScatteringTextureSize.W);
+		const FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FRenderSingleScatteringLutCS::GroupSize);
+		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("ComputeSingleScattering"), ComputeShader, PassParameters, NumGroups);
+	}
+	//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 	
 	GraphBuilder.Execute();
 	// TODO have RDG execute those above passes with compute overlap similarly to using AutomaticCacheFlushAfterComputeShader(true);
