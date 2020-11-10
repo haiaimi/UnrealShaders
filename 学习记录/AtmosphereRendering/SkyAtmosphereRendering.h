@@ -47,7 +47,10 @@ END_GLOBAL_SHADER_PARAMETER_STRUCT()
 //@StarLight code - BEGIN Precomputed Multi Scattering on mobile, edit by wanghai
 BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FPrecomputedAtmosphereUniformShaderParameters, )
 SHADER_PARAMETER(FIntVector4, ScatteringTextureSize)
+SHADER_PARAMETER(FIntPoint, TransmittanceLutSize)
+SHADER_PARAMETER(FIntPoint, IrradianceLutSize)
 SHADER_PARAMETER(float, LightZenithCosMin)
+SHADER_PARAMETER(float, LightAngularRadius)
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 //@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
@@ -81,6 +84,9 @@ public:
 	TRefCountPtr<IPooledRenderTarget>& GetRayleighScatteringLutTexture() { return RayleighScatteringLutTexture; }
 	TRefCountPtr<IPooledRenderTarget>& GetMieScatteringLutTexture() { return MieScatteringLutTexture; }
 	TRefCountPtr<IPooledRenderTarget>& GetMultiScatteringLutTexture() { return MultiScatteringLutTexture; }
+	TRefCountPtr<IPooledRenderTarget>& GetIntermediateMultiScatteringLutTexture() { return IntermediateMultiScatteringLutTexture; }
+	TRefCountPtr<IPooledRenderTarget>& GetIrradianceLutTexture() { return IrradianceLutTexture; }
+	TRefCountPtr<IPooledRenderTarget>& GetIntermediateIrradianceLutTexture() { return IntermediateIrradianceLutTexture; }
 	//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
 	const FAtmosphereUniformShaderParameters* GetAtmosphereShaderParameters() const { return &AtmosphereUniformShaderParameters; }
@@ -102,6 +108,9 @@ private:
 	TRefCountPtr<IPooledRenderTarget> RayleighScatteringLutTexture;
 	TRefCountPtr<IPooledRenderTarget> MieScatteringLutTexture;
 	TRefCountPtr<IPooledRenderTarget> MultiScatteringLutTexture;
+	TRefCountPtr<IPooledRenderTarget> IntermediateMultiScatteringLutTexture;
+	TRefCountPtr<IPooledRenderTarget> IrradianceLutTexture;
+	TRefCountPtr<IPooledRenderTarget> IntermediateIrradianceLutTexture;
 	//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 };
 
