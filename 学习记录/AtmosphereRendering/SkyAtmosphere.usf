@@ -1550,16 +1550,49 @@ void RenderSkyAtmosphereEditorHudPS(
 #endif
 
 //@StarLight code - BEGIN Precomputed Multi Scattering on mobile, edit by wanghai
+float3 BilinearSampleTexture2D(Texture2D<float4> InTexture, float2 SamplePos, float2 TextureSize)
+{
+	int2 TopLeftPos = clamp(0, floor(SamplePos), TextureSize - 1);
+	int2 TopRight = clamp(0, TopLeftPos + int2(1, 0), TextureSize - 1);
+	int2 BottomLeft = clamp(0, TopLeftPos + int2(0, 1), TextureSize - 1);
+	int2 BottomRight = clamp(0, TopLeftPos + int2(1, 1), TextureSize - 1);
+	
+	float2 Alpha = frac(SamplePos);
+
+	return lerp(lerp(InTexture.Load(int3(TopLeftPos, 0)), InTexture.Load(int3(TopRight, 0)), Alpha.x),
+				lerp(InTexture.Load(int3(BottomLeft, 0)), InTexture.Load(int3(BottomRight, 0)), Alpha.x),
+				Alpha.y).xyz;
+
+}
+
+float3 BilinearSampleTexture3D(Texture3D<float3> InTexture, float3 Coord)
+{
+	uint3 TextureDim;
+	InTexture.GetDimensions(TextureDim.x, TextureDim.y, TextureDim.z);
+	uint3 FloorCoord = uint3(floor(Coord));
+	uint3 RoundUpCoord = clamp(FloorCoord + 1u, 0, TextureDim - 1);
+	
+	// Two bilinear Interpolation 
+	float3 Value0 = lerp(lerp(InTexture.Load(uint4(FloorCoord, 0)), InTexture.Load(uint4(RoundUpCoord.x, FloorCoord.y, FloorCoord.z, 0)), frac(Coord.x)),
+						 lerp(InTexture.Load(uint4(FloorCoord.x, RoundUpCoord.y, FloorCoord.z, 0)), InTexture.Load(uint4(RoundUpCoord.x, RoundUpCoord.y, FloorCoord.z, 0)), frac(Coord.x)),
+						 frac(Coord.y));
+	
+	float3 Value1 = lerp(lerp(InTexture.Load(uint4(FloorCoord.x, FloorCoord.y, RoundUpCoord.z, 0)), InTexture.Load(uint4(RoundUpCoord.x, FloorCoord.y, RoundUpCoord.z, 0)), frac(Coord.x)),
+						 lerp(InTexture.Load(uint4(FloorCoord.x, RoundUpCoord.y, RoundUpCoord.z, 0)), InTexture.Load(uint4(RoundUpCoord, 0)), frac(Coord.x)),
+						 frac(Coord.y));
+
+	return lerp(Value0, Value1, frac(Coord.z)).xyz;
+}
 
 float3 GetTransmittance(in float LightZenithCosAngle, in float PHeight, in float2 TranmisttanceLutSize)
 {
 	float2 UV;
 	LutTransmittanceParamsToUv(PHeight, LightZenithCosAngle, UV);
-	UV *= TranmisttanceLutSize;
+	UV *= (TranmisttanceLutSize - 1);
 #ifdef WHITE_TRANSMITTANCE
 	float3 TransmittanceToLight = 1.0f;
 #else
-	float3 TransmittanceToLight = TransmittanceLutTexture.Load(int3(int2(UV), 0)).xyz;
+	float3 TransmittanceToLight = BilinearSampleTexture2D(TransmittanceLutTexture, UV, TranmisttanceLutSize);
 #endif
 	return TransmittanceToLight;
 }
@@ -1575,10 +1608,11 @@ float3 GetTransmittance(in float ViewZenithCosAngle, in float ViewHeight, in flo
 #ifdef WHITE_TRANSMITTANCE
 	float3 TransmittanceToPoint = 1.0f;
 #else
-	int3 LoadPos0 = int3(UV0 * TranmisttanceLutSize, 0);
-	int3 LoadPos1 = int3(UV1 * TranmisttanceLutSize, 0);
-	float3 TransmittanceToPoint = bIntersectGround ? min(TransmittanceLutTexture.Load(LoadPos1).rgb / TransmittanceLutTexture.Load(LoadPos0).rgb, 1.f) :
-													min(TransmittanceLutTexture.Load(LoadPos0).rgb / TransmittanceLutTexture.Load(LoadPos1).rgb, 1.f);
+	float2 LoadPos0 = UV0 * (TranmisttanceLutSize - 1);
+	float2 LoadPos1 = UV1 * (TranmisttanceLutSize - 1);
+	float3 TransmittanceToPoint = bIntersectGround ? min(BilinearSampleTexture2D(TransmittanceLutTexture, LoadPos1, TranmisttanceLutSize) / BilinearSampleTexture2D(TransmittanceLutTexture, LoadPos0, TranmisttanceLutSize), 1.f) :
+													min(BilinearSampleTexture2D(TransmittanceLutTexture, LoadPos0, TranmisttanceLutSize) / BilinearSampleTexture2D(TransmittanceLutTexture, LoadPos1, TranmisttanceLutSize), 1.f);
+	//float3 TransmittanceToPoint = float3(LoadPos1.xy, -CosAngle_d);
 #endif
 	return TransmittanceToPoint;
 }
@@ -1675,13 +1709,13 @@ void ComputeSingleScattering(float3 WorldPos, float3 WorldDir, float ViewHeight,
 	int SampleCount = 50;
 	
 	float3 PlanetO = float3(0.0f, 0.0f, 0.0f);
-	float DistantToBoundary = bIntersectGround ? RaySphereIntersectNearest(WorldPos, WorldDir, PlanetO, Atmosphere.BottomRadiusKm) : RaySphereIntersectNearest(WorldPos, WorldDir, PlanetO, Atmosphere.TopRadiusKm);
-	float dx = DistantToBoundary / SampleCount;
+	float DistantToBoundary = bIntersectGround ? RaySphereIntersectNearest(WorldPos, normalize(WorldDir), PlanetO, Atmosphere.BottomRadiusKm) : RaySphereIntersectNearest(WorldPos, WorldDir, PlanetO, Atmosphere.TopRadiusKm);
+	float dx = max(DistantToBoundary / SampleCount, 0.f);
 	RayleighScatter = 0.f;
 	MieScatter = 0.f;
 	// Compute the Optical Depth
 	// We can see easy explanation in https://www.alanzucconi.com/2017/10/10/atmospheric-scattering-1/ and https://zhuanlan.zhihu.com/p/36498679
-	for (int i = 0; i < SampleCount; ++i)
+	for (int i = 0; i <= SampleCount; ++i)
 	{
 		float StepLength = i * dx;
 		float3 Rayleigh = 0.f;
@@ -1693,6 +1727,8 @@ void ComputeSingleScattering(float3 WorldPos, float3 WorldDir, float ViewHeight,
 		// #TODO Consider the sun disk
 		// Compute the transmittance from Sun->P->A
 		float3 Transmittance = GetTransmittance(ViewZenithCosAngle, ViewHeight, StepLength, bIntersectGround, PrecomputedSkyAtmosphere.TransmittanceLutSize) * GetTransmittance(LightDCosAngle, R_d, PrecomputedSkyAtmosphere.TransmittanceLutSize);
+		//RayleighScatter = Transmittance;
+		//return;
 		const float DensityMie = exp(Atmosphere.MieDensityExpScale * (R_d - Atmosphere.BottomRadiusKm));
 		const float DensityRay = exp(Atmosphere.RayleighDensityExpScale * (R_d - Atmosphere.BottomRadiusKm));
 		Rayleigh = Transmittance * DensityRay;
@@ -1752,9 +1788,10 @@ float3 GetScattering(Texture3D<float3> ScatteringLut, in float ViewHeight, in fl
 	float TexCoord_x = Uvwz.x * (ScatteringTextureSize.x - 1.f);
 	float Tex_x = floor(TexCoord_x);
 	float Alpha = TexCoord_x - Tex_x;
-	int3 Uvw0 = float3((Tex_x + Uvwz.y) / ScatteringTextureSize.x, Uvwz.z, Uvwz.w) * float3(Size.x * Size.y, Size.z, Size.w);
-	int3 Uvw1 = float3((Tex_x + 1.f + Uvwz.y) / ScatteringTextureSize.x, Uvwz.z, Uvwz.w) * float3(Size.x * Size.y, Size.z, Size.w);
-	return lerp(ScatteringLut.Load(int4(Uvw0, 0)), ScatteringLut.Load(int4(Uvw1, 0)), Alpha);
+	float3 Uvw0 = float3((Tex_x + Uvwz.y) / ScatteringTextureSize.x, Uvwz.z, Uvwz.w) * float3(Size.x * Size.y, Size.z, Size.w);
+	float3 Uvw1 = float3((Tex_x + 1.f + Uvwz.y) / ScatteringTextureSize.x, Uvwz.z, Uvwz.w) * float3(Size.x * Size.y, Size.z, Size.w);
+	
+	return lerp(BilinearSampleTexture3D(ScatteringLut, Uvw0), BilinearSampleTexture3D(ScatteringLut, Uvw1), Alpha);
 }
 
 float MiePhase(float G, float CosAngle)
@@ -1810,17 +1847,14 @@ float3 ComputeSactteringDensity(in float ViewHeight, in float ViewZenithCosAngle
 	float LightDir_y = (Omega.y == 0.f) ? 0.f : (LightViewCosAngle - ViewZenithCosAngle * LightZenithCosAngle) / Omega.y;
 	float LightDir_x = sqrt(max(1.f - LightDir_y * LightDir_y - LightZenithCosAngle * LightZenithCosAngle, 0.f));
 	// Light direction
-	float3 Omega_Light = float3(LightDir_x, LightDir_y, LightZenithCosAngle);
-	//return Omega;
-	//return GetScattering(RayleighSingleScatteringLut, MieSingleScatteringLut, MultiScatteringLut, ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, IntersectGround, 1);
-	// Now we will do integral
+	float3 Omega_Light = normalize(float3(LightDir_x, LightDir_y, LightZenithCosAngle));
 	// #TODO SampleCount
 	int SampleCount = 16;
 	float DeltaPhi = PI / SampleCount;
 	float DeltaTheta = PI / SampleCount;
 	float3 Rayleigh_Mie = 0.f;
 	
-	for (int i = 0; i < SampleCount; ++i)
+	for (int i = 0; i <= SampleCount; ++i)
 	{
 		float Theta = (i + 0.5f) * DeltaTheta;
 		float CosTheta = cos(Theta);
@@ -1844,7 +1878,7 @@ float3 ComputeSactteringDensity(in float ViewHeight, in float ViewZenithCosAngle
 			DistanceToGround = 0.f;
 		}
 		
-		for (int j = 0; j < SampleCount * 2; ++j)
+		for (int j = 0; j <= SampleCount * 2; ++j)
 		{
 			float Phi = (j + 0.5f) * DeltaPhi;
 			// Current view dir
@@ -1865,7 +1899,7 @@ float3 ComputeSactteringDensity(in float ViewHeight, in float ViewZenithCosAngle
 			float SampleHeight = ViewHeight - Atmosphere.BottomRadiusKm;
 			float Rayleigh_Density = exp(Atmosphere.RayleighDensityExpScale * SampleHeight);
 			float Mie_Density = exp(Atmosphere.MieDensityExpScale * SampleHeight);
-			Rayleigh_Mie += Radiance * (Atmosphere.RayleighScattering * Rayleigh_Density * RayleighPhase(ViewLightCosAngle_i) + Atmosphere.MieScattering * Mie_Density * MiePhase(Atmosphere.MiePhaseG, ViewLightCosAngle_i)) /** DeltaSolidAngle*/;
+			Rayleigh_Mie += Radiance * (Atmosphere.RayleighScattering * Rayleigh_Density * RayleighPhase(ViewLightCosAngle_i) + Atmosphere.MieScattering * Mie_Density * MiePhase(Atmosphere.MiePhaseG, ViewLightCosAngle_i)) * DeltaSolidAngle;
 		}
 	}
 
@@ -1882,11 +1916,16 @@ float3 ComputeMultipleScattering(in float ViewHeight, in float ViewZenithCosAngl
 	float DistantToBoundary = bIntersectGround ? RaySphereIntersectNearest(WorldPos, WorldDir, PlanetO, Atmosphere.BottomRadiusKm) : RaySphereIntersectNearest(WorldPos, WorldDir, PlanetO, Atmosphere.TopRadiusKm);
 	float dx = DistantToBoundary / SampleCount;
 	
+	//return GetTransmittance(ViewZenithCosAngle, ViewHeight, DistantToBoundary, bIntersectGround, PrecomputedSkyAtmosphere.TransmittanceLutSize);
+	//return GetScattering(RadianceDensityLut, ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround);
+	
 	float3 Rayleigh_Mie = 0.f;
-	for (int i = 0; i < SampleCount; ++i)
+	for (int i = 0; i <= SampleCount; ++i)
 	{
 		float StepLength = i * dx;
+		// View height at i point
 		float ViewHeight_i = clamp(sqrt(StepLength * StepLength + 2.f * ViewHeight * ViewZenithCosAngle * StepLength + ViewHeight * ViewHeight), Atmosphere.BottomRadiusKm, Atmosphere.TopRadiusKm);
+		// View zenith cos at i point
 		float ViewZenithCosAngle_i = clamp((ViewHeight * ViewZenithCosAngle + StepLength) / ViewHeight_i, -1.f, 1.f);
 		float LightZenithCosAngle_i = clamp((ViewHeight * LightZenithCosAngle + StepLength * LightViewCosAngle) / ViewHeight_i, -1.f, 1.f);
 		float3 Rayleigh_Mie_i = GetScattering(RadianceDensityLut, ViewHeight_i, ViewZenithCosAngle_i, LightZenithCosAngle_i, LightViewCosAngle, bIntersectGround) * GetTransmittance(ViewZenithCosAngle, ViewHeight, StepLength, bIntersectGround, PrecomputedSkyAtmosphere.TransmittanceLutSize) * dx;
@@ -1926,7 +1965,7 @@ void RenderMultiScatteringCS(uint3 ThreadId : SV_DispatchThreadID)
 
 float3 ComputeDirectIrrandiance(in float ViewHeight, in float LightZenithCosAngle)
 {
-	float LightAngularRadius = 0.1f;
+	float LightAngularRadius = 0.01f;
 	
 	float AverageCosineFactor = LightZenithCosAngle < -LightAngularRadius ? 0.f : (LightZenithCosAngle > LightAngularRadius ? LightZenithCosAngle : (LightZenithCosAngle + LightAngularRadius) * (LightZenithCosAngle + LightAngularRadius) / (4.f * LightAngularRadius));
 	
@@ -1951,10 +1990,10 @@ float3 ComputeIndirectIrrandiance(in float ViewHeight, in float LightZenithCosAn
 		{
 			float Phi = (j + 0.5f) * DeltaPhi;
 			float3 Omega = float3(SinTheta * sin(Phi), SinTheta * cos(Phi), CosTheta);
-			float DeltaSolidAngle = DeltaPhi * DeltaTheta * CosTheta * 1.f;
+			float DeltaSolidAngle = DeltaPhi * DeltaTheta * SinTheta * 1.f;
 			
 			float LightViewCosAngle = dot(Omega, Omega_Light);
-			Irradiance += GetScattering(RayleighSingleScatteringLut, MieSingleScatteringLut, MultiScatteringLut, ViewHeight, CosTheta, LightZenithCosAngle, LightViewCosAngle, false, ScatteringOrder);
+			Irradiance += GetScattering(RayleighSingleScatteringLut, MieSingleScatteringLut, MultiScatteringLut, ViewHeight, CosTheta, LightZenithCosAngle, LightViewCosAngle, false, ScatteringOrder) * DeltaSolidAngle * CosTheta;
 
 		}
 	}
