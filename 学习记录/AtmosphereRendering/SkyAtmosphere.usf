@@ -1629,20 +1629,20 @@ void ScatteringParamsToUvwz(in float ViewHeight, in float ViewZenithCosAngle, in
 	
 	if(bIntersectGround)
 	{
-		float D = -ViewHeight_ViewCos - sqrt(Discriminant);
+		float D = -ViewHeight_ViewCos - sqrt(max(0.f, Discriminant));
 		float Dmin = ViewHeight - Atmosphere.BottomRadiusKm;
 		float Dmax = Rho;
-		u_ViewZenithCosAngle = 0.5f - 0.5f * (Dmax == Dmin ? 0.f : (D - Dmin) / (Dmax - Dmin));
+		u_ViewZenithCosAngle = 0.5f - 0.5f * (Dmax == Dmin ? 1.f : (D - Dmin) / (Dmax - Dmin));
 
 	}
 	else
 	{
-		float D = -ViewHeight_ViewCos + sqrt(Discriminant + H * H);
+		float D = -ViewHeight_ViewCos + sqrt(max(Discriminant + H * H, 0.f));
 		float Dmin = Atmosphere.TopRadiusKm - ViewHeight;
 		float Dmax = Rho + H;
 		u_ViewZenithCosAngle = 0.5f + 0.5f * ((D - Dmin) / (Dmax - Dmin));
 	}
-	float3 WorldPos = float3(0.0f, 0.0f, ViewHeight);
+	float3 WorldPos = float3(0.0f, 0.0f, Atmosphere.BottomRadiusKm);
 	float3 WorldDir = float3(0.0f, sqrt(1.0f - LightZenithCosAngle * LightZenithCosAngle), LightZenithCosAngle);
 	float3 PlanetO = float3(0.0f, 0.0f, 0.0f);
 	float D = RaySphereIntersectNearest(WorldPos, WorldDir, PlanetO, Atmosphere.TopRadiusKm);
@@ -1758,7 +1758,7 @@ void RenderSingleScatteringLutCS(uint3 ThreadId : SV_DispatchThreadID)
 	float LightViewCosAngle;
 	bool bIntersectGround;
 	
-	UvwToScatteringParams(float3(ThreadId + 0.5f), ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround);
+	UvwToScatteringParams(float3(ThreadId), ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround);
 	
 	float3 WorldPos = float3(0.0f, 0.0f, ViewHeight);
 	float3 WorldDir = float3(0.0f, sqrt(1.0f - ViewZenithCosAngle * ViewZenithCosAngle), ViewZenithCosAngle);
@@ -1789,7 +1789,7 @@ float3 GetScattering(Texture3D<float3> ScatteringLut, in float ViewHeight, in fl
 	float TexCoord_x = floor(CurPos.x);
 	float Alpha = CurPos.x - TexCoord_x;
 	float3 Pos0 = float3(TexCoord_x * ScatteringTextureSize.y + CurPos.y, CurPos.z, CurPos.w);
-	float3 Pos1 = float3(max(TexCoord_x + 1, ScatteringTextureSize.x - 1) * ScatteringTextureSize.y + CurPos.y, CurPos.z, CurPos.w);
+	float3 Pos1 = float3(min(TexCoord_x + 1, ScatteringTextureSize.x - 1) * ScatteringTextureSize.y + CurPos.y, CurPos.z, CurPos.w);
 	return lerp(BilinearSampleTexture3D(ScatteringLut, Pos0), BilinearSampleTexture3D(ScatteringLut, Pos1), Alpha);
 	//float TexCoord_x = Uvwz.x * (ScatteringTextureSize.x);
 	//float Tex_x = max(floor(TexCoord_x), ScatteringTextureSize.x - 1);
@@ -1963,7 +1963,7 @@ void RenderMultiScatteringCS(uint3 ThreadId : SV_DispatchThreadID)
 {
 	float ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle;
 	bool bIntersectGround;
-	UvwToScatteringParams(float3(ThreadId + 0.5f), ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround);
+	UvwToScatteringParams(float3(ThreadId), ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround);
 	float3 MultiScattering = ComputeMultipleScattering(ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround);
 
 	MultiScatteringUAV[ThreadId] = MultiScattering;
