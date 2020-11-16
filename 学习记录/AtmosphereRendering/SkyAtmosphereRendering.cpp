@@ -652,6 +652,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float3>, TransmittanceLutTexture)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<float3>, RayleighSingleScatteringUAV)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<float3>, MieSingleScatteringUAV)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<float3>, MultiScatteringUAV)
 		END_SHADER_PARAMETER_STRUCT()
 
 		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -719,6 +720,8 @@ public:
 		SHADER_PARAMETER_STRUCT_REF(FPrecomputedAtmosphereUniformShaderParameters, PrecomputedSkyAtmosphere)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float3>, TransmittanceLutTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture3D<float3>, RadianceDensityLut)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture3D<float3>, MultiScatteringLut)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<float3>, IntermediateMultiScatteringUAV)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<float3>, MultiScatteringUAV)
 		END_SHADER_PARAMETER_STRUCT()
 
@@ -1180,7 +1183,8 @@ void InitSkyAtmosphereForScene(FRHICommandListImmediate& RHICmdList, FScene* Sce
 		}
 
 		//@StarLight code - BEGIN Precomputed Multi Scattering on mobile, edit by wanghai
-		TRefCountPtr<IPooledRenderTarget>& ScatteringLutTexture = SkyInfo.GetMultiScatteringLutTexture();
+		TRefCountPtr<IPooledRenderTarget>& ScatteringLutTextureA = SkyInfo.GetMultiScatteringLutTextureSwapA();
+		TRefCountPtr<IPooledRenderTarget>& ScatteringLutTextureB = SkyInfo.GetMultiScatteringLutTextureSwapB();
 		TRefCountPtr<IPooledRenderTarget>& IntermediateScatteringLutTexture = SkyInfo.GetIntermediateMultiScatteringLutTexture();
 		TRefCountPtr<IPooledRenderTarget>& RayleighScatteringLutTexture = SkyInfo.GetRayleighScatteringLutTexture();
 		TRefCountPtr<IPooledRenderTarget>& MieScatteringLutTexture = SkyInfo.GetMieScatteringLutTexture();
@@ -1189,7 +1193,8 @@ void InitSkyAtmosphereForScene(FRHICommandListImmediate& RHICmdList, FScene* Sce
 		TRefCountPtr<IPooledRenderTarget>& ScatteringDensityLutTexture = SkyInfo.GetScatteringDensityLutTexture();
 		Desc = FPooledRenderTargetDesc::CreateVolumeDesc(ScatteringTextureSize.X * ScatteringTextureSize.Y, ScatteringTextureSize.Z, ScatteringTextureSize.W, PF_A32B32G32R32F,
 			 FClearValueBinding::None, TexCreate_HideInVisualizeTexture, TexCreate_ShaderResource | TexCreate_UAV, false);
-		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, ScatteringLutTexture, TEXT("MultiScatteringLutTexture"), true, ERenderTargetTransience::Transient);
+		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, ScatteringLutTextureA, TEXT("MultiScatteringLutTextureA"), true, ERenderTargetTransience::Transient);
+		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, ScatteringLutTextureB, TEXT("MultiScatteringLutTextureB"), true, ERenderTargetTransience::Transient);
 		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, IntermediateScatteringLutTexture, TEXT("IntermediateMultiScatteringLutTexture"), true, ERenderTargetTransience::Transient);
 		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RayleighScatteringLutTexture, TEXT("RayleighScatteringLutTexture"), true, ERenderTargetTransience::Transient);
 		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, MieScatteringLutTexture, TEXT("MieScatteringLutTexture"), true, ERenderTargetTransience::Transient);
@@ -1427,7 +1432,7 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& R
 		FRDGTextureUAVRef SkyAtmosphereViewLutTextureUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(SkyAtmosphereViewLutTexture, 0));
 		FRDGTextureRef SkyAtmosphereCameraAerialPerspectiveVolume = GraphBuilder.RegisterExternalTexture(View.SkyAtmosphereCameraAerialPerspectiveVolume);
 		FRDGTextureUAVRef SkyAtmosphereCameraAerialPerspectiveVolumeUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(SkyAtmosphereCameraAerialPerspectiveVolume, 0));
-
+		
 		// Sky View LUT
 		{
 			FRenderSkyViewLutCS::FPermutationDomain PermutationVector;
@@ -1485,6 +1490,15 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& R
 	PrecomputedCommonParameters.IrradianceLutSize = IrradianceTextureSize;
 	PrecomputedCommonParameters.LightAngularRadius = 0.1f;
 	TUniformBufferRef<FPrecomputedAtmosphereUniformShaderParameters> PrecomputedCommonParametersRef = TUniformBufferRef<FPrecomputedAtmosphereUniformShaderParameters>::CreateUniformBufferImmediate(PrecomputedCommonParameters, UniformBuffer_MultiFrame);
+
+	FRDGTextureRef MultiScatteringLutA = GraphBuilder.RegisterExternalTexture(SkyInfo.GetMultiScatteringLutTextureSwapA());
+	FRDGTextureUAVRef MultiScatteringUAV_A = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(MultiScatteringLutA, 0));
+	FRDGTextureRef MultiScatteringLutB = GraphBuilder.RegisterExternalTexture(SkyInfo.GetMultiScatteringLutTextureSwapB());
+	FRDGTextureUAVRef MultiScatteringUAV_B = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(MultiScatteringLutB, 0));
+
+	FRDGTextureRef MultiScatteringLuts[2] = { MultiScatteringLutA, MultiScatteringLutB };
+	FRDGTextureUAVRef MultiScatteringUAVs[2] = { MultiScatteringUAV_A, MultiScatteringUAV_B };
+	int32 ScatteringIndex = 0;
 	{
 		// Compute single scattering
 		FRDGTextureRef RayleighScatteringLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetRayleighScatteringLutTexture());
@@ -1500,7 +1514,8 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& R
 		PassParameters->RayleighSingleScatteringUAV = RayleighScatteringLutUAV;
 		PassParameters->MieSingleScatteringUAV = MieScatteringLutUAV;
 		PassParameters->TransmittanceLutTexture = TransmittanceLut;
-
+		PassParameters->MultiScatteringUAV = MultiScatteringUAVs[ScatteringIndex & 0x1];
+		++ScatteringIndex;
 		FLightSceneInfo* Light0 = Scene->AtmosphereLights[0];
 		if (Light0)
 			PassParameters->AtmosphereLightColor0 = Light0->Proxy->GetColor();
@@ -1539,6 +1554,7 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& R
 		FRDGTextureUAVRef IntermediateIrradianceUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(IntermediateIrradianceLut, 0));
 		FRDGTextureRef RayleighScatteringLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetRayleighScatteringLutTexture());
 		FRDGTextureRef MieScatteringLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetMieScatteringLutTexture());
+		
 		FRDGTextureRef IntermediateMultiScatteringLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetIntermediateMultiScatteringLutTexture());
 		FRDGTextureUAVRef IntermediateMultiScatteringUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(IntermediateMultiScatteringLut, 0));
 		FRDGTextureRef ScatteringDensityLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetScatteringDensityLutTexture());
@@ -1554,7 +1570,7 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& R
 				PassParameters->Atmosphere = Scene->GetSkyAtmosphereSceneInfo()->GetAtmosphereUniformBuffer();
 				PassParameters->SkyAtmosphere = InternalCommonParametersRef;
 				PassParameters->PrecomputedSkyAtmosphere = PrecomputedCommonParametersRef;
-				PassParameters->IrradianceLut = IntermediateIrradianceLut;
+				PassParameters->IrradianceLut = IrradianceLut;
 				PassParameters->MieSingleScatteringLut = MieScatteringLut;
 				PassParameters->RayleighSingleScatteringLut = RayleighScatteringLut;
 				PassParameters->MultiScatteringLut = IntermediateMultiScatteringLut;
@@ -1591,10 +1607,13 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& R
 				PassParameters->PrecomputedSkyAtmosphere = PrecomputedCommonParametersRef;
 				PassParameters->RadianceDensityLut = ScatteringDensityLut;
 				PassParameters->TransmittanceLutTexture = TransmittanceLut;
-				PassParameters->MultiScatteringUAV = IntermediateMultiScatteringUAV;
+				PassParameters->MultiScatteringLut = MultiScatteringLuts[(ScatteringIndex + 1) & 0x1];
+				PassParameters->MultiScatteringUAV = MultiScatteringUAVs[ScatteringIndex & 0x1];
+				PassParameters->IntermediateMultiScatteringUAV = IntermediateMultiScatteringUAV;
 				FIntVector TextureSize(ScatteringTextureSize.X * ScatteringTextureSize.Y, ScatteringTextureSize.Z, ScatteringTextureSize.W);
 				FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FRenderScatteringDensityCS::GroupSize);
 				FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("ComputeMultiScattering"), ComputeShader, PassParameters, NumGroups);
+				ScatteringIndex++;
 			}
 		}
 	}

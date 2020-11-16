@@ -236,3 +236,5 @@ $G_2+G_3+G_4+G_5+G_6+...=G_2*F_{ms}=\Psi_{ms}$.
 最终计算任意点所有阶数的Scattering之和，包括一阶和高阶之和，如下：
 
 $G_{all}=\sum_{i=1}^{N_{light}}(T(c,x)S(x,l_i)p(v,l_i)+\Psi_{ms})E_i$
+
+## Radiance To Luminance
