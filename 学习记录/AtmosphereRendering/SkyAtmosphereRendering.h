@@ -84,10 +84,15 @@ public:
 	TRefCountPtr<IPooledRenderTarget>& GetRayleighScatteringLutTexture() { return RayleighScatteringLutTexture; }
 	TRefCountPtr<IPooledRenderTarget>& GetMieScatteringLutTexture() { return MieScatteringLutTexture; }
 	TRefCountPtr<IPooledRenderTarget>& GetMultiScatteringLutTexture() { return MultiScatteringLutTexture; }
+	TRefCountPtr<IPooledRenderTarget>& GetMultiScatteringLutTextureSwapA() { return MultiScatteringLutTextureA; }
+	TRefCountPtr<IPooledRenderTarget>& GetMultiScatteringLutTextureSwapB() { return MultiScatteringLutTextureB; }
 	TRefCountPtr<IPooledRenderTarget>& GetIntermediateMultiScatteringLutTexture() { return IntermediateMultiScatteringLutTexture; }
+	TRefCountPtr<IPooledRenderTarget>& GetIrradianceLutTextureSwapA() { return IrradianceLutTextureA; }
+	TRefCountPtr<IPooledRenderTarget>& GetIrradianceLutTextureSwapB() { return IrradianceLutTextureB; }
 	TRefCountPtr<IPooledRenderTarget>& GetIrradianceLutTexture() { return IrradianceLutTexture; }
 	TRefCountPtr<IPooledRenderTarget>& GetIntermediateIrradianceLutTexture() { return IntermediateIrradianceLutTexture; }
 	TRefCountPtr<IPooledRenderTarget>& GetScatteringDensityLutTexture() { return ScatteringDensityLutTexture; }
+	TRefCountPtr<IPooledRenderTarget>& GetSkyAtmosphereViewLutTexture() { return SkyAtmosphereViewLutTexture; }
 	//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
 	const FAtmosphereUniformShaderParameters* GetAtmosphereShaderParameters() const { return &AtmosphereUniformShaderParameters; }
@@ -109,10 +114,15 @@ private:
 	TRefCountPtr<IPooledRenderTarget> RayleighScatteringLutTexture;
 	TRefCountPtr<IPooledRenderTarget> MieScatteringLutTexture;
 	TRefCountPtr<IPooledRenderTarget> MultiScatteringLutTexture;
+	TRefCountPtr<IPooledRenderTarget> MultiScatteringLutTextureA;
+	TRefCountPtr<IPooledRenderTarget> MultiScatteringLutTextureB;
 	TRefCountPtr<IPooledRenderTarget> IntermediateMultiScatteringLutTexture;
+	TRefCountPtr<IPooledRenderTarget> IrradianceLutTextureA;
+	TRefCountPtr<IPooledRenderTarget> IrradianceLutTextureB;
 	TRefCountPtr<IPooledRenderTarget> IrradianceLutTexture;
 	TRefCountPtr<IPooledRenderTarget> IntermediateIrradianceLutTexture;
 	TRefCountPtr<IPooledRenderTarget> ScatteringDensityLutTexture;
+	TRefCountPtr<IPooledRenderTarget> SkyAtmosphereViewLutTexture;
 	//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 };
 
@@ -123,6 +133,10 @@ bool ShouldApplyAtmosphereLightPerPixelTransmittance(const FScene* Scene, const 
 
 void InitSkyAtmosphereForScene(FRHICommandListImmediate& RHICmdList, FScene* Scene);
 void InitSkyAtmosphereForView(FRHICommandListImmediate& RHICmdList, const FScene* Scene, FViewInfo& View);
+
+//@StarLight code - BEGIN Precomputed Multi Scattering on mobile, edit by wanghai
+void PrecomputeSkyAtmosphereLut(FRHICommandListImmediate& RHICmdList, const FScene* Scene, FViewInfo& View);
+//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
 extern void SetupSkyAtmosphereViewSharedUniformShaderParameters(const class FViewInfo& View, FSkyAtmosphereViewSharedUniformShaderParameters& OutParameters);
 
