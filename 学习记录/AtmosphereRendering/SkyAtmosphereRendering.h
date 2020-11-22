@@ -93,6 +93,8 @@ public:
 	TRefCountPtr<IPooledRenderTarget>& GetIntermediateIrradianceLutTexture() { return IntermediateIrradianceLutTexture; }
 	TRefCountPtr<IPooledRenderTarget>& GetScatteringDensityLutTexture() { return ScatteringDensityLutTexture; }
 	TRefCountPtr<IPooledRenderTarget>& GetSkyAtmosphereViewLutTexture() { return SkyAtmosphereViewLutTexture; }
+
+	TRefCountPtr<IPooledRenderTarget>& GetScatteringAltasTexture() { return ScatteringAltasTexture; }
 	//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
 	const FAtmosphereUniformShaderParameters* GetAtmosphereShaderParameters() const { return &AtmosphereUniformShaderParameters; }
@@ -123,6 +125,7 @@ private:
 	TRefCountPtr<IPooledRenderTarget> IntermediateIrradianceLutTexture;
 	TRefCountPtr<IPooledRenderTarget> ScatteringDensityLutTexture;
 	TRefCountPtr<IPooledRenderTarget> SkyAtmosphereViewLutTexture;
+	TRefCountPtr<IPooledRenderTarget> ScatteringAltasTexture;
 	//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 };
 

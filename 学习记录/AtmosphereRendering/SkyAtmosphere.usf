@@ -1791,6 +1791,7 @@ void RenderSingleScatteringLutCS(uint3 ThreadId : SV_DispatchThreadID)
 	float3 Mie;
 	ComputeSingleScattering(WorldPos, WorldDir, ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround, Rayleigh, Mie);
 	
+	
 	RayleighSingleScatteringUAV[ThreadId] = float4(Rayleigh, 0.f);
 	MieSingleScatteringUAV[ThreadId] = float4(Mie, 0.f);
 	MultiScatteringUAV[ThreadId] = float4(Rayleigh.rgb, Mie.r);
@@ -2165,4 +2166,23 @@ void RenderGroundRadianceCS(uint3 ThreadId : SV_DispatchThreadID)
 	float3 LightIrradiance = GetSkyAndLightIrradiance(WorldPos, float3(0.f, 0.f, 1.f), AtmosphereLightDirection0, SkyIrradiance);
 	DistantSkyLightLutUAV[ThreadId.xy] = Atmosphere.GroundAlbedo.xyz * (1.f / PI) * (LightIrradiance * SkyIrradiance);
 }
+
+int2 AtlasTextureSize;
+Texture3D<float4> SourceTexture;
+RWTexture2D<float4> TargetTextureUAV;
+
+[numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
+void ConvertToAtlasCS(uint3 ThreadId : SV_DispatchThreadID)
+{
+	int3 SourceSize;
+	SourceTexture.GetDimensions(SourceSize.x, SourceSize.y, SourceSize.z);
+	
+	int CurPointIndex = ThreadId.y * AtlasTextureSize.x + ThreadId.x;
+	int3 CurPoint = 0;
+	CurPoint.x = (CurPointIndex % (SourceSize.x * SourceSize.y)) % SourceSize.x;
+	CurPoint.y = (CurPointIndex % (SourceSize.x * SourceSize.y)) / SourceSize.x;
+	CurPoint.z = CurPointIndex / (SourceSize.x * SourceSize.y);
+	TargetTextureUAV[ThreadId.xy] = SourceTexture.Load(int4(CurPoint, 0));
+}
+
 //@StarLight code - BEGIN Precomputed Multi Scattering on mobile, edit by wanghai

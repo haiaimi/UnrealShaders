@@ -14,6 +14,10 @@
 #include "Rendering/SkyAtmosphereCommonData.h"
 #include "ScenePrivate.h"
 #include "SceneRenderTargetParameters.h"
+//@StarLight code - BEGIN Precomputed Multi Scattering on mobile, edit by wanghai
+#include "Engine/VolumeTexture.h"
+#include "AssetRegistryModule.h"
+//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
 //#pragma optimize( "", off )
 
@@ -649,7 +653,7 @@ class FRenderSingleScatteringLutCS : public FGlobalShader
 	using FPermutationDomain = TShaderPermutationDomain<>;
 
 public:
-	const static uint32 GroupSize = 4;
+	const static uint32 GroupSize = 8;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FLinearColor, AtmosphereLightColor0)
@@ -683,7 +687,7 @@ class FRenderScatteringDensityCS : public FGlobalShader
 	using FPermutationDomain = TShaderPermutationDomain<>;
 
 public:
-	const static uint32 GroupSize = 4;
+	const static uint32 GroupSize = 8;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(int32, ScatteringOrder)
@@ -721,7 +725,7 @@ class FRenderMultiScatteringCS : public FGlobalShader
 	using FPermutationDomain = TShaderPermutationDomain<>;
 
 public:
-	const static uint32 GroupSize = 4;
+	const static uint32 GroupSize = 8;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_STRUCT_REF(FAtmosphereUniformShaderParameters, Atmosphere)
@@ -885,6 +889,35 @@ public:
 	}
 };
 IMPLEMENT_GLOBAL_SHADER(FRenderGroundRadianceCS, "/Engine/Private/SkyAtmosphere.usf", "RenderGroundRadianceCS", SF_Compute);
+
+class FConvertToAtlasCS : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FConvertToAtlasCS);
+	SHADER_USE_PARAMETER_STRUCT(FConvertToAtlasCS, FGlobalShader);
+
+	using FPermutationDomain = TShaderPermutationDomain<>;
+
+public:
+	const static uint32 GroupSize = 8;
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, AtlasTextureSize)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture3D<float4>, SourceTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, TargetTextureUAV)
+		END_SHADER_PARAMETER_STRUCT()
+
+		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return ShouldPipelineCompileSkyAtmosphereShader(Parameters.Platform);
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), GroupSize);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FConvertToAtlasCS, "/Engine/Private/SkyAtmosphere.usf", "ConvertToAtlasCS", SF_Compute);
 
 //@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
@@ -1274,6 +1307,7 @@ void InitSkyAtmosphereForScene(FRHICommandListImmediate& RHICmdList, FScene* Sce
 		TRefCountPtr<IPooledRenderTarget>& IntermediateIrradianceLutTexture = SkyInfo.GetIntermediateIrradianceLutTexture();
 		TRefCountPtr<IPooledRenderTarget>& ScatteringDensityLutTexture = SkyInfo.GetScatteringDensityLutTexture();
 		TRefCountPtr<IPooledRenderTarget>& SkyAtmosphereViewLutTexture = SkyInfo.GetSkyAtmosphereViewLutTexture();
+		TRefCountPtr<IPooledRenderTarget>& ScatteringAltasTexture = SkyInfo.GetScatteringAltasTexture();
 		Desc = FPooledRenderTargetDesc::CreateVolumeDesc(ScatteringTextureSize.X * ScatteringTextureSize.Y, ScatteringTextureSize.Z, ScatteringTextureSize.W, TextureLUTFormat,
 			FClearValueBinding::None, TexCreate_HideInVisualizeTexture, TexCreate_ShaderResource | TexCreate_UAV, false);
 		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, ScatteringLutTextureA, TEXT("MultiScatteringLutTextureA"), true, ERenderTargetTransience::Transient);
@@ -1291,6 +1325,8 @@ void InitSkyAtmosphereForScene(FRHICommandListImmediate& RHICmdList, FScene* Sce
 
 		FPooledRenderTargetDesc SkyAtmosphereViewLutTextureDesc = FPooledRenderTargetDesc::Create2DDesc(FIntPoint(SkyViewLutWidth, SkyViewLutHeight), TextureLUTFormat, FClearValueBinding::None, TexCreate_HideInVisualizeTexture, TexCreate_ShaderResource | TexCreate_UAV, false);
 		GRenderTargetPool.FindFreeElement(RHICmdList, SkyAtmosphereViewLutTextureDesc, SkyAtmosphereViewLutTexture, TEXT("SkyAtmosphereViewLutTexture"), true, ERenderTargetTransience::Transient);
+		Desc = FPooledRenderTargetDesc::Create2DDesc(FIntPoint(ScatteringTextureSize.X * ScatteringTextureSize.Y * 4, ScatteringTextureSize.Z * ScatteringTextureSize.W / 4), TextureLUTFormat, FClearValueBinding::None, TexCreate_HideInVisualizeTexture, TexCreate_ShaderResource | TexCreate_UAV, false);
+		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, ScatteringAltasTexture, TEXT("ScatteringAltasTexture"), true, ERenderTargetTransience::Transient);
 		//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 	}
 }
@@ -1404,11 +1440,20 @@ static bool IsSecondAtmosphereLightEnabled(FScene* Scene)
 }
 
 //@StarLight code - BEGIN Precomputed Multi Scattering on mobile, edit by wanghai
+uint32 FrameCount = 0;
+void SavePrecomputedMultiScatteringLut(FTextureRHIRef InTexture, FIntVector TargetSize);
 void PrecomputeSkyAtmosphereLut(FRHICommandListImmediate& RHICmdList, const FScene* InScene, FViewInfo& View)
 {
-	static bool bHasInit = false;
+	/*static bool bHasInit = false;
 	if(bHasInit)return;
-	bHasInit = true;
+	bHasInit = true;*/
+	
+	FrameCount++;
+	if (FrameCount != 100)
+	{
+		return;
+	}
+
 	FSkyAtmosphereRenderSceneInfo& SkyInfo = const_cast<FSkyAtmosphereRenderSceneInfo&>(*InScene->GetSkyAtmosphereSceneInfo());
 	FScene* Scene = const_cast<FScene*>(InScene);
 	const FSkyAtmosphereSceneProxy& SkyAtmosphereSceneProxy = SkyInfo.GetSkyAtmosphereSceneProxy();
@@ -1516,7 +1561,7 @@ void PrecomputeSkyAtmosphereLut(FRHICommandListImmediate& RHICmdList, const FSce
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("ComputeDirectIrradiance"), ComputeShader, PassParameters, NumGroups);
 	}
 	{
-		const int32 ScatteringLevelCount = 4;
+		const int32 ScatteringLevelCount = 5;
 		// Compute multi scattering
 		FRDGTextureRef IrradianceLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetIrradianceLutTexture());
 		FRDGTextureRef RayleighScatteringLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetRayleighScatteringLutTexture());
@@ -1588,8 +1633,106 @@ void PrecomputeSkyAtmosphereLut(FRHICommandListImmediate& RHICmdList, const FSce
 			}
 		}
 	}
+
+	{
+		// Create Scattering altas, beacause we need texture2D, FConvertToAtlasCS
+		FRDGTextureRef SourceTexture = GraphBuilder.RegisterExternalTexture(SkyInfo.GetRayleighScatteringLutTexture());
+		FRDGTextureRef ScatteringAltasTexture = GraphBuilder.RegisterExternalTexture(SkyInfo.GetScatteringAltasTexture());
+		FRDGTextureUAVRef ScatteringAltasTextureUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(ScatteringAltasTexture, 0));
+
+		TShaderMapRef<FConvertToAtlasCS> ComputeShader(GlobalShaderMap);
+		FConvertToAtlasCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FConvertToAtlasCS::FParameters>();
+		FIntVector AltasSize = ScatteringAltasTexture->Desc.GetSize();
+		PassParameters->AtlasTextureSize = FIntPoint(AltasSize.X, AltasSize.Y);
+		PassParameters->SourceTexture = SourceTexture;
+		PassParameters->TargetTextureUAV = ScatteringAltasTextureUAV;
+
+		FIntVector TextureSize(AltasSize.X, AltasSize.Y, 1);
+		const FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FConvertToAtlasCS::GroupSize);
+		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("ConvertToAtlas"), ComputeShader, PassParameters, NumGroups);
+	}
+	
 	GraphBuilder.Execute();
+	FTextureRHIRef MultiScatteringTexture = SkyInfo.GetScatteringAltasTexture()->GetRenderTargetItem().TargetableTexture;
+	SavePrecomputedMultiScatteringLut(MultiScatteringTexture, SkyInfo.GetMultiScatteringLutTextureSwapA()->GetDesc().GetSize());
 }
+
+void SavePrecomputedMultiScatteringLut(FTextureRHIRef InTexture, FIntVector TargetSize)
+{
+	FFunctionGraphTask::CreateAndDispatchWhenReady([InTexture, TargetSize]()
+	{
+		if (!InTexture.IsValid())
+		{
+			return;
+		}
+		FlushRenderingCommands();
+		FRHITexture2D* InTexture2D = InTexture->GetTexture2D();
+		//int32 AtlasSize;
+		FString TextureName = TEXT("Tex_VolumeTexture_0");
+		FString PackageName = TEXT("/Game/Textures/");
+		PackageName += TextureName;
+		UPackage* Package = CreatePackage(NULL, *PackageName);
+		Package->FullyLoad();
+		
+		FIntVector TextureSize = TargetSize;
+
+		UVolumeTexture* MultiScatteringLut = NewObject<UVolumeTexture>(Package, *TextureName, RF_Public | RF_Standalone | RF_MarkAsRootSet);
+		MultiScatteringLut->AddToRoot();
+		MultiScatteringLut->PlatformData = new FTexturePlatformData();
+		MultiScatteringLut->PlatformData->SizeX = TextureSize.X;
+		MultiScatteringLut->PlatformData->SizeY = TextureSize.Y;
+		MultiScatteringLut->PlatformData->SetNumSlices(TextureSize.Z);
+		MultiScatteringLut->PlatformData->PixelFormat = EPixelFormat::PF_FloatRGBA;
+		MultiScatteringLut->CompressionQuality = ETextureCompressionQuality::TCQ_Medium;
+		MultiScatteringLut->CompressionSettings = TC_Default;
+
+		int32 Index = MultiScatteringLut->PlatformData->Mips.Add(new FTexture2DMipMap());
+		FTexture2DMipMap* Mip = &MultiScatteringLut->PlatformData->Mips[Index];
+		Mip->SizeX = TextureSize.X;
+		Mip->SizeY = TextureSize.Y;
+		Mip->SizeZ = TextureSize.Z;
+
+		uint32 DestStride = 0;
+		TArray<FFloat16Color> PixelData;
+		uint32 DataNum = TextureSize.X * TextureSize.Y * TextureSize.Z;
+		PixelData.SetNumZeroed(DataNum);
+
+		FFloat16Color* Texture2DData = (FFloat16Color*)RHILockTexture2D(InTexture2D, 0, RLM_ReadOnly, DestStride, false);
+		int32 RowDataSize = InTexture2D->GetSizeX() * sizeof(FFloat16Color);
+		if (DestStride == RowDataSize)
+		{
+			FMemory::Memcpy(PixelData.GetData(), Texture2DData, PixelData.Num() * sizeof(FFloat16Color));
+		}
+		else
+		{
+			FFloat16Color* TempData = PixelData.GetData();
+			for (uint32 i = 0; i < InTexture2D->GetSizeY(); ++i)
+			{
+				FMemory::Memcpy(TempData, Texture2DData, RowDataSize);
+				TempData += RowDataSize;
+				Texture2DData += DestStride;
+			}
+		}
+
+		RHIUnlockTexture2D(InTexture2D, 0, false);
+		
+		// Lock the texture so it can be modified
+		Mip->BulkData.Lock(LOCK_READ_WRITE);
+		uint8* TextureData = (uint8*)Mip->BulkData.Realloc(TextureSize.X * TextureSize.Y * TextureSize.Z * sizeof(FFloat16Color));
+		FMemory::Memcpy(TextureData, PixelData.GetData(), PixelData.Num() * sizeof(FFloat16Color));
+		Mip->BulkData.Unlock();
+
+		MultiScatteringLut->Source.Init(TextureSize.X, TextureSize.Y, TextureSize.Z, 1, ETextureSourceFormat::TSF_RGBA16F, (uint8*)PixelData.GetData());
+		MultiScatteringLut->UpdateResource();
+		Package->MarkPackageDirty();
+		FAssetRegistryModule::AssetCreated(MultiScatteringLut);
+
+		FString PackageFileName = FPackageName::LongPackageNameToFilename(PackageName, FPackageName::GetAssetPackageExtension());
+		bool bSaved = UPackage::SavePackage(Package, MultiScatteringLut, EObjectFlags::RF_Public | EObjectFlags::RF_Standalone, *PackageFileName, GError, nullptr, true, true, SAVE_NoError);
+	},  TStatId(), nullptr, ENamedThreads::GameThread);
+	
+}
+
 //@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
 void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& RHICmdList)
