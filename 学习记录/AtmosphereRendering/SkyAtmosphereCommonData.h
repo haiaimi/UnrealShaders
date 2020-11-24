@@ -46,7 +46,9 @@ struct FAtmosphereSetup
 	float TransmittanceMinLightElevationAngle;
 
 	//@StarLight code - START Precomputed Multi Scattering on mobile, edit by wanghai
+	bool bUsePrecomputedAtmpsphereLuts;
 	bool bShouldUpdatePrecomputedAtmosphereLuts;
+	bool bUseStaticLight;
 	//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
 	ENGINE_API FAtmosphereSetup(const USkyAtmosphereComponent& SkyAtmosphereComponent);

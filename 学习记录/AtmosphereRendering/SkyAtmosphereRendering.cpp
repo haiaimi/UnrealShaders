@@ -14,11 +14,6 @@
 #include "Rendering/SkyAtmosphereCommonData.h"
 #include "ScenePrivate.h"
 #include "SceneRenderTargetParameters.h"
-//@StarLight code - BEGIN Precomputed Multi Scattering on mobile, edit by wanghai
-#include "Engine/VolumeTexture.h"
-#include "AssetRegistryModule.h"
-//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
-
 //#pragma optimize( "", off )
 
 
@@ -205,7 +200,7 @@ static TAutoConsoleVariable<float> CVarSkyAtmosphereDistantSkyLightLUTAltitude(
 ////////////////////////////////////////////////////////////////////////// Debug / Visualization
 
 static TAutoConsoleVariable<int32> CVarSkyAtmosphereLUT32(
-	TEXT("r.SkyAtmosphere.LUT32"), 1,
+	TEXT("r.SkyAtmosphere.LUT32"), 0,
 	TEXT("Use full 32bit per-channel precision for all sky LUTs.\n"),
 	ECVF_RenderThreadSafe | ECVF_Scalability);
 
@@ -450,7 +445,7 @@ void FScene::AddSkyAtmosphere(FSkyAtmosphereSceneProxy* SkyAtmosphereSceneProxy,
 			if(SkyAtmosphereSceneProxy->GetAtmosphereSetup().bShouldUpdatePrecomputedAtmosphereLuts)
 			{
 				InitSkyAtmosphereForScene(RHICmdList, Scene);
-				PrecomputeSkyAtmosphereLut(RHICmdList, Scene);
+				//PrecomputeSkyAtmosphereLut(RHICmdList, Scene);
 			}
 			//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 		} );
@@ -841,7 +836,8 @@ class FOrionRenderSkyViewLutCS : public FGlobalShader
 	DECLARE_GLOBAL_SHADER(FOrionRenderSkyViewLutCS);
 	SHADER_USE_PARAMETER_STRUCT(FOrionRenderSkyViewLutCS, FGlobalShader);
 
-	using FPermutationDomain = TShaderPermutationDomain<>;
+	class FUseStaticLight : SHADER_PERMUTATION_BOOL("USE_STATIC_LIGHT");
+	using FPermutationDomain = TShaderPermutationDomain<FUseStaticLight>;
 
 public:
 	const static uint32 GroupSize = 8;
@@ -902,6 +898,38 @@ public:
 	}
 };
 IMPLEMENT_GLOBAL_SHADER(FRenderGroundRadianceCS, "/Engine/Private/SkyAtmosphere.usf", "RenderGroundRadianceCS", SF_Compute);
+
+class FRenderStaticLightScatteringLutCS : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FRenderStaticLightScatteringLutCS);
+	SHADER_USE_PARAMETER_STRUCT(FRenderStaticLightScatteringLutCS, FGlobalShader);
+
+	using FPermutationDomain = TShaderPermutationDomain<>;
+
+public:
+	const static uint32 GroupSize = 8;
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FVector, LightDirection0)
+		SHADER_PARAMETER_STRUCT_REF(FAtmosphereUniformShaderParameters, Atmosphere)
+		SHADER_PARAMETER_STRUCT_REF(FSkyAtmosphereInternalCommonParameters, SkyAtmosphere)
+		SHADER_PARAMETER_STRUCT_REF(FPrecomputedAtmosphereUniformShaderParameters, PrecomputedSkyAtmosphere)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture3D<float4>, MultiScatteringLut)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<float4>, StaticLightScatteringUAV)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return ShouldPipelineCompileSkyAtmosphereShader(Parameters.Platform);
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), GroupSize);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FRenderStaticLightScatteringLutCS, "/Engine/Private/SkyAtmosphere.usf", "RenderStaticLightScatteringLutCS", SF_Compute);
 
 class FConvertToAtlasCS : public FGlobalShader
 {
@@ -1227,6 +1255,7 @@ TGlobalResource<FUniformSphereSamplesBuffer> GUniformSphereSamplesBuffer;
 
 //@StarLight code - BEGIN Precomputed Multi Scattering on mobile, edit by wanghai
 FIntVector4 ScatteringTextureSize(8, 32, 128, 32);
+FIntVector4 StaticScatteringTextureSize(32, 32, 128, 32);
 FIntPoint IrradianceTextureSize(64, 16);
 //@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
@@ -1239,8 +1268,13 @@ void FSceneRenderer::InitSkyAtmosphereForViews(FRHICommandListImmediate& RHICmdL
 		FViewInfo& View = Views[ViewIndex];
 		InitSkyAtmosphereForView(RHICmdList, Scene, View);
 	}
-	/*if (CVarSkyAtmosphereEnablePrecomputedMultiScattering.GetValueOnRenderThread() > 0)
-		PrecomputeSkyAtmosphereLut(RHICmdList, Scene);*/
+	const auto& Setup = Scene->SkyAtmosphere->GetSkyAtmosphereSceneProxy().GetAtmosphereSetup();
+	if (CVarSkyAtmosphereEnablePrecomputedMultiScattering.GetValueOnRenderThread() > 0 && Setup.bUsePrecomputedAtmpsphereLuts && Setup.bShouldUpdatePrecomputedAtmosphereLuts)
+	{
+		PrecomputeSkyAtmosphereLut(RHICmdList, Scene, Views[0]);
+		FAtmosphereSetup& AtmosphereSetup = const_cast<FAtmosphereSetup&>(Setup);
+		AtmosphereSetup.bShouldUpdatePrecomputedAtmosphereLuts = false;
+	}
 }
 
 static EPixelFormat GetSkyLutTextureFormat(ERHIFeatureLevel::Type FeatureLevel)
@@ -1283,6 +1317,12 @@ void InitSkyAtmosphereForScene(FRHICommandListImmediate& RHICmdList, FScene* Sce
 		EPixelFormat TextureLUTFormat = GetSkyLutTextureFormat(Scene->GetFeatureLevel());
 		EPixelFormat TextureLUTSmallFormat = GetSkyLutSmallTextureFormat();
 
+#if WITH_EDITOR
+		// This time we need to precompute luts, we need full percision float
+		const auto& Setup = Scene->SkyAtmosphere->GetSkyAtmosphereSceneProxy().GetAtmosphereSetup();
+		if(Setup.bShouldUpdatePrecomputedAtmosphereLuts)
+			TextureLUTFormat = PF_A32B32G32R32F;
+#endif
 		//
 		// Initialise per scene/atmosphere resources
 		//
@@ -1310,6 +1350,9 @@ void InitSkyAtmosphereForScene(FRHICommandListImmediate& RHICmdList, FScene* Sce
 		}
 		
 #if WITH_EDITOR
+		FIntVector4 ScatteringSize = ScatteringTextureSize;
+		if(Setup.bShouldUpdatePrecomputedAtmosphereLuts && Setup.bUseStaticLight)
+			ScatteringSize = StaticScatteringTextureSize;
 		TRefCountPtr<IPooledRenderTarget>& ScatteringLutTextureA = SkyInfo.GetMultiScatteringLutTextureSwapA();
 		TRefCountPtr<IPooledRenderTarget>& ScatteringLutTextureB = SkyInfo.GetMultiScatteringLutTextureSwapB();
 		TRefCountPtr<IPooledRenderTarget>& IntermediateScatteringLutTexture = SkyInfo.GetIntermediateMultiScatteringLutTexture();
@@ -1322,7 +1365,8 @@ void InitSkyAtmosphereForScene(FRHICommandListImmediate& RHICmdList, FScene* Sce
 		TRefCountPtr<IPooledRenderTarget>& ScatteringDensityLutTexture = SkyInfo.GetScatteringDensityLutTexture();
 		TRefCountPtr<IPooledRenderTarget>& SkyAtmosphereViewLutTexture = SkyInfo.GetSkyAtmosphereViewLutTexture();
 		TRefCountPtr<IPooledRenderTarget>& ScatteringAltasTexture = SkyInfo.GetScatteringAltasTexture();
-		Desc = FPooledRenderTargetDesc::CreateVolumeDesc(ScatteringTextureSize.X * ScatteringTextureSize.Y, ScatteringTextureSize.Z, ScatteringTextureSize.W, EPixelFormat::PF_A32B32G32R32F,
+		TRefCountPtr<IPooledRenderTarget>& StaticLightScatteringLutTexture = SkyInfo.GetStaticLightScatteringLutTexture();
+		Desc = FPooledRenderTargetDesc::CreateVolumeDesc(ScatteringSize.X * ScatteringSize.Y, ScatteringSize.Z, ScatteringSize.W, EPixelFormat::PF_A32B32G32R32F,
 			FClearValueBinding::None, TexCreate_HideInVisualizeTexture, TexCreate_ShaderResource | TexCreate_UAV, false);
 		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, ScatteringLutTextureA, TEXT("MultiScatteringLutTextureA"), true, ERenderTargetTransience::Transient);
 		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, ScatteringLutTextureB, TEXT("MultiScatteringLutTextureB"), true, ERenderTargetTransience::Transient);
@@ -1339,8 +1383,11 @@ void InitSkyAtmosphereForScene(FRHICommandListImmediate& RHICmdList, FScene* Sce
 
 		FPooledRenderTargetDesc SkyAtmosphereViewLutTextureDesc = FPooledRenderTargetDesc::Create2DDesc(FIntPoint(SkyViewLutWidth, SkyViewLutHeight), PF_A32B32G32R32F, FClearValueBinding::None, TexCreate_HideInVisualizeTexture, TexCreate_ShaderResource | TexCreate_UAV, false);
 		GRenderTargetPool.FindFreeElement(RHICmdList, SkyAtmosphereViewLutTextureDesc, SkyAtmosphereViewLutTexture, TEXT("SkyAtmosphereViewLutTexture"), true, ERenderTargetTransience::Transient);
-		Desc = FPooledRenderTargetDesc::Create2DDesc(FIntPoint(ScatteringTextureSize.X * ScatteringTextureSize.Y * 4, ScatteringTextureSize.Z * ScatteringTextureSize.W / 4), PF_FloatRGBA, FClearValueBinding::None, TexCreate_HideInVisualizeTexture, TexCreate_ShaderResource | TexCreate_UAV, false);
+		Desc = FPooledRenderTargetDesc::Create2DDesc(FIntPoint(ScatteringSize.X * ScatteringSize.Y * 4, ScatteringSize.Z * ScatteringSize.W / 4), PF_FloatRGBA, FClearValueBinding::None, TexCreate_HideInVisualizeTexture, TexCreate_ShaderResource | TexCreate_UAV, false);
 		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, ScatteringAltasTexture, TEXT("ScatteringAltasTexture"), true, ERenderTargetTransience::Transient);
+
+		Desc = FPooledRenderTargetDesc::CreateVolumeDesc(32, 128, 32, PF_FloatRGBA, FClearValueBinding::None, TexCreate_HideInVisualizeTexture, TexCreate_ShaderResource | TexCreate_UAV, false);
+		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, StaticLightScatteringLutTexture, TEXT("StaticLightScatteringLutTexture"), true, ERenderTargetTransience::Transient);
 #endif
 		//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 	}
@@ -1455,7 +1502,7 @@ static bool IsSecondAtmosphereLightEnabled(FScene* Scene)
 }
 
 //@StarLight code - BEGIN Precomputed Multi Scattering on mobile, edit by wanghai
-void PrecomputeSkyAtmosphereLut(FRHICommandListImmediate& RHICmdList, const FScene* InScene)
+void PrecomputeSkyAtmosphereLut(FRHICommandListImmediate& RHICmdList, const FScene* InScene, FViewInfo& View)
 {
 	FSkyAtmosphereRenderSceneInfo& SkyInfo = const_cast<FSkyAtmosphereRenderSceneInfo&>(*InScene->GetSkyAtmosphereSceneInfo());
 	FScene* Scene = const_cast<FScene*>(InScene);
@@ -1464,11 +1511,10 @@ void PrecomputeSkyAtmosphereLut(FRHICommandListImmediate& RHICmdList, const FSce
 	FSkyAtmosphereInternalCommonParameters InternalCommonParameters;
 	SetupSkyAtmosphereInternalCommonParameters(InternalCommonParameters, *Scene, SkyInfo);
 	TUniformBufferRef<FSkyAtmosphereInternalCommonParameters> InternalCommonParametersRef = TUniformBufferRef<FSkyAtmosphereInternalCommonParameters>::CreateUniformBufferImmediate(InternalCommonParameters, UniformBuffer_SingleFrame);
-
+	
 	FRDGBuilder GraphBuilder(RHICmdList);
 
 	FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(Scene->GetFeatureLevel());
-
 	FRDGTextureRef TransmittanceLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetTransmittanceLutTexture());
 	FRDGTextureUAVRef TransmittanceLutUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(TransmittanceLut, 0));
 	FRDGTextureRef MultiScatteredLuminanceLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetMultiScatteredLuminanceLutTexture());
@@ -1487,10 +1533,15 @@ void PrecomputeSkyAtmosphereLut(FRHICommandListImmediate& RHICmdList, const FSce
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("TransmittanceLut"), ComputeShader, PassParameters, NumGroups);
 	}
 
+	FIntVector4 ScatteringSize = ScatteringTextureSize;
+	const auto& Setup = Scene->SkyAtmosphere->GetSkyAtmosphereSceneProxy().GetAtmosphereSetup();
+	if (Setup.bShouldUpdatePrecomputedAtmosphereLuts && Setup.bUseStaticLight)
+		ScatteringSize = StaticScatteringTextureSize;
+
 	FIntPoint TransmittanceLutSize = FIntPoint(CVarSkyAtmosphereTransmittanceLUTWidth.GetValueOnRenderThread(), CVarSkyAtmosphereTransmittanceLUTHeight.GetValueOnRenderThread());
 	FPrecomputedAtmosphereUniformShaderParameters PrecomputedCommonParameters;
 	PrecomputedCommonParameters.LightZenithCosMin = -0.2f;
-	PrecomputedCommonParameters.ScatteringTextureSize = ScatteringTextureSize;
+	PrecomputedCommonParameters.ScatteringTextureSize = ScatteringSize;
 	PrecomputedCommonParameters.TransmittanceLutSize = TransmittanceLutSize;
 	PrecomputedCommonParameters.IrradianceLutSize = IrradianceTextureSize;
 	PrecomputedCommonParameters.LightAngularRadius = 0.001f;
@@ -1539,7 +1590,7 @@ void PrecomputeSkyAtmosphereLut(FRHICommandListImmediate& RHICmdList, const FSce
 		if (Light0)
 			PassParameters->AtmosphereLightColor0 = Light0->Proxy->GetColor();
 
-		FIntVector TextureSize(ScatteringTextureSize.X * ScatteringTextureSize.Y, ScatteringTextureSize.Z, ScatteringTextureSize.W);
+		FIntVector TextureSize(ScatteringSize.X * ScatteringSize.Y, ScatteringSize.Z, ScatteringSize.W);
 		const FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FRenderSingleScatteringLutCS::GroupSize);
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("ComputeSingleScattering"), ComputeShader, PassParameters, NumGroups);
 	}
@@ -1564,7 +1615,7 @@ void PrecomputeSkyAtmosphereLut(FRHICommandListImmediate& RHICmdList, const FSce
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("ComputeDirectIrradiance"), ComputeShader, PassParameters, NumGroups);
 	}
 	{
-		const int32 ScatteringLevelCount = 5;
+		const int32 ScatteringLevelCount = 10;
 		// Compute multi scattering
 		FRDGTextureRef IrradianceLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetIrradianceLutTexture());
 		FRDGTextureRef RayleighScatteringLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetRayleighScatteringLutTexture());
@@ -1591,7 +1642,7 @@ void PrecomputeSkyAtmosphereLut(FRHICommandListImmediate& RHICmdList, const FSce
 				PassParameters->IntermediateMultiScatteringLut = IntermediateMultiScatteringLut;
 				PassParameters->ScatteringDensityUAV = ScatteringDensityUAV;
 
-				FIntVector TextureSize(ScatteringTextureSize.X * ScatteringTextureSize.Y, ScatteringTextureSize.Z, ScatteringTextureSize.W);
+				FIntVector TextureSize(ScatteringSize.X * ScatteringSize.Y, ScatteringSize.Z, ScatteringSize.W);
 				FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FRenderScatteringDensityCS::GroupSize);
 				FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("ComputeScatteringDensity"), ComputeShader, PassParameters, NumGroups);
 			}
@@ -1629,7 +1680,7 @@ void PrecomputeSkyAtmosphereLut(FRHICommandListImmediate& RHICmdList, const FSce
 				PassParameters->IntermediateMultiScatteringUAV = IntermediateMultiScatteringUAV;
 				PassParameters->MultiScatteringUAV = MultiScatteringUAVs[ScatteringIndex & 0x1];
 				//PassParameters->MultiScatteringUAV = IntermediateMultiScatteringUAV;
-				FIntVector TextureSize(ScatteringTextureSize.X * ScatteringTextureSize.Y, ScatteringTextureSize.Z, ScatteringTextureSize.W);
+				FIntVector TextureSize(ScatteringSize.X * ScatteringSize.Y, ScatteringSize.Z, ScatteringSize.W);
 				FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FRenderScatteringDensityCS::GroupSize);
 				FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("ComputeMultiScattering"), ComputeShader, PassParameters, NumGroups);
 				++ScatteringIndex;
@@ -1654,9 +1705,31 @@ void PrecomputeSkyAtmosphereLut(FRHICommandListImmediate& RHICmdList, const FSce
 		const FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FConvertToAtlasCS::GroupSize);
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("ConvertToAtlas"), ComputeShader, PassParameters, NumGroups);
 	}
+
+	{
+		// Create static light atmosphere luts, it's size will be much smaller 
+		FRDGTextureRef StaticLightScatteringLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetStaticLightScatteringLutTexture());
+		FRDGTextureUAVRef StaticLightScatteringLutUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(StaticLightScatteringLut, 0));
+		
+		TShaderMapRef<FRenderStaticLightScatteringLutCS> ComputeShader(GlobalShaderMap);
+		FRenderStaticLightScatteringLutCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FRenderStaticLightScatteringLutCS::FParameters>();
+		PassParameters->Atmosphere = Scene->GetSkyAtmosphereSceneInfo()->GetAtmosphereUniformBuffer();
+		PassParameters->SkyAtmosphere = InternalCommonParametersRef;
+		PassParameters->PrecomputedSkyAtmosphere = PrecomputedCommonParametersRef;
+		PassParameters->MultiScatteringLut = MultiScatteringLuts[0];
+		PassParameters->StaticLightScatteringUAV = StaticLightScatteringLutUAV;
+		PassParameters->LightDirection0 = Scene->AtmosphereLights[0] ? -Scene->AtmosphereLights[0]->Proxy->GetDirection() : FVector::UpVector;
+
+		FIntVector TextureSize(ScatteringSize.X, ScatteringSize.Z, ScatteringSize.W);
+		FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FIntVector(FRenderStaticLightScatteringLutCS::GroupSize, FRenderStaticLightScatteringLutCS::GroupSize, FRenderStaticLightScatteringLutCS::GroupSize));
+		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("RenderStaticLightScatteringLut"), ComputeShader, PassParameters, NumGroups);
+	}
 	
 	GraphBuilder.Execute();
 	FTextureRHIRef MultiScatteringTexture = SkyInfo.GetMultiScatteringLutTextureSwapA()->GetRenderTargetItem().TargetableTexture;
+#if WITH_EDITOR
+	const_cast<FSkyAtmosphereSceneProxy&>(SkyAtmosphereSceneProxy).SavePrecomputedLuts();
+#endif
 	//SavePrecomputedMultiScatteringLut(RHICmdList, MultiScatteringTexture, SkyInfo.GetMultiScatteringLutTextureSwapA()->GetDesc().GetSize());
 }
 
@@ -1693,14 +1766,19 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& R
 
 	//@StarLight code - Start Precomputed Multi Scattering on mobile, edit by wanghai
 	// Render the sky view lut
-	if (CVarSkyAtmosphereEnablePrecomputedMultiScattering.GetValueOnRenderThread() > 0)
+	if (CVarSkyAtmosphereEnablePrecomputedMultiScattering.GetValueOnRenderThread() > 0 && Scene->SkyAtmosphere->GetSkyAtmosphereSceneProxy().GetAtmosphereSetup().bUsePrecomputedAtmpsphereLuts)
 	{
+		FIntVector4 ScatteringSize = ScatteringTextureSize;
+		const auto& Setup = Scene->SkyAtmosphere->GetSkyAtmosphereSceneProxy().GetAtmosphereSetup();
+		if (Setup.bShouldUpdatePrecomputedAtmosphereLuts && Setup.bUseStaticLight)
+			ScatteringSize = StaticScatteringTextureSize;
+
 		FIntPoint TransmittanceLutSize = FIntPoint(CVarSkyAtmosphereTransmittanceLUTWidth.GetValueOnRenderThread(), CVarSkyAtmosphereTransmittanceLUTHeight.GetValueOnRenderThread());
 		FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 		//PrecomputeSkyAtmosphereLut(RHICmdList, Scene, Views[0]);
 		FPrecomputedAtmosphereUniformShaderParameters PrecomputedCommonParameters;
 		PrecomputedCommonParameters.LightZenithCosMin = -0.2f;
-		PrecomputedCommonParameters.ScatteringTextureSize = ScatteringTextureSize;
+		PrecomputedCommonParameters.ScatteringTextureSize = ScatteringSize;
 		PrecomputedCommonParameters.TransmittanceLutSize = TransmittanceLutSize;
 		PrecomputedCommonParameters.IrradianceLutSize = IrradianceTextureSize;
 		PrecomputedCommonParameters.LightAngularRadius = 0.001f;
@@ -1708,8 +1786,12 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& R
 		
 		FRDGTextureRef SkyAtmosphereViewLutTexture = GraphBuilder.RegisterExternalTexture(Views[0].SkyAtmosphereViewLutTexture);
 		FRDGTextureUAVRef SkyAtmosphereViewLutTextureUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(SkyAtmosphereViewLutTexture, 0));
+
 		{
-			TShaderMapRef<FOrionRenderSkyViewLutCS> ComputeShader(GlobalShaderMap);
+			bool bUseStaticLight = Scene->GetSkyAtmosphereSceneInfo()->GetSkyAtmosphereSceneProxy().GetAtmosphereSetup().bUseStaticLight;
+			FOrionRenderSkyViewLutCS::FPermutationDomain PermutationVector;
+			PermutationVector.Set<FOrionRenderSkyViewLutCS::FUseStaticLight>(bUseStaticLight);
+			TShaderMapRef<FOrionRenderSkyViewLutCS> ComputeShader(GlobalShaderMap, PermutationVector);
 			FOrionRenderSkyViewLutCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FOrionRenderSkyViewLutCS::FParameters>();
 			PassParameters->Atmosphere = Scene->GetSkyAtmosphereSceneInfo()->GetAtmosphereUniformBuffer();
 			PassParameters->SkyAtmosphere = InternalCommonParametersRef;

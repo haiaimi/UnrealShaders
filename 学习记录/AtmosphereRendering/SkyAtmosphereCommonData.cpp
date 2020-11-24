@@ -61,7 +61,9 @@ FAtmosphereSetup::FAtmosphereSetup(const USkyAtmosphereComponent& SkyAtmosphereC
 	UpdateTransform(SkyAtmosphereComponent.GetComponentTransform(), uint8(SkyAtmosphereComponent.TransformMode));
 
 	//@StarLight code - START Precomputed Multi Scattering on mobile, edit by wanghai
+	bUsePrecomputedAtmpsphereLuts = SkyAtmosphereComponent.bUsePrecomputedAtmpsphereLuts;
 	bShouldUpdatePrecomputedAtmosphereLuts = SkyAtmosphereComponent.bShouldUpdatePrecomputedAtmpsphereLuts;
+	bUseStaticLight = SkyAtmosphereComponent.bUseStaticLight;
 	//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 }
 

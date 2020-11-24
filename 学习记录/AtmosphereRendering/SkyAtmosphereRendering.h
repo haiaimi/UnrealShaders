@@ -93,6 +93,7 @@ public:
 	TRefCountPtr<IPooledRenderTarget>& GetIntermediateIrradianceLutTexture() { return IntermediateIrradianceLutTexture; }
 	TRefCountPtr<IPooledRenderTarget>& GetScatteringDensityLutTexture() { return ScatteringDensityLutTexture; }
 	TRefCountPtr<IPooledRenderTarget>& GetSkyAtmosphereViewLutTexture() { return SkyAtmosphereViewLutTexture; }
+	TRefCountPtr<IPooledRenderTarget>& GetStaticLightScatteringLutTexture() { return StaticLightScatteringLutTexture; }
 
 	TRefCountPtr<IPooledRenderTarget>& GetScatteringAltasTexture() { return ScatteringAltasTexture; }
 	FTextureRHIRef GetPrecomputedScatteringLut() { return PrecomputedScatteringLut; }
@@ -129,6 +130,7 @@ private:
 	TRefCountPtr<IPooledRenderTarget> ScatteringDensityLutTexture;
 	TRefCountPtr<IPooledRenderTarget> SkyAtmosphereViewLutTexture;
 	TRefCountPtr<IPooledRenderTarget> ScatteringAltasTexture;
+	TRefCountPtr<IPooledRenderTarget> StaticLightScatteringLutTexture;
 
 	FTextureRHIRef PrecomputedScatteringLut;
 	FTextureRHIRef PrecomputedTranmisttanceLut;
@@ -145,7 +147,7 @@ void InitSkyAtmosphereForScene(FRHICommandListImmediate& RHICmdList, FScene* Sce
 void InitSkyAtmosphereForView(FRHICommandListImmediate& RHICmdList, const FScene* Scene, FViewInfo& View);
 
 //@StarLight code - BEGIN Precomputed Multi Scattering on mobile, edit by wanghai
-void PrecomputeSkyAtmosphereLut(FRHICommandListImmediate& RHICmdList, const FScene* InScene);
+void PrecomputeSkyAtmosphereLut(FRHICommandListImmediate& RHICmdList, const FScene* InScene, FViewInfo& View);
 //@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
 extern void SetupSkyAtmosphereViewSharedUniformShaderParameters(const class FViewInfo& View, FSkyAtmosphereViewSharedUniformShaderParameters& OutParameters);

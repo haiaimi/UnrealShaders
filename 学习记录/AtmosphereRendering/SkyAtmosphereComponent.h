@@ -76,6 +76,9 @@ class USkyAtmosphereComponent : public USceneComponent
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, interp, Category = "Atmosphere")
 	bool bUsePrecomputedAtmpsphereLuts = false;
 	bool bShouldUpdatePrecomputedAtmpsphereLuts = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, interp, Category = "Atmosphere")
+	bool bUseStaticLight = false;
 	UPROPERTY()
 	class UVolumeTexture* PrecomputedScatteringLut;
 	UPROPERTY()
@@ -192,8 +195,8 @@ class USkyAtmosphereComponent : public USceneComponent
 	ENGINE_API void SetHeightFogContribution(float NewValue);
 
 	//@StarLight code - START Precomputed Multi Scattering on mobile, edit by wanghai
-	template<typename TextureType>
-	void SavePrecomputedLut(FTextureRHIRef InTexture, FIntVector TextureSize, const FString& InTextureName);
+	/*template<typename TextureType>
+	void SavePrecomputedLut(FTextureRHIRef InTexture, FIntVector TextureSize, const FString& InTextureName);*/
 	//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
 protected:

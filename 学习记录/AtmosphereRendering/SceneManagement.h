@@ -1129,6 +1129,9 @@ public:
 	FSkyAtmosphereRenderSceneInfo* RenderSceneInfo;
 
 	//@StarLight code - START Precomputed Multi Scattering on mobile, edit by wanghai
+#if WITH_EDITOR
+	void SavePrecomputedLuts();
+#endif 
 	FTextureRHIRef PrecomputedScatteringLut;
 	FTextureRHIRef PrecomputedTranmisttanceLut;
 	FTextureRHIRef PrecomputedIrradianceLut;

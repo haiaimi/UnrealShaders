@@ -1550,6 +1550,11 @@ void RenderSkyAtmosphereEditorHudPS(
 #endif
 
 //@StarLight code - BEGIN Precomputed Multi Scattering on mobile, edit by wanghai
+
+#ifndef USE_STATIC_LIGHT 
+#define USE_STATIC_LIGHT 0 
+#endif
+
 float3 BilinearSampleTexture2D(Texture2D<float4> InTexture, float2 SamplePos, float2 TextureSize)
 {
 	int2 TopLeftPos = clamp(0, floor(SamplePos), TextureSize - 1);
@@ -2082,8 +2087,13 @@ float3 GetCombinedScattering(float ViewHeight, float ViewZenithCosAngle, float L
 	float4 CurPos = Uvwz * (ScatteringTextureSize - 1.f);
 	float TexCoord_x = floor(CurPos.x);
 	float Alpha = CurPos.x - TexCoord_x;
+#if USE_STATIC_LIGHT
+	float3 Pos0 = float3(TexCoord_x, CurPos.z, CurPos.w);
+	float3 Pos1 = float3(min(TexCoord_x + 1, ScatteringTextureSize.x - 1), CurPos.z, CurPos.w);
+#else
 	float3 Pos0 = float3(TexCoord_x * ScatteringTextureSize.y + CurPos.y, CurPos.z, CurPos.w);
 	float3 Pos1 = float3(min(TexCoord_x + 1, ScatteringTextureSize.x - 1) * ScatteringTextureSize.y + CurPos.y, CurPos.z, CurPos.w);
+#endif
 	float4 CombinedScattering = lerp(BilinearSampleTexture3D4(MultiScatteringLut, Pos0), BilinearSampleTexture3D4(MultiScatteringLut, Pos1), Alpha) * View.PreExposure;
 	float3 Irradiance_Scattering = CombinedScattering.xyz;
 	SingleMieScattering = GetSingleMieScattering(CombinedScattering);
@@ -2164,7 +2174,33 @@ void RenderGroundRadianceCS(uint3 ThreadId : SV_DispatchThreadID)
 	float3 WorldPos = float3(0.f, 0.f, Atmosphere.BottomRadiusKm);
 	float3 AtmosphereLightDirection0 = View.AtmosphereLightDirection[0].xyz;
 	float3 LightIrradiance = GetSkyAndLightIrradiance(WorldPos, float3(0.f, 0.f, 1.f), AtmosphereLightDirection0, SkyIrradiance);
-	DistantSkyLightLutUAV[ThreadId.xy] = Atmosphere.GroundAlbedo.xyz * (1.f / PI) * (max(LightIrradiance, 1.f) * SkyIrradiance);
+	DistantSkyLightLutUAV[ThreadId.xy] = Atmosphere.GroundAlbedo.xyz * (1.f / PI) * (LightIrradiance * SkyIrradiance);
+}
+
+float3 LightDirection0;
+RWTexture3D<float4> StaticLightScatteringUAV;
+[numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, THREADGROUP_SIZE)]
+void RenderStaticLightScatteringLutCS(uint3 ThreadId : SV_DispatchThreadID)
+{
+	float ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle;
+	bool bIntersectGround;
+	float3 SourcePoint = float3(ThreadId.x * 32 + 1, ThreadId.y, ThreadId.z) + 0.5f;
+	float3 AtmosphereLightDirection0 = LightDirection0;
+	int4 Size = PrecomputedSkyAtmosphere.ScatteringTextureSize;
+	float4 ScatteringTextureSize = float4(Size.x, Size.y, Size.z, Size.w); // nu, mu_s, mu, r
+	UvwToScatteringParams(SourcePoint, ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround);
+	LightZenithCosAngle = dot(float3(0.f, 0.f, 1.f), AtmosphereLightDirection0);
+	
+	float4 Uvwz;
+	ScatteringParamsToUvwz(ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround, Uvwz);
+	
+	float4 CurPos = Uvwz * (ScatteringTextureSize - 1.f);
+	float TexCoord_x = floor(CurPos.x);
+	float Alpha = CurPos.x - TexCoord_x;
+	float3 Pos0 = float3(TexCoord_x * ScatteringTextureSize.y + CurPos.y, CurPos.z, CurPos.w);
+	float3 Pos1 = float3(min(TexCoord_x + 1, ScatteringTextureSize.x - 1) * ScatteringTextureSize.y + CurPos.y, CurPos.z, CurPos.w);
+	float4 Scattering = lerp(BilinearSampleTexture3D4(MultiScatteringLut, Pos0), BilinearSampleTexture3D4(MultiScatteringLut, Pos1), Alpha);
+	StaticLightScatteringUAV[ThreadId] = Scattering;
 }
 
 int2 AtlasTextureSize;

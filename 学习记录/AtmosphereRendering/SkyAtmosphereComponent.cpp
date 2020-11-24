@@ -140,9 +140,10 @@ void USkyAtmosphereComponent::CreateRenderState_Concurrent(FRegisterComponentCon
 {
 	Super::CreateRenderState_Concurrent(Context);
 	//@StarLight code - START Precomputed Multi Scattering on mobile, edit by wanghai
-	PrecomputedScatteringLut = LoadObject<UVolumeTexture>(this, TEXT("/Game/Textures/Tex_VolumeTexture_0"));
-	PrecomputedTranmisttanceLut = LoadObject<UTexture2D>(this, TEXT("/Game/Textures/Tex_VolumeTexture_1"));
-	PrecomputedIrradianceLut = LoadObject<UTexture2D>(this, TEXT("/Game/Textures/Tex_VolumeTexture_2"));
+	FString MapName = GWorld->GetMapName();
+	PrecomputedScatteringLut = LoadObject<UVolumeTexture>(this, *(TEXT("/Game/Textures/Tex_ScatteringTexture_") + MapName));
+	PrecomputedTranmisttanceLut = LoadObject<UTexture2D>(this, *(TEXT("/Game/Textures/Tex_Tranmittance_") + MapName));
+	PrecomputedIrradianceLut = LoadObject<UTexture2D>(this, *(TEXT("/Game/Textures/Tex_Irradiance_") + MapName));
 	//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
 	// If one day we need to look up lightmass built data, lookup it up here using the guid from the correct MapBuildData.
@@ -170,18 +171,6 @@ void USkyAtmosphereComponent::CreateRenderState_Concurrent(FRegisterComponentCon
 	{
 		FScene* Scene = GetWorld()->Scene->GetRenderScene();
 
-		// Save luts
-		{
-			FlushRenderingCommands();
-			FTextureRHIRef InTexture = SkyAtmosphereSceneProxy->RenderSceneInfo->GetScatteringAltasTexture()->GetRenderTargetItem().TargetableTexture;
-			SavePrecomputedLut<UVolumeTexture>(InTexture,  SkyAtmosphereSceneProxy->RenderSceneInfo->GetMultiScatteringLutTextureSwapA()->GetRenderTargetItem().TargetableTexture->GetSizeXYZ(), TEXT("Tex_VolumeTexture_0"));
-			InTexture = SkyAtmosphereSceneProxy->RenderSceneInfo->GetTransmittanceLutTexture()->GetRenderTargetItem().TargetableTexture;
-			SavePrecomputedLut<UTexture2D>(InTexture, InTexture->GetSizeXYZ(), TEXT("Tex_VolumeTexture_1"));
-			InTexture = SkyAtmosphereSceneProxy->RenderSceneInfo->GetIrradianceLutTextureSwapA()->GetRenderTargetItem().TargetableTexture;
-			SavePrecomputedLut<UTexture2D>(InTexture, InTexture->GetSizeXYZ(), TEXT("Tex_VolumeTexture_2"));
-			//FTextureRHIRef InTexture = SkyAtmosphereSceneProxy->RenderSceneInfo->GetScatteringAltasTexture()->GetRenderTargetItem().TargetableTexture;
-		}
-
 		bShouldUpdatePrecomputedAtmpsphereLuts = false;
 	}
 #endif
@@ -190,7 +179,7 @@ void USkyAtmosphereComponent::CreateRenderState_Concurrent(FRegisterComponentCon
 
 //@StarLight code - START Precomputed Multi Scattering on mobile, edit by wanghai
 template<typename TextureType>
-void USkyAtmosphereComponent::SavePrecomputedLut(FTextureRHIRef InTexture, FIntVector TextureSize, const FString& InTextureName)
+void SavePrecomputedLut(FTextureRHIRef InTexture, FIntVector TextureSize, const FString& InTextureName)
 {
 	if (!InTexture.IsValid())
 	{
@@ -598,6 +587,24 @@ FVector FSkyAtmosphereSceneProxy::GetAtmosphereLightDirection(int32 AtmosphereLi
 	return DefaultDirection;
 }
 
+#if WITH_EDITOR
+void FSkyAtmosphereSceneProxy::SavePrecomputedLuts()
+{
+	FFunctionGraphTask::CreateAndDispatchWhenReady([this]()
+	{
+		FlushRenderingCommands();
+		
+		FString MapName = GWorld->GetMapName();
+		FTextureRHIRef InTexture = AtmosphereSetup.bUseStaticLight ? RenderSceneInfo->GetStaticLightScatteringLutTexture()->GetRenderTargetItem().TargetableTexture : RenderSceneInfo->GetScatteringAltasTexture()->GetRenderTargetItem().TargetableTexture;
+		FIntVector TextureSize = AtmosphereSetup.bUseStaticLight ? RenderSceneInfo->GetStaticLightScatteringLutTexture()->GetRenderTargetItem().TargetableTexture->GetSizeXYZ() : RenderSceneInfo->GetMultiScatteringLutTextureSwapA()->GetRenderTargetItem().TargetableTexture->GetSizeXYZ();
+		SavePrecomputedLut<UVolumeTexture>(InTexture, TextureSize, TEXT("Tex_ScatteringTexture_") + MapName);
+		InTexture = RenderSceneInfo->GetTransmittanceLutTexture()->GetRenderTargetItem().TargetableTexture;
+		SavePrecomputedLut<UTexture2D>(InTexture, InTexture->GetSizeXYZ(), TEXT("Tex_Tranmittance_") + MapName);
+		InTexture = RenderSceneInfo->GetIrradianceLutTextureSwapA()->GetRenderTargetItem().TargetableTexture;
+		SavePrecomputedLut<UTexture2D>(InTexture, InTexture->GetSizeXYZ(), TEXT("Tex_Irradiance_") + MapName);
+	},  TStatId(), nullptr, ENamedThreads::GameThread);
+}
+#endif 
 
 #undef LOCTEXT_NAMESPACE
 
