@@ -2174,7 +2174,7 @@ void RenderGroundRadianceCS(uint3 ThreadId : SV_DispatchThreadID)
 	float3 WorldPos = float3(0.f, 0.f, Atmosphere.BottomRadiusKm);
 	float3 AtmosphereLightDirection0 = View.AtmosphereLightDirection[0].xyz;
 	float3 LightIrradiance = GetSkyAndLightIrradiance(WorldPos, float3(0.f, 0.f, 1.f), AtmosphereLightDirection0, SkyIrradiance);
-	DistantSkyLightLutUAV[ThreadId.xy] = Atmosphere.GroundAlbedo.xyz * (1.f / PI) * (LightIrradiance * SkyIrradiance);
+	DistantSkyLightLutUAV[ThreadId.xy] = Atmosphere.GroundAlbedo.xyz * (1.f / PI) * (/*LightIrradiance +*/ SkyIrradiance);
 }
 
 float3 LightDirection0;

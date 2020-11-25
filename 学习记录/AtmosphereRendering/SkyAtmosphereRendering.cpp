@@ -413,8 +413,6 @@ TRefCountPtr<IPooledRenderTarget>& FSkyAtmosphereRenderSceneInfo::GetDistantSkyL
 	return GSystemTextures.BlackDummy;
 }
 
-
-
 /*=============================================================================
 	FScene functions
 =============================================================================*/
@@ -1269,7 +1267,7 @@ void FSceneRenderer::InitSkyAtmosphereForViews(FRHICommandListImmediate& RHICmdL
 		InitSkyAtmosphereForView(RHICmdList, Scene, View);
 	}
 	const auto& Setup = Scene->SkyAtmosphere->GetSkyAtmosphereSceneProxy().GetAtmosphereSetup();
-	if (CVarSkyAtmosphereEnablePrecomputedMultiScattering.GetValueOnRenderThread() > 0 && Setup.bUsePrecomputedAtmpsphereLuts && Setup.bShouldUpdatePrecomputedAtmosphereLuts)
+	if (Setup.bUsePrecomputedAtmpsphereLuts && Setup.bShouldUpdatePrecomputedAtmosphereLuts)
 	{
 		PrecomputeSkyAtmosphereLut(RHICmdList, Scene, Views[0]);
 		FAtmosphereSetup& AtmosphereSetup = const_cast<FAtmosphereSetup&>(Setup);
@@ -1306,7 +1304,7 @@ static EPixelFormat GetSkyLutSmallTextureFormat()
 void InitSkyAtmosphereForScene(FRHICommandListImmediate& RHICmdList, FScene* Scene)
 {
 	//@StarLight code - BEGIN Precomputed Multi Scattering on mobile, edit by wanghai
-	if (Scene/* && CVarSkyAtmosphereEnablePrecomputedMultiScattering.GetValueOnRenderThread() <= 0*/)
+	if (Scene)
 	{
 		GET_VALID_DATA_FROM_CVAR;
 
@@ -1544,7 +1542,7 @@ void PrecomputeSkyAtmosphereLut(FRHICommandListImmediate& RHICmdList, const FSce
 	PrecomputedCommonParameters.ScatteringTextureSize = ScatteringSize;
 	PrecomputedCommonParameters.TransmittanceLutSize = TransmittanceLutSize;
 	PrecomputedCommonParameters.IrradianceLutSize = IrradianceTextureSize;
-	PrecomputedCommonParameters.LightAngularRadius = 0.001f;
+	PrecomputedCommonParameters.LightAngularRadius = Scene->AtmosphereLights[0]->Proxy->GetSunLightHalfApexAngleRadian();
 	TUniformBufferRef<FPrecomputedAtmosphereUniformShaderParameters> PrecomputedCommonParametersRef = TUniformBufferRef<FPrecomputedAtmosphereUniformShaderParameters>::CreateUniformBufferImmediate(PrecomputedCommonParameters, UniformBuffer_MultiFrame);
 
 	FRDGTextureRef MultiScatteringLutA = GraphBuilder.RegisterExternalTexture(SkyInfo.GetMultiScatteringLutTextureSwapA());
@@ -1615,7 +1613,7 @@ void PrecomputeSkyAtmosphereLut(FRHICommandListImmediate& RHICmdList, const FSce
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("ComputeDirectIrradiance"), ComputeShader, PassParameters, NumGroups);
 	}
 	{
-		const int32 ScatteringLevelCount = 10;
+		const int32 ScatteringLevelCount = Setup.ScatteringLevel;
 		// Compute multi scattering
 		FRDGTextureRef IrradianceLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetIrradianceLutTexture());
 		FRDGTextureRef RayleighScatteringLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetRayleighScatteringLutTexture());
@@ -1781,56 +1779,60 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& R
 		PrecomputedCommonParameters.ScatteringTextureSize = ScatteringSize;
 		PrecomputedCommonParameters.TransmittanceLutSize = TransmittanceLutSize;
 		PrecomputedCommonParameters.IrradianceLutSize = IrradianceTextureSize;
-		PrecomputedCommonParameters.LightAngularRadius = 0.001f;
+		PrecomputedCommonParameters.LightAngularRadius = Scene->AtmosphereLights[0]->Proxy->GetSunLightHalfApexAngleRadian();
 		TUniformBufferRef<FPrecomputedAtmosphereUniformShaderParameters> PrecomputedCommonParametersRef = TUniformBufferRef<FPrecomputedAtmosphereUniformShaderParameters>::CreateUniformBufferImmediate(PrecomputedCommonParameters, UniformBuffer_MultiFrame);
 		
-		FRDGTextureRef SkyAtmosphereViewLutTexture = GraphBuilder.RegisterExternalTexture(Views[0].SkyAtmosphereViewLutTexture);
-		FRDGTextureUAVRef SkyAtmosphereViewLutTextureUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(SkyAtmosphereViewLutTexture, 0));
-
+		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
-			bool bUseStaticLight = Scene->GetSkyAtmosphereSceneInfo()->GetSkyAtmosphereSceneProxy().GetAtmosphereSetup().bUseStaticLight;
-			FOrionRenderSkyViewLutCS::FPermutationDomain PermutationVector;
-			PermutationVector.Set<FOrionRenderSkyViewLutCS::FUseStaticLight>(bUseStaticLight);
-			TShaderMapRef<FOrionRenderSkyViewLutCS> ComputeShader(GlobalShaderMap, PermutationVector);
-			FOrionRenderSkyViewLutCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FOrionRenderSkyViewLutCS::FParameters>();
-			PassParameters->Atmosphere = Scene->GetSkyAtmosphereSceneInfo()->GetAtmosphereUniformBuffer();
-			PassParameters->SkyAtmosphere = InternalCommonParametersRef;
-			PassParameters->PrecomputedSkyAtmosphere = PrecomputedCommonParametersRef;
-			PassParameters->MultiScatteringLut = SkyInfo.GetPrecomputedScatteringLut().IsValid() ? SkyInfo.GetPrecomputedScatteringLut() : GBlackTexture->TextureRHI;
-			PassParameters->TransmittanceLutTexture = SkyInfo.GetPrecomputedTranmisttanceLut().IsValid() ? SkyInfo.GetPrecomputedTranmisttanceLut() : GBlackTexture->TextureRHI;
-			PassParameters->SkyViewLutUAV = SkyAtmosphereViewLutTextureUAV;
-			PassParameters->ViewUniformBuffer = Views[0].ViewUniformBuffer;
+			FRDGTextureRef SkyAtmosphereViewLutTexture = GraphBuilder.RegisterExternalTexture(Views[ViewIndex].SkyAtmosphereViewLutTexture);
+			FRDGTextureUAVRef SkyAtmosphereViewLutTextureUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(SkyAtmosphereViewLutTexture, 0));
 
-			int32 SkyViewLutWidth = CVarSkyAtmosphereFastSkyLUTWidth.GetValueOnRenderThread();
-			int32 SkyViewLutHeight = CVarSkyAtmosphereFastSkyLUTHeight.GetValueOnRenderThread();
-			FIntVector TextureSize(SkyViewLutWidth, SkyViewLutHeight, 1);
-			FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FIntVector(FOrionRenderSkyViewLutCS::GroupSize, FOrionRenderSkyViewLutCS::GroupSize, 1));
-			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("RenderSkyViewLut"), ComputeShader, PassParameters, NumGroups);
+			{
+				bool bUseStaticLight = Scene->GetSkyAtmosphereSceneInfo()->GetSkyAtmosphereSceneProxy().GetAtmosphereSetup().bUseStaticLight;
+				FOrionRenderSkyViewLutCS::FPermutationDomain PermutationVector;
+				PermutationVector.Set<FOrionRenderSkyViewLutCS::FUseStaticLight>(bUseStaticLight);
+				TShaderMapRef<FOrionRenderSkyViewLutCS> ComputeShader(GlobalShaderMap, PermutationVector);
+				FOrionRenderSkyViewLutCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FOrionRenderSkyViewLutCS::FParameters>();
+				PassParameters->Atmosphere = Scene->GetSkyAtmosphereSceneInfo()->GetAtmosphereUniformBuffer();
+				PassParameters->SkyAtmosphere = InternalCommonParametersRef;
+				PassParameters->PrecomputedSkyAtmosphere = PrecomputedCommonParametersRef;
+				PassParameters->MultiScatteringLut = SkyInfo.GetPrecomputedScatteringLut().IsValid() ? SkyInfo.GetPrecomputedScatteringLut() : GBlackTexture->TextureRHI;
+				PassParameters->TransmittanceLutTexture = SkyInfo.GetPrecomputedTranmisttanceLut().IsValid() ? SkyInfo.GetPrecomputedTranmisttanceLut() : GBlackTexture->TextureRHI;
+				PassParameters->SkyViewLutUAV = SkyAtmosphereViewLutTextureUAV;
+				PassParameters->ViewUniformBuffer = Views[ViewIndex].ViewUniformBuffer;
+
+				int32 SkyViewLutWidth = CVarSkyAtmosphereFastSkyLUTWidth.GetValueOnRenderThread();
+				int32 SkyViewLutHeight = CVarSkyAtmosphereFastSkyLUTHeight.GetValueOnRenderThread();
+				FIntVector TextureSize(SkyViewLutWidth, SkyViewLutHeight, 1);
+				FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FIntVector(FOrionRenderSkyViewLutCS::GroupSize, FOrionRenderSkyViewLutCS::GroupSize, 1));
+				FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("RenderSkyViewLut"), ComputeShader, PassParameters, NumGroups);
+			}
+
+			// Compute ground irradiance
+			{
+				FRDGTextureRef DistantSkyLightLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetDistantSkyLightLutTexture());
+				FRDGTextureUAVRef DistantSkyLightLutUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(DistantSkyLightLut, 0));
+
+				TShaderMapRef<FRenderGroundRadianceCS> ComputeShader(GlobalShaderMap);
+				FRenderGroundRadianceCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FRenderGroundRadianceCS::FParameters>();
+				PassParameters->Atmosphere = Scene->GetSkyAtmosphereSceneInfo()->GetAtmosphereUniformBuffer();
+				PassParameters->SkyAtmosphere = InternalCommonParametersRef;
+				PassParameters->PrecomputedSkyAtmosphere = PrecomputedCommonParametersRef;
+				PassParameters->IrradianceLut = SkyInfo.GetPrecomputedIrradianceLut().IsValid() ? SkyInfo.GetPrecomputedIrradianceLut() : GBlackTexture->TextureRHI;
+				PassParameters->DistantSkyLightLutUAV = DistantSkyLightLutUAV;
+				PassParameters->TransmittanceLutTexture = SkyInfo.GetPrecomputedTranmisttanceLut().IsValid() ? SkyInfo.GetPrecomputedTranmisttanceLut() : GBlackTexture->TextureRHI;
+				PassParameters->ViewUniformBuffer = Views[ViewIndex].ViewUniformBuffer;
+
+				FLightSceneInfo* Light0 = Scene->AtmosphereLights[0];
+				if (Light0)
+					PassParameters->AtmosphereLightColor0 = Light0->Proxy->GetColor();
+
+				FIntVector TextureSize(1, 1, 1);
+				FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FIntVector(FRenderGroundRadianceCS::GroupSize, FRenderGroundRadianceCS::GroupSize, 1));
+				FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("RenderGroundRadiance"), ComputeShader, PassParameters, NumGroups);
+			}
 		}
-
-		// Compute ground irradiance
-		{
-			FRDGTextureRef DistantSkyLightLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetDistantSkyLightLutTexture());
-			FRDGTextureUAVRef DistantSkyLightLutUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(DistantSkyLightLut, 0));
-
-			TShaderMapRef<FRenderGroundRadianceCS> ComputeShader(GlobalShaderMap);
-			FRenderGroundRadianceCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FRenderGroundRadianceCS::FParameters>();
-			PassParameters->Atmosphere = Scene->GetSkyAtmosphereSceneInfo()->GetAtmosphereUniformBuffer();
-			PassParameters->SkyAtmosphere = InternalCommonParametersRef;
-			PassParameters->PrecomputedSkyAtmosphere = PrecomputedCommonParametersRef;
-			PassParameters->IrradianceLut =  SkyInfo.GetPrecomputedIrradianceLut().IsValid() ? SkyInfo.GetPrecomputedIrradianceLut() : GBlackTexture->TextureRHI;
-			PassParameters->DistantSkyLightLutUAV = DistantSkyLightLutUAV;
-			PassParameters->TransmittanceLutTexture = SkyInfo.GetPrecomputedTranmisttanceLut().IsValid() ? SkyInfo.GetPrecomputedTranmisttanceLut() : GBlackTexture->TextureRHI;
-			PassParameters->ViewUniformBuffer = Views[0].ViewUniformBuffer;
-
-			FLightSceneInfo* Light0 = Scene->AtmosphereLights[0];
-			if (Light0)
-				PassParameters->AtmosphereLightColor0 = Light0->Proxy->GetColor();
-
-			FIntVector TextureSize(1, 1, 1);
-			FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FIntVector(FRenderGroundRadianceCS::GroupSize, FRenderGroundRadianceCS::GroupSize, 1));
-			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("RenderGroundRadiance"), ComputeShader, PassParameters, NumGroups);
-		}
+		
 
 		GraphBuilder.Execute();
 		return;

@@ -49,6 +49,7 @@ struct FAtmosphereSetup
 	bool bUsePrecomputedAtmpsphereLuts;
 	bool bShouldUpdatePrecomputedAtmosphereLuts;
 	bool bUseStaticLight;
+	int32 ScatteringLevel;
 	//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
 	ENGINE_API FAtmosphereSetup(const USkyAtmosphereComponent& SkyAtmosphereComponent);

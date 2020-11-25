@@ -79,6 +79,9 @@ class USkyAtmosphereComponent : public USceneComponent
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, interp, Category = "Atmosphere")
 	bool bUseStaticLight = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, interp, Category = "Atmosphere", meta = (UIMin = 1))
+	int32 ScatteringLevel = 1;
 	UPROPERTY()
 	class UVolumeTexture* PrecomputedScatteringLut;
 	UPROPERTY()

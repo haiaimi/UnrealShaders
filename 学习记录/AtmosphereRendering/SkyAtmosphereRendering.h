@@ -99,6 +99,13 @@ public:
 	FTextureRHIRef GetPrecomputedScatteringLut() { return PrecomputedScatteringLut; }
 	FTextureRHIRef GetPrecomputedTranmisttanceLut() { return PrecomputedTranmisttanceLut; }
 	FTextureRHIRef GetPrecomputedIrradianceLut() { return PrecomputedIrradianceLut; }
+
+	void UpdatePrecomputedLuts()
+	{
+		PrecomputedScatteringLut = SkyAtmosphereSceneProxy.PrecomputedScatteringLut;
+		PrecomputedTranmisttanceLut = SkyAtmosphereSceneProxy.PrecomputedTranmisttanceLut;
+		PrecomputedIrradianceLut = SkyAtmosphereSceneProxy.PrecomputedIrradianceLut;
+	}
 	//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
 	const FAtmosphereUniformShaderParameters* GetAtmosphereShaderParameters() const { return &AtmosphereUniformShaderParameters; }
