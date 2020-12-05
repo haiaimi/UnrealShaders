@@ -1,0 +1,1 @@
+1. 使用inline关键字还可以避免One Definition Rule(ODR)，避免了multiple definition errors，有的时候直接在头文件里写声明和定义可能会有多重定义的错误，这时加上inline关键字就可以。

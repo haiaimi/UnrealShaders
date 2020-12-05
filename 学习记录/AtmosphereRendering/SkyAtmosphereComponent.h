@@ -82,12 +82,14 @@ class USkyAtmosphereComponent : public USceneComponent
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, interp, Category = "Atmosphere", meta = (UIMin = 1))
 	int32 ScatteringLevel = 1;
-	UPROPERTY()
+//public:
+	//UPROPERTY()
 	class UVolumeTexture* PrecomputedScatteringLut;
-	UPROPERTY()
+	//UPROPERTY()
 	class UTexture2D* PrecomputedTranmisttanceLut;
-	UPROPERTY()
+	//UPROPERTY()
 	class UTexture2D* PrecomputedIrradianceLut;
+//private:
 	//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
 	/** Rayleigh scattering coefficient scale.*/
@@ -198,8 +200,9 @@ class USkyAtmosphereComponent : public USceneComponent
 	ENGINE_API void SetHeightFogContribution(float NewValue);
 
 	//@StarLight code - START Precomputed Multi Scattering on mobile, edit by wanghai
-	/*template<typename TextureType>
-	void SavePrecomputedLut(FTextureRHIRef InTexture, FIntVector TextureSize, const FString& InTextureName);*/
+#if WITH_EDITOR
+	void SetPrecomputedLut(FTextureRHIRef ScatteringTexture, FTextureRHIRef TranmisttanceTexture, FTextureRHIRef IrradianceTexture);
+#endif
 	//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
 protected:

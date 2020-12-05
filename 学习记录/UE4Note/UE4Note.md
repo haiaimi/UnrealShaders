@@ -1,0 +1,1 @@
+1. 在metal平台上动态加载Texture的时候（调用LoadObject），如果加载3DTexture，并且在后面直接当作SRV使用，可能会出现效果错误的问题，这应该是在CreateTexture和UpdateTexture的时候是异步进行的（UpdateTexture2D和UpdateTexture3D是不同的实现），也有可能是CPU资源是异步加载导致资源没有加载完，可以在LoadTexture后直接Flush来保证资源正确，但是如果Load的操作比较频繁就要慎用，因为频繁flush会造成阻塞，影响性能。

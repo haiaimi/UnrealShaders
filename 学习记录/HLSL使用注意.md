@@ -60,3 +60,5 @@
         IMPLEMENT_SHADER_TYPE(, FDivergenceCS, TEXT("/SLShaders/Fluid3D.usf"), TEXT("Divergence"), SF_Compute)
     ```
     上面这种声明方式在一些平台上会导致Shader编译错误，因为在*RWDivergence*可能在翻译时会以*Divergence*查找，这样就和函数名一致，从而导致编译报错。所以尽量要注意参数命名。
+
+10. 在Metal平台上，一些比较复杂的Shader编译会出错，特别还是在循环的时候，如果是固定次数的循环，建议直接unroll

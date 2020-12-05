@@ -17,11 +17,14 @@
 
 #if WITH_EDITOR
 #include "ObjectEditorUtils.h"
+#include "ObjectTools.h"
+#include "FileHelpers.h"
+#include "AssetRegistryModule.h"
 #endif
 //@StarLight code - START Precomputed Multi Scattering on mobile, edit by wanghai
 #include "../Private/SkyAtmosphereRendering.h"
 #include "Engine/VolumeTexture.h"
-#include "AssetRegistryModule.h"
+
 //@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
 #define LOCTEXT_NAMESPACE "SkyAtmosphereComponent"
@@ -147,9 +150,13 @@ void USkyAtmosphereComponent::CreateRenderState_Concurrent(FRegisterComponentCon
 		MapName.Split(TEXT("_"), &Tmp, &MapName);
 		MapName.Split(TEXT("_"), &Tmp, &MapName);
 	}
-	PrecomputedScatteringLut = LoadObject<UVolumeTexture>(this, *(TEXT("/Game/Textures/Tex_ScatteringTexture_") + MapName));
-	PrecomputedTranmisttanceLut = LoadObject<UTexture2D>(this, *(TEXT("/Game/Textures/Tex_Tranmittance_") + MapName));
-	PrecomputedIrradianceLut = LoadObject<UTexture2D>(this, *(TEXT("/Game/Textures/Tex_Irradiance_") + MapName));
+
+	PrecomputedScatteringLut = LoadObject<UVolumeTexture>(nullptr, *(TEXT("/Game/SkyAtmosphereLuts/Tex_ScatteringTexture_") + MapName));
+	PrecomputedTranmisttanceLut = LoadObject<UTexture2D>(nullptr, *(TEXT("/Game/SkyAtmosphereLuts/Tex_Tranmittance_") + MapName));
+	PrecomputedIrradianceLut = LoadObject<UTexture2D>(nullptr, *(TEXT("/Game/SkyAtmosphereLuts/Tex_Irradiance_") + MapName));
+	
+	// Some platform may create texture async, so we need to flush to ensure the texture is usable
+	FlushRenderingCommands();
 	//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
 	// If one day we need to look up lightmass built data, lookup it up here using the guid from the correct MapBuildData.
@@ -182,112 +189,6 @@ void USkyAtmosphereComponent::CreateRenderState_Concurrent(FRegisterComponentCon
 #endif
 	//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 }
-
-//@StarLight code - START Precomputed Multi Scattering on mobile, edit by wanghai
-template<typename TextureType>
-TextureType* SavePrecomputedLut(FTextureRHIRef InTexture, FIntVector TextureSize, const FString& InTextureName)
-{
-	if (!InTexture.IsValid())
-	{
-		return nullptr;
-	}
-
-	FRHITexture2D* InTexture2D = InTexture->GetTexture2D();
-	FRHITexture3D* InTexture3D = InTexture->GetTexture3D();
-	FString TextureName = InTextureName;
-	FString PackageName = TEXT("/Game/Textures/");
-	PackageName += TextureName;
-	UPackage* Package = CreatePackage(NULL, *PackageName);
-	Package->FullyLoad();
-
-	TextureType* CurTexture = LoadObject<TextureType>(nullptr, *PackageName);
-	TextureType* MultiScatteringLut = CurTexture ? CurTexture : NewObject<TextureType>(Package, *TextureName, RF_Public | RF_Standalone | RF_MarkAsRootSet);
-	MultiScatteringLut->AddToRoot();
-	if(!CurTexture) MultiScatteringLut->PlatformData = new FTexturePlatformData();
-	MultiScatteringLut->PlatformData->SizeX = TextureSize.X;
-	MultiScatteringLut->PlatformData->SizeY = TextureSize.Y;
-	MultiScatteringLut->PlatformData->SetNumSlices(TextureSize.Z);
-	MultiScatteringLut->PlatformData->PixelFormat = EPixelFormat::PF_FloatRGBA;
-	MultiScatteringLut->CompressionQuality = ETextureCompressionQuality::TCQ_Medium;
-	MultiScatteringLut->CompressionSettings = TC_HDR;
-
-	int32 Index = 0;
-	if (!CurTexture)
-	{
-		Index = MultiScatteringLut->PlatformData->Mips.Add(new FTexture2DMipMap());
-	}
-	FTexture2DMipMap* Mip = &MultiScatteringLut->PlatformData->Mips[Index];
-	Mip->SizeX = TextureSize.X;
-	Mip->SizeY = TextureSize.Y;
-	Mip->SizeZ = TextureSize.Z;
-
-	uint32 DestStride = 0;
-	TArray<FFloat16Color> PixelData;
-	uint32 DataNum = TextureSize.X * TextureSize.Y * TextureSize.Z;
-	PixelData.SetNumZeroed(DataNum);
-
-	if (InTexture3D)
-	{
-		ENQUEUE_RENDER_COMMAND(FReadBackScattering)([InTexture3D, TextureSize, &PixelData](FRHICommandListImmediate& RHICmdList) {
-			RHICmdList.Read3DSurfaceFloatData(InTexture3D, FIntRect(0, 0, TextureSize.X, TextureSize.Y), FIntPoint(0, TextureSize.Z), PixelData);
-		});
-		FlushRenderingCommands();
-	}
-	else if (InTexture2D)
-	{
-		if (InTexture2D->GetFormat() == EPixelFormat::PF_FloatRGBA)
-		{
-			FFloat16Color* Texture2DData = (FFloat16Color*)RHILockTexture2D(InTexture2D, 0, RLM_ReadOnly, DestStride, false);
-			int32 RowDataSize = InTexture2D->GetSizeX() * sizeof(FFloat16Color);
-			if (DestStride == RowDataSize)
-			{
-				FMemory::Memcpy(PixelData.GetData(), Texture2DData, PixelData.Num() * sizeof(FFloat16Color));
-			}
-			else
-			{
-				FFloat16Color* TempData = PixelData.GetData();
-				for (uint32 i = 0; i < InTexture2D->GetSizeY(); ++i)
-				{
-					FMemory::Memcpy(TempData, Texture2DData, RowDataSize);
-					TempData += RowDataSize;
-					Texture2DData += DestStride;
-				}
-			}
-			RHIUnlockTexture2D(InTexture2D, 0, false);
-		}
-		else if (InTexture2D->GetFormat() == EPixelFormat::PF_A32B32G32R32F)
-		{
-			FLinearColor* Texture2DData = (FLinearColor*)RHILockTexture2D(InTexture2D, 0, RLM_ReadOnly, DestStride, false);
-			int32 RowDataSize = InTexture2D->GetSizeX() * sizeof(FLinearColor);
-			for (uint32 i = 0; i < InTexture2D->GetSizeY(); ++i)
-			{
-				for (uint32 j = 0; j < InTexture2D->GetSizeX(); ++j)
-				{
-					PixelData[i * InTexture2D->GetSizeX() + j] = FFloat16Color(Texture2DData[j]);
-				}
-				Texture2DData += DestStride / sizeof(FLinearColor);
-			}
-			RHIUnlockTexture2D(InTexture2D, 0, false);
-		}
-	}
-
-	// Lock the texture so it can be modified
-	Mip->BulkData.Lock(LOCK_READ_WRITE);
-	uint8* TextureData = (uint8*)Mip->BulkData.Realloc(TextureSize.X * TextureSize.Y * TextureSize.Z * sizeof(FFloat16Color));
-	FMemory::Memcpy(TextureData, PixelData.GetData(), PixelData.Num() * sizeof(FFloat16Color));
-	Mip->BulkData.Unlock();
-
-	MultiScatteringLut->Source.Init(TextureSize.X, TextureSize.Y, TextureSize.Z, 1, ETextureSourceFormat::TSF_RGBA16F, (uint8*)PixelData.GetData());
-	MultiScatteringLut->UpdateResource();
-	Package->MarkPackageDirty();
-	FAssetRegistryModule::AssetCreated(MultiScatteringLut);
-
-	FString PackageFileName = FPackageName::LongPackageNameToFilename(PackageName, FPackageName::GetAssetPackageExtension());
-	bool bSaved = UPackage::SavePackage(Package, MultiScatteringLut, EObjectFlags::RF_Public | EObjectFlags::RF_Standalone, *PackageFileName, GError, nullptr, true, true, SAVE_NoError);
-
-	return bSaved ? MultiScatteringLut : nullptr;
-}
-//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
 void USkyAtmosphereComponent::SendRenderTransform_Concurrent()
 {
@@ -448,6 +349,20 @@ void USkyAtmosphereComponent::OverrideAtmosphereLightDirection(int32 AtmosphereL
 	}
 }
 
+#if WITH_EDITOR
+void USkyAtmosphereComponent::SetPrecomputedLut(FTextureRHIRef ScatteringTexture, FTextureRHIRef TranmisttanceTexture, FTextureRHIRef IrradianceTexture)
+{
+	if (SkyAtmosphereSceneProxy)
+	{
+		SkyAtmosphereSceneProxy->PrecomputedScatteringLut = ScatteringTexture;
+		SkyAtmosphereSceneProxy->PrecomputedTranmisttanceLut = TranmisttanceTexture;
+		SkyAtmosphereSceneProxy->PrecomputedIrradianceLut = IrradianceTexture;
+
+		SkyAtmosphereSceneProxy->RenderSceneInfo->UpdatePrecomputedLuts();
+	}
+}
+#endif
+
 void USkyAtmosphereComponent::GetOverrideLightStatus(bool* OutOverrideAtmosphericLight, FVector* OutOverrideAtmosphericLightDirection) const
 {
 	memcpy(OutOverrideAtmosphericLight, OverrideAtmosphericLight, sizeof(OverrideAtmosphericLight));
@@ -572,18 +487,21 @@ FSkyAtmosphereSceneProxy::FSkyAtmosphereSceneProxy(const USkyAtmosphereComponent
 	TransmittanceAtZenith = AtmosphereSetup.GetTransmittanceAtGroundLevel(FVector(0.0f, 0.0f, 1.0f));
 
 	//@StarLight code - START Precomputed Multi Scattering on mobile, edit by wanghai
-	if (InComponent->PrecomputedScatteringLut && InComponent->PrecomputedScatteringLut->Resource->TextureRHI.IsValid())
+	if (InComponent->PrecomputedScatteringLut && InComponent->PrecomputedScatteringLut->Resource && InComponent->PrecomputedScatteringLut->Resource->TextureRHI.IsValid())
 	{
 		PrecomputedScatteringLut = InComponent->PrecomputedScatteringLut->Resource->TextureRHI;
 	}
-	if (InComponent->PrecomputedTranmisttanceLut && InComponent->PrecomputedTranmisttanceLut->Resource->TextureRHI.IsValid())
+	if (InComponent->PrecomputedTranmisttanceLut && InComponent->PrecomputedTranmisttanceLut->Resource && InComponent->PrecomputedTranmisttanceLut->Resource->TextureRHI.IsValid())
 	{
 		PrecomputedTranmisttanceLut = InComponent->PrecomputedTranmisttanceLut->Resource->TextureRHI;
 	}
-	if (InComponent->PrecomputedIrradianceLut && InComponent->PrecomputedIrradianceLut->Resource->TextureRHI.IsValid())
+	if (InComponent->PrecomputedIrradianceLut && InComponent->PrecomputedIrradianceLut->Resource && InComponent->PrecomputedIrradianceLut->Resource->TextureRHI.IsValid())
 	{
 		PrecomputedIrradianceLut = InComponent->PrecomputedIrradianceLut->Resource->TextureRHI;
 	}
+#if WITH_EDITOR
+	TempComponent = const_cast<USkyAtmosphereComponent*>(InComponent);
+#endif
 	//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 }
 
@@ -601,32 +519,166 @@ FVector FSkyAtmosphereSceneProxy::GetAtmosphereLightDirection(int32 AtmosphereLi
 }
 
 #if WITH_EDITOR
+//@StarLight code - START Precomputed Multi Scattering on mobile, edit by wanghai
+template<typename TextureType>
+TextureType* SavePrecomputedLut(FTextureRHIRef InTexture, FIntVector TextureSize, const FString& InTextureName)
+{
+	if (!InTexture.IsValid())
+	{
+		return nullptr;
+	}
+
+	FRHITexture2D* InTexture2D = InTexture->GetTexture2D();
+	FRHITexture3D* InTexture3D = InTexture->GetTexture3D();
+	FString TextureName = InTextureName;
+	FString PackageName = TEXT("/Game/SkyAtmosphereLuts/");
+	PackageName += TextureName;
+
+	TextureType* CurTexture = LoadObject<TextureType>(nullptr, *PackageName);
+
+	if (CurTexture)
+	{
+		CurTexture->RemoveFromRoot();
+		TArray<UObject*> DeleteAsset = { CurTexture };
+		ObjectTools::ForceDeleteObjects(DeleteAsset, false);
+	}
+
+	UPackage* Package = CreatePackage(NULL, *PackageName);
+	Package->FullyLoad();
+	TextureType* MultiScatteringLut = NewObject<TextureType>(Package, *TextureName, RF_Public | RF_Standalone | RF_MarkAsRootSet);
+	MultiScatteringLut->AddToRoot();
+	MultiScatteringLut->PlatformData = new FTexturePlatformData();
+	MultiScatteringLut->PlatformData->SizeX = TextureSize.X;
+	MultiScatteringLut->PlatformData->SizeY = TextureSize.Y;
+	MultiScatteringLut->PlatformData->SetNumSlices(TextureSize.Z);
+	MultiScatteringLut->PlatformData->PixelFormat = EPixelFormat::PF_FloatRGBA;
+	MultiScatteringLut->CompressionQuality = ETextureCompressionQuality::TCQ_Medium;
+	MultiScatteringLut->MipGenSettings = TextureMipGenSettings::TMGS_NoMipmaps;
+	MultiScatteringLut->SRGB = false;
+	MultiScatteringLut->CompressionSettings = TC_HDR;
+
+	int32 Index = 0;
+	//if (!CurTexture)
+	{
+		Index = MultiScatteringLut->PlatformData->Mips.Add(new FTexture2DMipMap());
+	}
+	FTexture2DMipMap* Mip = &MultiScatteringLut->PlatformData->Mips[Index];
+	Mip->SizeX = TextureSize.X;
+	Mip->SizeY = TextureSize.Y;
+	Mip->SizeZ = TextureSize.Z;
+	
+	TArray<FFloat16Color> PixelData;
+	uint32 DataNum = TextureSize.X * TextureSize.Y * TextureSize.Z;
+	PixelData.SetNumZeroed(DataNum);
+
+	if (InTexture3D)
+	{
+		ENQUEUE_RENDER_COMMAND(FReadBackScattering)([InTexture3D, TextureSize, &PixelData](FRHICommandListImmediate& RHICmdList) {
+			RHICmdList.Read3DSurfaceFloatData(InTexture3D, FIntRect(0, 0, TextureSize.X, TextureSize.Y), FIntPoint(0, TextureSize.Z), PixelData);
+		});
+	}
+	else if (InTexture2D)
+	{
+		ENQUEUE_RENDER_COMMAND(FReadBackTextures)([InTexture2D, TextureSize, &PixelData](FRHICommandListImmediate& RHICmdList) {
+			uint32 DestStride = 0;
+			if (InTexture2D->GetFormat() == EPixelFormat::PF_FloatRGBA)
+			{
+				FIntPoint Texture2DSize = InTexture2D->GetSizeXY();
+				int32 Scale = Texture2DSize.X * Texture2DSize.Y / (TextureSize.X * TextureSize.Y * TextureSize.Z);
+				RHICmdList.ReadSurfaceFloatData(InTexture2D, FIntRect(0, 0, Texture2DSize.X, Texture2DSize.Y / Scale), PixelData, CubeFace_PosX, 0 , 0);
+			}
+			else if (InTexture2D->GetFormat() == EPixelFormat::PF_A32B32G32R32F)
+			{
+				FIntPoint Texture2DSize = InTexture2D->GetSizeXY();
+				TArray<FLinearColor> LinearColors;
+				RHICmdList.ReadSurfaceData(InTexture2D, FIntRect(0, 0, Texture2DSize.X, Texture2DSize.Y), LinearColors, FReadSurfaceDataFlags());
+
+				for (int32 i = 0; i < PixelData.Num(); ++i)
+				{
+					PixelData[i] = FFloat16Color(LinearColors[i]);
+				}
+
+				/*FLinearColor* Texture2DData = (FLinearColor*)RHILockTexture2D(InTexture2D, 0, RLM_ReadOnly, DestStride, true);
+				RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThread);
+				int32 RowDataSize = InTexture2D->GetSizeX() * sizeof(FLinearColor);
+				for (uint32 i = 0; i < InTexture2D->GetSizeY(); ++i)
+				{
+					for (uint32 j = 0; j < InTexture2D->GetSizeX(); ++j)
+					{
+						PixelData[i * InTexture2D->GetSizeX() + j] = FFloat16Color(Texture2DData[j]);
+					}
+					Texture2DData += DestStride / sizeof(FLinearColor);
+				}
+				RHIUnlockTexture2D(InTexture2D, 0, false);*/
+			}
+		});
+	}
+
+	FlushRenderingCommands();
+
+	// Lock the texture so it can be modified
+	Mip->BulkData.Lock(LOCK_READ_WRITE);
+	uint8* TextureData = (uint8*)Mip->BulkData.Realloc(TextureSize.X * TextureSize.Y * TextureSize.Z * sizeof(FFloat16Color));
+	FMemory::Memcpy(TextureData, PixelData.GetData(), PixelData.Num() * sizeof(FFloat16Color));
+
+	Mip->BulkData.Unlock();
+	MultiScatteringLut->Source.Init(TextureSize.X, TextureSize.Y, TextureSize.Z, 1, ETextureSourceFormat::TSF_RGBA16F, (uint8*)PixelData.GetData());
+	MultiScatteringLut->UpdateResource();
+	Package->MarkPackageDirty();
+	FAssetRegistryModule::AssetCreated(MultiScatteringLut);
+
+	FlushRenderingCommands();
+	FString PackageFileName = FPackageName::LongPackageNameToFilename(PackageName, FPackageName::GetAssetPackageExtension());
+	TArray<UPackage*> Packages = { Package };
+	FEditorFileUtils::PromptForCheckoutAndSave(Packages, true, /*bPromptToSave=*/ false);
+	//bool bSaved = UPackage::SavePackage(Package, MultiScatteringLut, EObjectFlags::RF_Public | EObjectFlags::RF_Standalone | EObjectFlags::RF_Transactional, *PackageFileName, GError, nullptr, true, true, SAVE_NoError);
+
+	return MultiScatteringLut;
+}
+
 void FSkyAtmosphereSceneProxy::SavePrecomputedLuts()
 {
-	FFunctionGraphTask::CreateAndDispatchWhenReady([this]()
+	FTextureRHIRef StaticLightScatteringLutTexture = RenderSceneInfo->GetStaticLightScatteringLutTexture()->GetRenderTargetItem().TargetableTexture;
+	FTextureRHIRef MultiScatteringLutTextureSwapA = RenderSceneInfo->GetMultiScatteringLutTextureSwapA()->GetRenderTargetItem().TargetableTexture;
+	FTextureRHIRef ScatteringAltasTexture = RenderSceneInfo->GetScatteringAltasTexture()->GetRenderTargetItem().TargetableTexture;
+	FTextureRHIRef TransmittanceLutTexture = RenderSceneInfo->GetTransmittanceLutTexture()->GetRenderTargetItem().TargetableTexture;
+	FTextureRHIRef IrradianceLutTextureSwapA = RenderSceneInfo->GetIrradianceLutTextureSwapA()->GetRenderTargetItem().TargetableTexture;
+
+	bool bUseStaticLight = AtmosphereSetup.bUseStaticLight;
+
+	TWeakObjectPtr<USkyAtmosphereComponent> ComponentRef = TempComponent;
+	auto SaveTask = FFunctionGraphTask::CreateAndDispatchWhenReady([ComponentRef, bUseStaticLight, StaticLightScatteringLutTexture, MultiScatteringLutTextureSwapA, ScatteringAltasTexture, TransmittanceLutTexture, IrradianceLutTextureSwapA]()
 	{
 		FlushRenderingCommands();
 		
+		if (ComponentRef.IsValid())
+		{
+			if(ComponentRef->PrecomputedScatteringLut)ComponentRef->PrecomputedScatteringLut->RemoveFromRoot();
+			if(ComponentRef->PrecomputedTranmisttanceLut)ComponentRef->PrecomputedTranmisttanceLut->RemoveFromRoot();
+			if(ComponentRef->PrecomputedIrradianceLut)ComponentRef->PrecomputedIrradianceLut->RemoveFromRoot();
+		}
 		FString MapName = GWorld->GetMapName();
-		FTextureRHIRef InTexture = AtmosphereSetup.bUseStaticLight ? RenderSceneInfo->GetStaticLightScatteringLutTexture()->GetRenderTargetItem().TargetableTexture : RenderSceneInfo->GetScatteringAltasTexture()->GetRenderTargetItem().TargetableTexture;
-		FIntVector TextureSize = AtmosphereSetup.bUseStaticLight ? RenderSceneInfo->GetStaticLightScatteringLutTexture()->GetRenderTargetItem().TargetableTexture->GetSizeXYZ() : RenderSceneInfo->GetMultiScatteringLutTextureSwapA()->GetRenderTargetItem().TargetableTexture->GetSizeXYZ();
+		FTextureRHIRef InTexture = bUseStaticLight ? StaticLightScatteringLutTexture : ScatteringAltasTexture;
+		FIntVector TextureSize = bUseStaticLight ? StaticLightScatteringLutTexture->GetSizeXYZ() : MultiScatteringLutTextureSwapA->GetSizeXYZ();
 		TextureSize.Z /= 4;
 		UVolumeTexture* ScatteringTexture = SavePrecomputedLut<UVolumeTexture>(InTexture, TextureSize, TEXT("Tex_ScatteringTexture_") + MapName);
-		InTexture = RenderSceneInfo->GetTransmittanceLutTexture()->GetRenderTargetItem().TargetableTexture;
+		InTexture = TransmittanceLutTexture;
 		UTexture2D* TranmittanceTexture = SavePrecomputedLut<UTexture2D>(InTexture, InTexture->GetSizeXYZ(), TEXT("Tex_Tranmittance_") + MapName);
-		InTexture = RenderSceneInfo->GetIrradianceLutTextureSwapA()->GetRenderTargetItem().TargetableTexture;
+		InTexture = IrradianceLutTextureSwapA;
 		UTexture2D* IrradianceTexture = SavePrecomputedLut<UTexture2D>(InTexture, InTexture->GetSizeXYZ(), TEXT("Tex_Irradiance_") + MapName);
 
 		// Update current texture
-		PrecomputedScatteringLut = ScatteringTexture->Resource->TextureRHI;
-		PrecomputedTranmisttanceLut = TranmittanceTexture->Resource->TextureRHI;
-		PrecomputedIrradianceLut = IrradianceTexture->Resource->TextureRHI;
-
-		RenderSceneInfo->UpdatePrecomputedLuts();
+		if (ComponentRef.IsValid())
+		{
+			ComponentRef->SetPrecomputedLut(ScatteringTexture->Resource->TextureRHI, TranmittanceTexture->Resource->TextureRHI, IrradianceTexture->Resource->TextureRHI);
+		}
+		
 	},  TStatId(), nullptr, ENamedThreads::GameThread);
+
+	//FTaskGraphInterface::Get().WaitUntilTaskCompletes(SaveTask);
 }
 #endif 
-
+//@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 #undef LOCTEXT_NAMESPACE
 
 

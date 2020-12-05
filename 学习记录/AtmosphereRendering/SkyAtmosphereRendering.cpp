@@ -14,6 +14,7 @@
 #include "Rendering/SkyAtmosphereCommonData.h"
 #include "ScenePrivate.h"
 #include "SceneRenderTargetParameters.h"
+
 //#pragma optimize( "", off )
 
 
@@ -659,7 +660,7 @@ class FRenderSingleScatteringLutCS : public FGlobalShader
 	using FPermutationDomain = TShaderPermutationDomain<>;
 
 public:
-	const static uint32 GroupSize = 8;
+	const static uint32 GroupSize = 4;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FLinearColor, AtmosphereLightColor0)
@@ -693,7 +694,7 @@ class FRenderScatteringDensityCS : public FGlobalShader
 	using FPermutationDomain = TShaderPermutationDomain<>;
 
 public:
-	const static uint32 GroupSize = 8;
+	const static uint32 GroupSize = 4;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(int32, ScatteringOrder)
@@ -731,7 +732,7 @@ class FRenderMultiScatteringCS : public FGlobalShader
 	using FPermutationDomain = TShaderPermutationDomain<>;
 
 public:
-	const static uint32 GroupSize = 8;
+	const static uint32 GroupSize = 4;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_STRUCT_REF(FAtmosphereUniformShaderParameters, Atmosphere)
@@ -846,7 +847,7 @@ public:
 		SHADER_PARAMETER_STRUCT_REF(FPrecomputedAtmosphereUniformShaderParameters, PrecomputedSkyAtmosphere)
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
 		SHADER_PARAMETER_TEXTURE(Texture2D<float3>, TransmittanceLutTexture)
-		SHADER_PARAMETER_TEXTURE(Texture2D<float4>, MultiScatteringLut)
+		SHADER_PARAMETER_TEXTURE(Texture3D<float4>, MultiScatteringLut)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float3>, SkyViewLutUAV)
 		END_SHADER_PARAMETER_STRUCT()
 
@@ -1315,16 +1316,20 @@ void InitSkyAtmosphereForScene(FRHICommandListImmediate& RHICmdList, FScene* Sce
 		EPixelFormat TextureLUTFormat = GetSkyLutTextureFormat(Scene->GetFeatureLevel());
 		EPixelFormat TextureLUTSmallFormat = GetSkyLutSmallTextureFormat();
 
+		bool bForceUseLUT32 = false;
 #if WITH_EDITOR
 		// This time we need to precompute luts, we need full percision float
 		const auto& Setup = Scene->SkyAtmosphere->GetSkyAtmosphereSceneProxy().GetAtmosphereSetup();
-		if(Setup.bShouldUpdatePrecomputedAtmosphereLuts)
+		if (Setup.bShouldUpdatePrecomputedAtmosphereLuts)
+		{
 			TextureLUTFormat = PF_A32B32G32R32F;
+			bForceUseLUT32 = true;
+		}
 #endif
 		//
 		// Initialise per scene/atmosphere resources
 		//
-		const bool TranstmittanceLUTUseSmallFormat = CVarSkyAtmosphereTransmittanceLUTUseSmallFormat.GetValueOnRenderThread() > 0;
+		const bool TranstmittanceLUTUseSmallFormat = CVarSkyAtmosphereTransmittanceLUTUseSmallFormat.GetValueOnRenderThread() > 0 && !bForceUseLUT32;
 
 		TRefCountPtr<IPooledRenderTarget>& TransmittanceLutTexture = SkyInfo.GetTransmittanceLutTexture();
 		Desc = FPooledRenderTargetDesc::Create2DDesc(
@@ -1622,6 +1627,9 @@ void PrecomputeSkyAtmosphereLut(FRHICommandListImmediate& RHICmdList, const FSce
 		FRDGTextureUAVRef IntermediateMultiScatteringUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(IntermediateMultiScatteringLut, 0));
 		FRDGTextureRef ScatteringDensityLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetScatteringDensityLutTexture());
 		FRDGTextureUAVRef ScatteringDensityUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(ScatteringDensityLut, 0));
+
+		AddClearUAVPass(GraphBuilder, IrradianceUAVs[0], FLinearColor(0.f, 0.f, 0.f, 0.f));
+		AddClearUAVPass(GraphBuilder, IrradianceUAVs[1], FLinearColor(0.f, 0.f, 0.f, 0.f));
 		for (int32 i = 1; i <= ScatteringLevelCount; ++i)
 		{
 			// First Step, compute irradiance density (from pre scattering and ground irradiance)
@@ -1796,7 +1804,7 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& R
 				PassParameters->Atmosphere = Scene->GetSkyAtmosphereSceneInfo()->GetAtmosphereUniformBuffer();
 				PassParameters->SkyAtmosphere = InternalCommonParametersRef;
 				PassParameters->PrecomputedSkyAtmosphere = PrecomputedCommonParametersRef;
-				PassParameters->MultiScatteringLut = SkyInfo.GetPrecomputedScatteringLut().IsValid() ? SkyInfo.GetPrecomputedScatteringLut() : GBlackTexture->TextureRHI;
+				PassParameters->MultiScatteringLut = SkyInfo.GetPrecomputedScatteringLut().IsValid() ? SkyInfo.GetPrecomputedScatteringLut() : GBlackVolumeTexture->TextureRHI;
 				PassParameters->TransmittanceLutTexture = SkyInfo.GetPrecomputedTranmisttanceLut().IsValid() ? SkyInfo.GetPrecomputedTranmisttanceLut() : GBlackTexture->TextureRHI;
 				PassParameters->SkyViewLutUAV = SkyAtmosphereViewLutTextureUAV;
 				PassParameters->ViewUniformBuffer = Views[ViewIndex].ViewUniformBuffer;
