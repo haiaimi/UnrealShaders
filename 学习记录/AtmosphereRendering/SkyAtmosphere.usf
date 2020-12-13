@@ -2128,12 +2128,18 @@ float3 GetSkyRadiance(float3 CameraPos, float3 RayDir, float3 SunDir)
 	
 	return Scattering * RayleighPhase(LightViewCosAngle) + SingleMieScattering * MiePhase(Atmosphere.MiePhaseG, LightViewCosAngle);
 }
+float4 CameraCornerDirs[4];
 
 [numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
 void OrionRenderSkyViewLutCS(uint3 ThreadId : SV_DispatchThreadID)
 {
 	float2 PixPos = float2(ThreadId.xy) + 0.5f;
 	float2 UV = PixPos * SkyAtmosphere.SkyViewLutSizeAndInvSize.zw;
+	
+	// #TODO Get Current View Dir 
+	float4 UpDir = lerp(CameraCornerDirs[0], CameraCornerDirs[1], UV.x);
+	float4 DownDir = lerp(CameraCornerDirs[2], CameraCornerDirs[3], UV.x);
+	float3 ViewDir = lerp(UpDir, DownDir, UV.y).xyz;
 	
 	float3 WorldPos = GetCameraPlanetPos();
 	float3x3 LocalReferencial = GetSkyViewLutReferential(WorldPos, View.ViewForward, View.ViewRight);
@@ -2148,6 +2154,9 @@ void OrionRenderSkyViewLutCS(uint3 ThreadId : SV_DispatchThreadID)
 	// And also both light source direction
 	float3 AtmosphereLightDirection0 = View.AtmosphereLightDirection[0].xyz;
 	AtmosphereLightDirection0 = mul(AtmosphereLightDirection0, LocalReferencial);
+	
+	// #TODO
+	ViewDir = mul(WorldPos, LocalReferencial);
 	
 	float3 Radiance = GetSkyRadiance(WorldPos, WorldDir, AtmosphereLightDirection0);
 	SkyViewLutUAV[ThreadId.xy] = Radiance;

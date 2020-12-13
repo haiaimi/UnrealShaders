@@ -842,6 +842,7 @@ public:
 	const static uint32 GroupSize = 8;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_ARRAY(FVector4, CameraCornerDirs, [4])
 		SHADER_PARAMETER_STRUCT_REF(FAtmosphereUniformShaderParameters, Atmosphere)
 		SHADER_PARAMETER_STRUCT_REF(FSkyAtmosphereInternalCommonParameters, SkyAtmosphere)
 		SHADER_PARAMETER_STRUCT_REF(FPrecomputedAtmosphereUniformShaderParameters, PrecomputedSkyAtmosphere)
@@ -1792,6 +1793,19 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& R
 		
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
+			const FMatrix& ViewProjectionMatrix = Views[ViewIndex].ViewMatrices.GetViewProjectionMatrix();
+			static const FVector NDCCornerPos[4] = { FVector(-1.f, 1.f, 1.f),
+													FVector(1.f, 1.f, 1.f),
+													FVector(-1.f, -1.f, 1.f),
+													FVector(1.f, -1.f, 1.f) };
+			
+			static TArray<FVector> CornerDir;
+			CornerDir.Reset(4);
+			for (auto& NDCPos : NDCCornerPos)
+			{
+				CornerDir.Add((ViewProjectionMatrix.InverseFast().TransformPosition(NDCPos) - Views[ViewIndex].ViewLocation).GetSafeNormal());
+			}
+			
 			FRDGTextureRef SkyAtmosphereViewLutTexture = GraphBuilder.RegisterExternalTexture(Views[ViewIndex].SkyAtmosphereViewLutTexture);
 			FRDGTextureUAVRef SkyAtmosphereViewLutTextureUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(SkyAtmosphereViewLutTexture, 0));
 
