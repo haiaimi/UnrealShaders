@@ -1642,7 +1642,7 @@ float3 GetTransmittance(in float ViewZenithCosAngle, in float ViewHeight, in flo
 	return TransmittanceToPoint;
 }
 
-void ScatteringParamsToUvwz(in float ViewHeight, in float ViewZenithCosAngle, in float LightZenithCosAngle, in float LightViewCosAngle, in bool bIntersectGround, out float4 Uvwz)
+void ScatteringParamsToUvwz(in float ViewHeight, in float ViewZenithCosAngle, in float LightZenithCosAngle, in float LightViewCosAngle, in bool bIntersectGround, in float ToTopDistance, out float4 Uvwz)
 {
 	float H = sqrt(Atmosphere.TopRadiusKm * Atmosphere.TopRadiusKm - Atmosphere.BottomRadiusKm * Atmosphere.BottomRadiusKm);
 	float Rho = sqrt(ViewHeight * ViewHeight - Atmosphere.BottomRadiusKm * Atmosphere.BottomRadiusKm);
@@ -1670,7 +1670,10 @@ void ScatteringParamsToUvwz(in float ViewHeight, in float ViewZenithCosAngle, in
 	float3 WorldPos = float3(0.0f, 0.0f, Atmosphere.BottomRadiusKm);
 	float3 WorldDir = float3(0.0f, sqrt(1.0f - LightZenithCosAngle * LightZenithCosAngle), LightZenithCosAngle);
 	float3 PlanetO = float3(0.0f, 0.0f, 0.0f);
-	float D = RaySphereIntersectNearest(WorldPos, WorldDir, PlanetO, Atmosphere.TopRadiusKm);
+	float ViewHeight_LightCos = Atmosphere.BottomRadiusKm * LightZenithCosAngle;
+	Discriminant = ViewHeight_LightCos * ViewHeight_LightCos - Atmosphere.BottomRadiusKm * Atmosphere.BottomRadiusKm + Atmosphere.TopRadiusKm * Atmosphere.TopRadiusKm;
+	float D = ToTopDistance;
+	//float D = RaySphereIntersectNearest(WorldPos, WorldDir, PlanetO, Atmosphere.TopRadiusKm);
 	float Dmin = Atmosphere.TopRadiusKm - Atmosphere.BottomRadiusKm;
 	float Dmax = H;
 	float a = (D - Dmin) / (Dmax - Dmin);
@@ -1681,12 +1684,10 @@ void ScatteringParamsToUvwz(in float ViewHeight, in float ViewZenithCosAngle, in
 	float u_LightViewCosAngle = (LightViewCosAngle + 1.f) / 2.f;
 
 	Uvwz = float4(u_LightViewCosAngle, u_LightZenithCosAngle, u_ViewZenithCosAngle, u_ViewHeight);
-
 }
 
 void UvwToScatteringParams(in float3 DestCoord, out float ViewHeight, out float ViewZenithCosAngle, out float LightZenithCosAngle, out float LightViewCosAngle, out bool bIntersectGround)
 {
-	//float4 ScatteringTextureSize = float4(8.f - 1.f, 32.f, 128.f, 32.f); // nu, mu_s, mu, r
 	int4 Size = PrecomputedSkyAtmosphere.ScatteringTextureSize;
 	float4 ScatteringTextureSize = float4(Size.x, Size.y, Size.z, Size.w); // nu, mu_s, mu, r
 	float Coord_LightViewCosAngle = floor(DestCoord.x / ScatteringTextureSize.y); // 0->nu-1
@@ -1814,7 +1815,12 @@ float3 GetScattering(Texture3D<float3> ScatteringLut, in float ViewHeight, in fl
 	int4 Size = PrecomputedSkyAtmosphere.ScatteringTextureSize;
 	float4 ScatteringTextureSize = float4(Size.x, Size.y, Size.z, Size.w); // nu, mu_s, mu, r
 	float4 Uvwz;
-	ScatteringParamsToUvwz(ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround, Uvwz);
+	
+	float ViewHeight_LightCos = Atmosphere.BottomRadiusKm * LightZenithCosAngle;
+	float Discriminant = ViewHeight_LightCos * ViewHeight_LightCos - Atmosphere.BottomRadiusKm * Atmosphere.BottomRadiusKm + Atmosphere.TopRadiusKm * Atmosphere.TopRadiusKm;
+	float D = -Atmosphere.BottomRadiusKm * LightZenithCosAngle + sqrt(max(Discriminant, 0.f));
+	
+	ScatteringParamsToUvwz(ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround, D, Uvwz);
 	
 	float4 CurPos = Uvwz * (ScatteringTextureSize - 1.f);
 	float TexCoord_x = floor(CurPos.x);
@@ -1956,6 +1962,7 @@ float3 ComputeMultipleScattering(in float ViewHeight, in float ViewZenithCosAngl
 	float dx = DistantToBoundary / SampleCount;
 	
 	float3 Rayleigh_Mie = 0.f;
+	UNROLL
 	for (int i = 0; i <= SampleCount; ++i)
 	{
 		float StepLength = i * dx;
@@ -1991,7 +1998,6 @@ Texture3D<float4> MultiScatteringLut;
 [numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, THREADGROUP_SIZE)]
 void RenderMultiScatteringCS(uint3 ThreadId : SV_DispatchThreadID)
 {
-	
 	float ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle;
 	bool bIntersectGround;
 	UvwToScatteringParams(float3(ThreadId) + 0.5f, ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround);
@@ -2082,7 +2088,11 @@ float3 GetCombinedScattering(float ViewHeight, float ViewZenithCosAngle, float L
 	int4 Size = PrecomputedSkyAtmosphere.ScatteringTextureSize;
 	float4 ScatteringTextureSize = float4(Size.x, Size.y, Size.z, Size.w); // nu, mu_s, mu, r
 	float4 Uvwz;
-	ScatteringParamsToUvwz(ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround, Uvwz);
+	
+	float ViewHeight_LightCos = Atmosphere.BottomRadiusKm * LightZenithCosAngle;
+	float Discriminant = ViewHeight_LightCos * ViewHeight_LightCos - Atmosphere.BottomRadiusKm * Atmosphere.BottomRadiusKm + Atmosphere.TopRadiusKm * Atmosphere.TopRadiusKm;
+	float D = -Atmosphere.BottomRadiusKm * LightZenithCosAngle + sqrt(max(Discriminant, 0.f));
+	ScatteringParamsToUvwz(ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround, D, Uvwz);
 	
 	float4 CurPos = Uvwz * (ScatteringTextureSize - 1.f);
 	float TexCoord_x = floor(CurPos.x);
@@ -2128,18 +2138,12 @@ float3 GetSkyRadiance(float3 CameraPos, float3 RayDir, float3 SunDir)
 	
 	return Scattering * RayleighPhase(LightViewCosAngle) + SingleMieScattering * MiePhase(Atmosphere.MiePhaseG, LightViewCosAngle);
 }
-float4 CameraCornerDirs[4];
 
 [numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
 void OrionRenderSkyViewLutCS(uint3 ThreadId : SV_DispatchThreadID)
 {
 	float2 PixPos = float2(ThreadId.xy) + 0.5f;
 	float2 UV = PixPos * SkyAtmosphere.SkyViewLutSizeAndInvSize.zw;
-	
-	// #TODO Get Current View Dir 
-	float4 UpDir = lerp(CameraCornerDirs[0], CameraCornerDirs[1], UV.x);
-	float4 DownDir = lerp(CameraCornerDirs[2], CameraCornerDirs[3], UV.x);
-	float3 ViewDir = lerp(UpDir, DownDir, UV.y).xyz;
 	
 	float3 WorldPos = GetCameraPlanetPos();
 	float3x3 LocalReferencial = GetSkyViewLutReferential(WorldPos, View.ViewForward, View.ViewRight);
@@ -2154,9 +2158,6 @@ void OrionRenderSkyViewLutCS(uint3 ThreadId : SV_DispatchThreadID)
 	// And also both light source direction
 	float3 AtmosphereLightDirection0 = View.AtmosphereLightDirection[0].xyz;
 	AtmosphereLightDirection0 = mul(AtmosphereLightDirection0, LocalReferencial);
-	
-	// #TODO
-	ViewDir = mul(WorldPos, LocalReferencial);
 	
 	float3 Radiance = GetSkyRadiance(WorldPos, WorldDir, AtmosphereLightDirection0);
 	SkyViewLutUAV[ThreadId.xy] = Radiance;
@@ -2201,7 +2202,11 @@ void RenderStaticLightScatteringLutCS(uint3 ThreadId : SV_DispatchThreadID)
 	LightZenithCosAngle = dot(float3(0.f, 0.f, 1.f), AtmosphereLightDirection0);
 	
 	float4 Uvwz;
-	ScatteringParamsToUvwz(ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround, Uvwz);
+	float ViewHeight_LightCos = Atmosphere.BottomRadiusKm * LightZenithCosAngle;
+	float Discriminant = ViewHeight_LightCos * ViewHeight_LightCos - Atmosphere.BottomRadiusKm * Atmosphere.BottomRadiusKm + Atmosphere.TopRadiusKm * Atmosphere.TopRadiusKm;
+	float D = -Atmosphere.BottomRadiusKm * LightZenithCosAngle + sqrt(max(Discriminant, 0.f));
+	
+	ScatteringParamsToUvwz(ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround, D, Uvwz);
 	
 	float4 CurPos = Uvwz * (ScatteringTextureSize - 1.f);
 	float TexCoord_x = floor(CurPos.x);
@@ -2228,6 +2233,107 @@ void ConvertToAtlasCS(uint3 ThreadId : SV_DispatchThreadID)
 	CurPoint.y = (CurPointIndex % (SourceSize.x * SourceSize.y)) / SourceSize.x;
 	CurPoint.z = CurPointIndex / (SourceSize.x * SourceSize.y);
 	TargetTextureUAV[ThreadId.xy] = SourceTexture.Load(int4(CurPoint, 0));
+}
+
+[numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, THREADGROUP_SIZE)]
+void OriRenderCameraAerialPerspectiveVolumeCS(uint3 ThreadId : SV_DispatchThreadID)
+{
+	float2 PixPos = float2(ThreadId.xy) + 0.5f;
+	float2 UV = PixPos * SkyAtmosphere.CameraAerialPerspectiveVolumeSizeAndInvSize.zw;
+
+	float4 SVPos = float4(UV * View.ViewSizeAndInvSize.xy, 0.0f, 1.0f); // SV_POS as if resolution was the one from the scene view.
+	float3 WorldDir = GetScreenWorldDir(SVPos);
+	float3 CamPos = GetCameraPlanetPos();
+
+	float Slice = ((float(ThreadId.z) + 0.5f) * SkyAtmosphere.CameraAerialPerspectiveVolumeDepthResolutionInv); // +0.5 to always have a distance to integrate over
+	Slice *= Slice; // squared distribution
+	Slice *= SkyAtmosphere.CameraAerialPerspectiveVolumeDepthResolution;
+
+	float3 RayStartWorldPos = CamPos + AerialPerspectiveStartDepthKm * WorldDir; // Offset according to start depth
+	float ViewHeight;
+
+
+	// Compute position from froxel information
+	float tMax = Slice * SkyAtmosphere.CameraAerialPerspectiveVolumeDepthSliceLengthKm;
+	float3 VoxelWorldPos = RayStartWorldPos + tMax * WorldDir;
+	float VoxelHeight = length(VoxelWorldPos);
+
+	// Check if the voxel is under the horizon.
+	const float UnderGround = VoxelHeight < Atmosphere.BottomRadiusKm;
+
+	// Check if the voxel is beind the planet (to next check for below the horizon case)
+	float3 CameraToVoxel = VoxelWorldPos - CamPos;
+	float CameraToVoxelLen = length(CameraToVoxel);
+	float3 CameraToVoxelDir = CameraToVoxel / CameraToVoxelLen;
+	float PlanetNearT = RaySphereIntersectNearest(CamPos, CameraToVoxelDir, float3(0, 0, 0), Atmosphere.BottomRadiusKm);
+	bool BelowHorizon = PlanetNearT > 0.0f && CameraToVoxelLen > PlanetNearT;
+
+	if (BelowHorizon || UnderGround)
+	{
+		CamPos += normalize(CamPos) * 0.02f; // TODO: investigate why we need this workaround. Without it, we get some bad color and flickering on the ground only (floating point issue with sphere intersection code?).
+
+		float3 VoxelWorldPosNorm = normalize(VoxelWorldPos);
+		float3 CamProjOnGround = normalize(CamPos) * Atmosphere.BottomRadiusKm;
+		float3 VoxProjOnGround = VoxelWorldPosNorm * Atmosphere.BottomRadiusKm;
+		float3 VoxelGroundToRayStart = CamPos - VoxProjOnGround;
+		if (BelowHorizon && dot(normalize(VoxelGroundToRayStart), VoxelWorldPosNorm) < 0.0001f)
+		{
+			// We are behing the sphere and the psehre normal is pointing away from V: we are below the horizon.
+			float3 MiddlePoint = 0.5f * (CamProjOnGround + VoxProjOnGround);
+			float MiddlePointHeight = length(MiddlePoint);
+
+			// Compute the new position to evaluate and store the value in the voxel.
+			// the position is the oposite side of the horizon point from the view point,
+			// The offset of 1.001f is needed to get matching colors and for the ray to not hit the earth again later due to floating point accuracy
+			float3 MiddlePointOnGround = normalize(MiddlePoint) * Atmosphere.BottomRadiusKm; // *1.001f;
+			VoxelWorldPos = CamPos + 2.0f * (MiddlePointOnGround - CamPos);
+		}
+		else if (UnderGround)
+		{
+			//No obstruction from the planet, so use the point on the ground
+			VoxelWorldPos = normalize(VoxelWorldPos) * (Atmosphere.BottomRadiusKm);
+		}
+		 
+		WorldDir = normalize(VoxelWorldPos - CamPos);
+		RayStartWorldPos = CamPos + AerialPerspectiveStartDepthKm * WorldDir; // Offset according to start depth
+		tMax = length(VoxelWorldPos - RayStartWorldPos);
+	}
+	float tMaxMax = tMax;
+
+	// Move ray marching start up to top atmosphere.
+	ViewHeight = length(RayStartWorldPos);
+	if (ViewHeight >= Atmosphere.TopRadiusKm)
+	{
+		float3 prevWorlPos = RayStartWorldPos;
+		if (!MoveToTopAtmosphere(RayStartWorldPos, WorldDir, Atmosphere.TopRadiusKm))
+		{
+			// Ray is not intersecting the atmosphere
+			CameraAerialPerspectiveVolumeUAV[ThreadId] = float4(0.0f, 0.0f, 0.0f, 1.0f);
+			return;
+		}
+		float LengthToAtmosphere = length(prevWorlPos - RayStartWorldPos);
+		if (tMaxMax < LengthToAtmosphere)
+		{
+			// tMaxMax for this voxel is not within the planet atmosphere
+			CameraAerialPerspectiveVolumeUAV[ThreadId] = float4(0.0f, 0.0f, 0.0f, 1.0f);
+			return;
+		}
+		// Now world position has been moved to the atmosphere boundary: we need to reduce tMaxMax accordingly. 
+		tMaxMax = max(0.0, tMaxMax - LengthToAtmosphere);
+	}
+
+	bool bIntersectGround = RaySphereIntersectNearest(RayStartWorldPos, normalize(WorldDir), float3(0.f, 0.f, 0.f), Atmosphere.BottomRadiusKm);
+	float ViewZenithCosAngle = dot(RayStartWorldPos, WorldDir) / ViewHeight;
+	
+	float3 Transmittance = GetTransmittance(ViewZenithCosAngle, ViewHeight, PrecomputedSkyAtmosphere.TransmittanceLutSize);
+	//GetTransmittance(ViewZenithCosAngle, ViewHeight, tMaxMax, bIntersectGround, PrecomputedSkyAtmosphere.TransmittanceLutSize);
+	float3 Scattering1 = GetSkyRadiance(RayStartWorldPos, WorldDir, View.AtmosphereLightDirection[0].xyz);
+	float3 Scattering2 = GetSkyRadiance(VoxelWorldPos, WorldDir, View.AtmosphereLightDirection[0].xyz);
+	
+	float3 FinalScattering = Scattering1 - Transmittance * Scattering2;
+
+	const float FinalTransmittance = dot(Transmittance, float3(1.0f / 3.0f, 1.0f / 3.0f, 1.0f / 3.0f));
+	CameraAerialPerspectiveVolumeUAV[ThreadId] = float4(FinalScattering, FinalTransmittance);
 }
 
 //@StarLight code - BEGIN Precomputed Multi Scattering on mobile, edit by wanghai

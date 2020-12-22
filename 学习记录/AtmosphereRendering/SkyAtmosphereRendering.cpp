@@ -842,7 +842,6 @@ public:
 	const static uint32 GroupSize = 8;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_ARRAY(FVector4, CameraCornerDirs, [4])
 		SHADER_PARAMETER_STRUCT_REF(FAtmosphereUniformShaderParameters, Atmosphere)
 		SHADER_PARAMETER_STRUCT_REF(FSkyAtmosphereInternalCommonParameters, SkyAtmosphere)
 		SHADER_PARAMETER_STRUCT_REF(FPrecomputedAtmosphereUniformShaderParameters, PrecomputedSkyAtmosphere)
@@ -959,6 +958,41 @@ public:
 	}
 };
 IMPLEMENT_GLOBAL_SHADER(FConvertToAtlasCS, "/Engine/Private/SkyAtmosphere.usf", "ConvertToAtlasCS", SF_Compute);
+
+class FOrionRenderCameraAerialPerspectiveVolumeCS : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FOrionRenderCameraAerialPerspectiveVolumeCS);
+	SHADER_USE_PARAMETER_STRUCT(FOrionRenderCameraAerialPerspectiveVolumeCS, FGlobalShader);
+
+	class FUseStaticLight : SHADER_PERMUTATION_BOOL("USE_STATIC_LIGHT");
+	using FPermutationDomain = TShaderPermutationDomain<FUseStaticLight>;
+
+public:
+	const static uint32 GroupSize = 4;
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_STRUCT_REF(FAtmosphereUniformShaderParameters, Atmosphere)
+		SHADER_PARAMETER_STRUCT_REF(FSkyAtmosphereInternalCommonParameters, SkyAtmosphere)
+		SHADER_PARAMETER_STRUCT_REF(FPrecomputedAtmosphereUniformShaderParameters, PrecomputedSkyAtmosphere)
+		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
+		SHADER_PARAMETER_TEXTURE(Texture2D<float3>, TransmittanceLutTexture)
+		SHADER_PARAMETER_TEXTURE(Texture3D<float4>, MultiScatteringLut)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture3D<float4>, CameraAerialPerspectiveVolumeUAV)
+		SHADER_PARAMETER(float, AerialPerspectiveStartDepthKm)
+		END_SHADER_PARAMETER_STRUCT()
+
+		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return ShouldPipelineCompileSkyAtmosphereShader(Parameters.Platform);
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), GroupSize);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FOrionRenderCameraAerialPerspectiveVolumeCS, "/Engine/Private/SkyAtmosphere.usf", "OriRenderCameraAerialPerspectiveVolumeCS", SF_Compute);
 
 //@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
@@ -1793,21 +1827,11 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& R
 		
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
-			const FMatrix& ViewProjectionMatrix = Views[ViewIndex].ViewMatrices.GetViewProjectionMatrix();
-			static const FVector NDCCornerPos[4] = { FVector(-1.f, 1.f, 1.f),
-													FVector(1.f, 1.f, 1.f),
-													FVector(-1.f, -1.f, 1.f),
-													FVector(1.f, -1.f, 1.f) };
-			
-			static TArray<FVector> CornerDir;
-			CornerDir.Reset(4);
-			for (auto& NDCPos : NDCCornerPos)
-			{
-				CornerDir.Add((ViewProjectionMatrix.InverseFast().TransformPosition(NDCPos) - Views[ViewIndex].ViewLocation).GetSafeNormal());
-			}
-			
 			FRDGTextureRef SkyAtmosphereViewLutTexture = GraphBuilder.RegisterExternalTexture(Views[ViewIndex].SkyAtmosphereViewLutTexture);
 			FRDGTextureUAVRef SkyAtmosphereViewLutTextureUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(SkyAtmosphereViewLutTexture, 0));
+
+			FRDGTextureRef SkyAtmosphereCameraAerialPerspectiveVolume = GraphBuilder.RegisterExternalTexture(Views[ViewIndex].SkyAtmosphereCameraAerialPerspectiveVolume);
+			FRDGTextureUAVRef SkyAtmosphereCameraAerialPerspectiveVolumeUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(SkyAtmosphereCameraAerialPerspectiveVolume, 0));
 
 			{
 				bool bUseStaticLight = Scene->GetSkyAtmosphereSceneInfo()->GetSkyAtmosphereSceneProxy().GetAtmosphereSetup().bUseStaticLight;
@@ -1852,6 +1876,30 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& R
 				FIntVector TextureSize(1, 1, 1);
 				FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FIntVector(FRenderGroundRadianceCS::GroupSize, FRenderGroundRadianceCS::GroupSize, 1));
 				FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("RenderGroundRadiance"), ComputeShader, PassParameters, NumGroups);
+			}
+
+			// Compute Camera Aerial Perspective
+			{
+				const float AerialPerspectiveStartDepthInCm = GetValidAerialPerspectiveStartDepthInCm(Views[ViewIndex]);
+
+				bool bUseStaticLight = Scene->GetSkyAtmosphereSceneInfo()->GetSkyAtmosphereSceneProxy().GetAtmosphereSetup().bUseStaticLight;
+				FOrionRenderCameraAerialPerspectiveVolumeCS::FPermutationDomain PermutationVector;
+				PermutationVector.Set<FOrionRenderCameraAerialPerspectiveVolumeCS::FUseStaticLight>(bUseStaticLight);
+				TShaderMapRef<FOrionRenderCameraAerialPerspectiveVolumeCS> ComputeShader(GlobalShaderMap, PermutationVector);
+				FOrionRenderCameraAerialPerspectiveVolumeCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FOrionRenderCameraAerialPerspectiveVolumeCS::FParameters>();
+				PassParameters->Atmosphere = Scene->GetSkyAtmosphereSceneInfo()->GetAtmosphereUniformBuffer();
+				PassParameters->SkyAtmosphere = InternalCommonParametersRef;
+				PassParameters->PrecomputedSkyAtmosphere = PrecomputedCommonParametersRef;
+				PassParameters->ViewUniformBuffer = Views[ViewIndex].ViewUniformBuffer;
+				PassParameters->MultiScatteringLut = SkyInfo.GetPrecomputedScatteringLut().IsValid() ? SkyInfo.GetPrecomputedScatteringLut() : GBlackVolumeTexture->TextureRHI;
+				PassParameters->TransmittanceLutTexture = SkyInfo.GetPrecomputedTranmisttanceLut().IsValid() ? SkyInfo.GetPrecomputedTranmisttanceLut() : GBlackTexture->TextureRHI;
+				PassParameters->CameraAerialPerspectiveVolumeUAV = SkyAtmosphereCameraAerialPerspectiveVolumeUAV;
+				PassParameters->AerialPerspectiveStartDepthKm = AerialPerspectiveStartDepthInCm * CM_TO_KM;
+				
+				FIntVector TextureSize = SkyAtmosphereCameraAerialPerspectiveVolume->Desc.GetSize();
+				FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FOrionRenderCameraAerialPerspectiveVolumeCS::GroupSize);
+				FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("RenderCameraAerialPerspective"), ComputeShader, PassParameters, NumGroups);
+				
 			}
 		}
 		
