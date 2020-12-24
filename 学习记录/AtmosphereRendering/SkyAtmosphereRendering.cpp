@@ -210,6 +210,11 @@ static TAutoConsoleVariable<int32> CVarSkyAtmosphereEnablePrecomputedMultiScatte
 	TEXT("r.SkyAtmosphere.EnablePrecomputedMultiScattering"), 1,
 	TEXT("If true, We will precompute MultiScattering one time."),
 	ECVF_RenderThreadSafe | ECVF_Scalability);
+
+static TAutoConsoleVariable<int32> CVarSkyAtmosphereScreenSpaceSkyViewLutSize(
+	TEXT("r.SkyAtmosphere.ScreenSpaceSkyViewLutSize"), 64,
+	TEXT("The Screen space sky view lut for sky rendering, it can improve large performance when rendering sky."),
+	ECVF_RenderThreadSafe | ECVF_Scalability);
 //@StarLight code - END Precomputed Multi Scattering on mobile, edit by wanghai
 
 DECLARE_GPU_STAT(SkyAtmosphereLUTs);
@@ -267,7 +272,12 @@ IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FPrecomputedAtmosphereUniformShaderPara
 	int32 CameraAerialPerspectiveVolumeDepthResolution = ValidateLUTResolution(CVarSkyAtmosphereAerialPerspectiveLUTDepthResolution.GetValueOnRenderThread()); \
 	float CameraAerialPerspectiveVolumeDepthKm = CVarSkyAtmosphereAerialPerspectiveLUTDepth.GetValueOnRenderThread(); \
 	CameraAerialPerspectiveVolumeDepthKm = CameraAerialPerspectiveVolumeDepthKm < 1.0f ? 1.0f : CameraAerialPerspectiveVolumeDepthKm;	/* 1 kilometer minimum */ \
-	float CameraAerialPerspectiveVolumeDepthSliceLengthKm = CameraAerialPerspectiveVolumeDepthKm / CameraAerialPerspectiveVolumeDepthResolution;
+	float CameraAerialPerspectiveVolumeDepthSliceLengthKm = CameraAerialPerspectiveVolumeDepthKm / CameraAerialPerspectiveVolumeDepthResolution; \
+	if (CVarSkyAtmosphereEnablePrecomputedMultiScattering.GetValueOnRenderThread() > 0)\
+	{\
+		SkyViewLutWidth = CVarSkyAtmosphereScreenSpaceSkyViewLutSize.GetValueOnRenderThread();\
+		SkyViewLutHeight = SkyViewLutWidth;\
+	}
 
 #define KM_TO_CM  100000.0f
 #define CM_TO_KM  (1.0f / KM_TO_CM)
@@ -1822,7 +1832,8 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& R
 		PrecomputedCommonParameters.ScatteringTextureSize = ScatteringSize;
 		PrecomputedCommonParameters.TransmittanceLutSize = TransmittanceLutSize;
 		PrecomputedCommonParameters.IrradianceLutSize = IrradianceTextureSize;
-		PrecomputedCommonParameters.LightAngularRadius = Scene->AtmosphereLights[0]->Proxy->GetSunLightHalfApexAngleRadian();
+		if(Scene->AtmosphereLights[0])
+			PrecomputedCommonParameters.LightAngularRadius = Scene->AtmosphereLights[0]->Proxy->GetSunLightHalfApexAngleRadian();
 		TUniformBufferRef<FPrecomputedAtmosphereUniformShaderParameters> PrecomputedCommonParametersRef = TUniformBufferRef<FPrecomputedAtmosphereUniformShaderParameters>::CreateUniformBufferImmediate(PrecomputedCommonParameters, UniformBuffer_MultiFrame);
 		
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
@@ -1846,11 +1857,9 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRHICommandListImmediate& R
 				PassParameters->TransmittanceLutTexture = SkyInfo.GetPrecomputedTranmisttanceLut().IsValid() ? SkyInfo.GetPrecomputedTranmisttanceLut() : GBlackTexture->TextureRHI;
 				PassParameters->SkyViewLutUAV = SkyAtmosphereViewLutTextureUAV;
 				PassParameters->ViewUniformBuffer = Views[ViewIndex].ViewUniformBuffer;
-
-				int32 SkyViewLutWidth = CVarSkyAtmosphereFastSkyLUTWidth.GetValueOnRenderThread();
-				int32 SkyViewLutHeight = CVarSkyAtmosphereFastSkyLUTHeight.GetValueOnRenderThread();
-				FIntVector TextureSize(SkyViewLutWidth, SkyViewLutHeight, 1);
-				FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FIntVector(FOrionRenderSkyViewLutCS::GroupSize, FOrionRenderSkyViewLutCS::GroupSize, 1));
+				
+				FIntVector TextureSize = Views[ViewIndex].SkyAtmosphereViewLutTexture->GetDesc().GetSize();
+				FIntVector NumGroups = FIntVector::DivideAndRoundUp(FIntVector(TextureSize.X, TextureSize.Y, 1), FIntVector(FOrionRenderSkyViewLutCS::GroupSize, FOrionRenderSkyViewLutCS::GroupSize, 1));
 				FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("RenderSkyViewLut"), ComputeShader, PassParameters, NumGroups);
 			}
 

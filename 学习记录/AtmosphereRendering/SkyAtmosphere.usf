@@ -1657,7 +1657,7 @@ void ScatteringParamsToUvwz(in float ViewHeight, in float ViewZenithCosAngle, in
 		float D = -ViewHeight_ViewCos - sqrt(max(0.f, Discriminant));
 		float Dmin = ViewHeight - Atmosphere.BottomRadiusKm;
 		float Dmax = Rho;
-		u_ViewZenithCosAngle = 0.5f - 0.5f * (Dmax == Dmin ? 1.f : (D - Dmin) / (Dmax - Dmin));
+		u_ViewZenithCosAngle = 0.5f - 0.5f / (PrecomputedSkyAtmosphere.ScatteringTextureSize.z - 1.f) - 0.5f * (Dmax == Dmin ? 1.f : (D - Dmin) / (Dmax - Dmin));
 
 	}
 	else
@@ -1665,7 +1665,7 @@ void ScatteringParamsToUvwz(in float ViewHeight, in float ViewZenithCosAngle, in
 		float D = -ViewHeight_ViewCos + sqrt(max(Discriminant + H * H, 0.f));
 		float Dmin = Atmosphere.TopRadiusKm - ViewHeight;
 		float Dmax = Rho + H;
-		u_ViewZenithCosAngle = 0.5f + 0.5f * ((D - Dmin) / (Dmax - Dmin));
+		u_ViewZenithCosAngle = 0.5f + 0.5f / (PrecomputedSkyAtmosphere.ScatteringTextureSize.z - 1.f) + 0.5f * ((D - Dmin) / (Dmax - Dmin));
 	}
 	float3 WorldPos = float3(0.0f, 0.0f, Atmosphere.BottomRadiusKm);
 	float3 WorldDir = float3(0.0f, sqrt(1.0f - LightZenithCosAngle * LightZenithCosAngle), LightZenithCosAngle);
@@ -1692,7 +1692,7 @@ void UvwToScatteringParams(in float3 DestCoord, out float ViewHeight, out float 
 	float4 ScatteringTextureSize = float4(Size.x, Size.y, Size.z, Size.w); // nu, mu_s, mu, r
 	float Coord_LightViewCosAngle = floor(DestCoord.x / ScatteringTextureSize.y); // 0->nu-1
 	float Coord_LightZenithCosAngle = int(DestCoord.x) % int(ScatteringTextureSize.y); // 0->mu_s-1
-	float4 Uvwz = (float4(Coord_LightViewCosAngle, Coord_LightZenithCosAngle, DestCoord.y, DestCoord.z)) / (ScatteringTextureSize);
+	float4 Uvwz = (float4(Coord_LightViewCosAngle, Coord_LightZenithCosAngle, DestCoord.y, DestCoord.z)) / (ScatteringTextureSize - 1.f);
 	
 	float H = sqrt(max(0.0f, Atmosphere.TopRadiusKm * Atmosphere.TopRadiusKm - Atmosphere.BottomRadiusKm * Atmosphere.BottomRadiusKm));
 	float Rho = H * Uvwz.w;
@@ -1754,7 +1754,7 @@ void ComputeSingleScattering(float3 WorldPos, float3 WorldDir, float ViewHeight,
 		// We should consider the transmittance when sun disk is under the horizon line, or it will always have small value when sun is under horizon line
 		float SinHorizon = Atmosphere.BottomRadiusKm / R_d;
 		float HorizonZenith = -sqrt(max(1 - SinHorizon * SinHorizon, 0.f));
-		float LightAngularRadius = 1.f;
+		float LightAngularRadius = PrecomputedSkyAtmosphere.LightAngularRadius;
 		float ToLightTransmittanceScalar = smoothstep(-SinHorizon * LightAngularRadius, SinHorizon * LightAngularRadius, LightDCosAngle - HorizonZenith);
 		float3 Transmittance = GetTransmittance(ViewZenithCosAngle, ViewHeight, StepLength, bIntersectGround, PrecomputedSkyAtmosphere.TransmittanceLutSize) * GetTransmittance(LightDCosAngle, R_d, PrecomputedSkyAtmosphere.TransmittanceLutSize) * ToLightTransmittanceScalar;
 		
@@ -1788,7 +1788,7 @@ void RenderSingleScatteringLutCS(uint3 ThreadId : SV_DispatchThreadID)
 	float LightViewCosAngle;
 	bool bIntersectGround;
 	
-	UvwToScatteringParams(float3(ThreadId) + 0.5f, ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround);
+	UvwToScatteringParams(float3(ThreadId), ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround);
 	
 	float3 WorldPos = float3(0.0f, 0.0f, ViewHeight);
 	float3 WorldDir = float3(0.0f, sqrt(1.0f - ViewZenithCosAngle * ViewZenithCosAngle), ViewZenithCosAngle);
@@ -1988,7 +1988,7 @@ void RenderScatteringDensityCS(uint3 ThreadId : SV_DispatchThreadID)
 	
 	float ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle;
 	bool bIntersectGround;
-	UvwToScatteringParams(float3(ThreadId) + 0.5f, ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround);
+	UvwToScatteringParams(float3(ThreadId), ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround);
 	float3 Radiance = ComputeSactteringDensity(ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, ScatteringOrder, bIntersectGround);
 	
 	ScatteringDensityUAV[ThreadId] = Radiance;
@@ -2000,7 +2000,7 @@ void RenderMultiScatteringCS(uint3 ThreadId : SV_DispatchThreadID)
 {
 	float ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle;
 	bool bIntersectGround;
-	UvwToScatteringParams(float3(ThreadId) + 0.5f, ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround);
+	UvwToScatteringParams(float3(ThreadId), ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround);
 	float3 MultiScattering = ComputeMultipleScattering(ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround);
 
 	IntermediateMultiScatteringUAV[ThreadId] = float4(MultiScattering, 0.f);
@@ -2094,7 +2094,7 @@ float3 GetCombinedScattering(float ViewHeight, float ViewZenithCosAngle, float L
 	float D = -Atmosphere.BottomRadiusKm * LightZenithCosAngle + sqrt(max(Discriminant, 0.f));
 	ScatteringParamsToUvwz(ViewHeight, ViewZenithCosAngle, LightZenithCosAngle, LightViewCosAngle, bIntersectGround, D, Uvwz);
 	
-	float4 CurPos = Uvwz * (ScatteringTextureSize - 2);
+	float4 CurPos = Uvwz * (ScatteringTextureSize - 1.f);
 	float TexCoord_x = floor(CurPos.x);
 	float Alpha = CurPos.x - TexCoord_x;
 #if USE_STATIC_LIGHT
@@ -2152,10 +2152,12 @@ void OrionRenderSkyViewLutCS(uint3 ThreadId : SV_DispatchThreadID)
 	// This is the LUT camera height and position in the local referential
 	float ViewHeight = length(WorldPos);
 	WorldPos = float3(0.0, 0.0, ViewHeight);
-
+	
 	// Get the view direction in this local referential
-	float3 WorldDir;
-	UvToSkyViewLutParams(WorldDir, ViewHeight, UV);
+	float3 WorldDir = GetScreenWorldDir(float4(UV * View.ViewSizeAndInvSize.xy, 0.f, 1.f));
+	WorldDir = mul(WorldDir, LocalReferencial);
+	//float3 WorldDir 
+	//UvToSkyViewLutParams(WorldDir, ViewHeight, UV);
 	// And also both light source direction
 	float3 AtmosphereLightDirection0 = View.AtmosphereLightDirection[0].xyz;
 	AtmosphereLightDirection0 = mul(AtmosphereLightDirection0, LocalReferencial);
@@ -2174,7 +2176,7 @@ float3 GetSkyAndLightIrradiance(float3 WorldPos , float3 Normal, float3 LightDir
 	float HorizonZenith = -sqrt(max(1 - SinHorizon * SinHorizon, 0.f));
 	float LightAngularRadius = PrecomputedSkyAtmosphere.LightAngularRadius;
 	float ToLightTransmittanceScalar = smoothstep(-SinHorizon * LightAngularRadius, SinHorizon * LightAngularRadius, LightZenithCosAngle - HorizonZenith);
-	float3 LightIrradiance = AtmosphereLightColor0.xyz * View.PreExposure * GetTransmittance(LightZenithCosAngle, ViewHeight, PrecomputedSkyAtmosphere.TransmittanceLutSize) * ToLightTransmittanceScalar * LightZenithCosAngle;
+	float3 LightIrradiance = AtmosphereLightColor0.xyz * GetTransmittance(LightZenithCosAngle, ViewHeight, PrecomputedSkyAtmosphere.TransmittanceLutSize) * ToLightTransmittanceScalar * LightZenithCosAngle;
 	return LightIrradiance;
 }
 
@@ -2185,7 +2187,7 @@ void RenderGroundRadianceCS(uint3 ThreadId : SV_DispatchThreadID)
 	float3 WorldPos = float3(0.f, 0.f, Atmosphere.BottomRadiusKm);
 	float3 AtmosphereLightDirection0 = View.AtmosphereLightDirection[0].xyz;
 	float3 LightIrradiance = GetSkyAndLightIrradiance(WorldPos, float3(0.f, 0.f, 1.f), AtmosphereLightDirection0, SkyIrradiance);
-	DistantSkyLightLutUAV[ThreadId.xy] = Atmosphere.GroundAlbedo.xyz * (1.f / PI) * (/*LightIrradiance +*/ SkyIrradiance);
+	DistantSkyLightLutUAV[ThreadId.xy] = Atmosphere.GroundAlbedo.xyz * (1.f / PI) * (LightIrradiance * 1.0 / PI + SkyIrradiance);
 }
 
 float3 LightDirection0;
@@ -2236,7 +2238,7 @@ void ConvertToAtlasCS(uint3 ThreadId : SV_DispatchThreadID)
 	TargetTextureUAV[ThreadId.xy] = SourceTexture.Load(int4(CurPoint, 0));
 }
 
-[numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, THREADGROUP_SIZE)]
+[numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
 void OriRenderCameraAerialPerspectiveVolumeCS(uint3 ThreadId : SV_DispatchThreadID)
 {
 	float2 PixPos = float2(ThreadId.xy) + 0.5f;
