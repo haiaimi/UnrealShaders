@@ -175,3 +175,24 @@ float NormalCurvatureToRoughness(float3 WorldNormal)
     * 体积光相关
     * 光照Color的叠加计算以及对应Blend模式计算，光照叠加调用LightAccumulator_Add方法来计算
     * 给FPixelShaderOut的对应的MRT[8]赋值
+
+13. 在绘制图元的时侯会设置一个*Primitive*的UniformBuffer，这个UniformBuffer是逐MeshBatch，在函数FMeshMaterialShader::GetElementShaderBindings中可以看到，这个UniformBuffer主要是存储模型空间信息以及一些BoundingBox信息。
+
+14. 在UE中由于是Z轴朝上，这与DX11 API不一致，所以View Matrix会乘一个变换矩阵，比如在绘制阴影深度时的ViewMatrix就会乘以一个矩阵，如下代码：
+``` cpp 
+// ShadowSetup.cpp
+bool FProjectedShadowInfo::SetupPerObjectProjection()
+{
+	...
+	// Store the view matrix
+	// Reorder the vectors to match the main view, since ShadowViewMatrix will be used to override the main view's view matrix during shadow depth rendering
+	ShadowViewMatrix = Initializer.WorldToLight *
+		FMatrix(
+		FPlane(0, 0, 1, 0),
+		FPlane(1, 0, 0, 0),
+		FPlane(0, 1, 0, 0),
+		FPlane(0, 0, 0, 1));
+}
+```
+
+15. FSceneRenderer::SetupMeshPass 就是设置每个MeshPass的内容，填充*FParallelMeshDrawCommandPass*。
