@@ -31,6 +31,7 @@
 #include "RenderGraph.h"
 #include "MeshDrawCommands.h"
 #include "GpuDebugRendering.h"
+#include "RainDepthRendering.h"
 
 // Forward declarations.
 class FScene;
@@ -1868,7 +1869,7 @@ protected:
 	// @StarLight code - BEGIN Add rain depth pass, edit by wanghai
 	void InitRainDepthRendering(FGlobalDynamicIndexBuffer& DynamicIndexBuffer, FGlobalDynamicVertexBuffer& DynamicVertexBuffer, FGlobalDynamicReadBuffer& DynamicReadBuffer);
 
-	void RenderRainDepth();
+	void RenderRainDepth(FRHICommandListImmediate& RHICmdList);
 	// @StarLight code - BEGIN Add rain depth pass, edit by wanghai
 
 	void PrepareViewVisibilityLists();
@@ -1976,6 +1977,10 @@ private:
 	// #change by wh, 2020/7/26
 	FGraphEventRef ComputeClusterTaskEventRef;
 	//end
+
+	//@StarLight code -  BEGIN Add rain depth pass, edit by wanghai
+	FRainDepthProjectedInfo RainDepthProjectedInfo;
+	//@StarLight code -  END Add rain depth pass, edit by wanghai
 };
 
 // The noise textures need to be set in Slate too.

@@ -1012,7 +1012,7 @@ void FPersistentUniformBuffers::Initialize()
 
 	//@StarLight code - BEGIN Add rain depth pass, edit by wanghai
 	FMobileRainDepthPassUniformParameters MobileRainDepthPassUniformParameters;
-	MobileRainDepthPassUniformBuffer = TUniformBufferRef<FMobileRainDepthPassUniformParameters>::CreateUniformBufferImmediate(MobileRainDepthPassUniformParameters, UniformBuffer_MultiFrame);
+	MobileRainDepthPassUniformBuffer = TUniformBufferRef<FMobileRainDepthPassUniformParameters>::CreateUniformBufferImmediate(MobileRainDepthPassUniformParameters, UniformBuffer_MultiFrame, EUniformBufferValidation::None);
 	//@StarLight code - END Add rain depth pass, edit by wanghai
 #if WITH_EDITOR
 	FSceneTexturesUniformParameters EditorSelectionPassParameters;

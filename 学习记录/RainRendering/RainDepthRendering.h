@@ -6,21 +6,29 @@
 #include "MeshPassProcessor.h"
 #include "ShaderParameterMacros.h"
 #include "UniformBuffer.h"
+#include "MeshDrawCommands.h"
 
 
 BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileRainDepthPassUniformParameters, )
 	SHADER_PARAMETER_STRUCT(FSceneTexturesUniformParameters, SceneTextures)
 	SHADER_PARAMETER(FMatrix, ProjectionMatrix)
 	SHADER_PARAMETER(FMatrix, ViewMatrix)
+	SHADER_PARAMETER(FVector4, DepthTexSizeAndInvSize)
+	SHADER_PARAMETER(FVector, ViewPosition)
+	SHADER_PARAMETER(float, MaxDepthSize)
 	SHADER_PARAMETER(float, MaxDistance)
+	SHADER_PARAMETER(float, BiasOffset)
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
-void SetupRainDepthPassUniformBuffer(const FProjectedShadowInfo* ShadowInfo, FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FMobileRainDepthPassUniformParameters& RainDepthPassParameters);
+//inline void SetupRainDepthPassUniformBuffer(FRainDepthProjectedInfo* Info, FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FMobileRainDepthPassUniformParameters& RainDepthPassParameters);
 
-class FRainDepthProjectedInfo : public FRefCountedObject
+class FRainDepthProjectedInfo
 {
 public:
-	FViewInfo* RainDepthView;
+	FRainDepthProjectedInfo(){};
+	~FRainDepthProjectedInfo();
+
+	FViewInfo* RainDepthView = nullptr;
 
 	TUniformBufferRef<FMobileRainDepthPassUniformParameters> MobileRainDepthPassUniformBuffer;
 
@@ -36,8 +44,16 @@ public:
 
 	FParallelMeshDrawCommandPass RainDepthCommandPass;
 
-	int32 DepthResoultionX;
-	int32 DepthResloutionY;
+	int32 DepthResolutionX = 512;
+	int32 DepthResolutionY = 512;
+
+	ERHIFeatureLevel::Type FeatureLevel = ERHIFeatureLevel::ES3_1;
+
+	void Init(FSceneRenderer& Renderer, const  FViewInfo* View);
+
+	void Reset();
+
+	void AllocateRainDepthTargets(FRHICommandListImmediate& RHICmdList);
 
 	void GatherDynamicMeshElements(FSceneRenderer& Renderer, TArray<const FSceneView*>& ReusedViewsArray,
 		FGlobalDynamicIndexBuffer& DynamicIndexBuffer, FGlobalDynamicVertexBuffer& DynamicVertexBuffer, FGlobalDynamicReadBuffer& DynamicReadBuffer);
@@ -72,6 +88,8 @@ public:
 	void RenderRainDepthInner(FRHICommandListImmediate& RHICmdList, FSceneRenderer* SceneRenderer);
 
 public:
+	TArray<FPrimitiveSceneInfo*, SceneRenderingAllocator> CachedPrimitives;
+
 	/** dynamic rain peojected elements */
 	TArray<const FPrimitiveSceneInfo*,SceneRenderingAllocator> DynamicProjectedPrimitives;
 	
@@ -81,126 +99,13 @@ public:
 
 	TArray<const FStaticMeshBatch*, SceneRenderingAllocator> ProjectedMeshCommandBuildRequests;
 	
-	int32 NumDynamicProjectedMeshElements;
+	int32 NumDynamicProjectedMeshElements = 0;
 	
-	int32 NumProjectedMeshCommandBuildRequestElements;
+	int32 NumProjectedMeshCommandBuildRequestElements = 0;
 
 	FMeshCommandOneFrameArray RainDepthPassVisibleCommands;
 };
 
-
-template<bool bUsePositionOnlyStream>
-class TRainDepthVS : public FMeshMaterialShader
-{
-	DECLARE_SHADER_TYPE(TRainDepthVS, MeshMaterial);
-protected:
-
-	TRainDepthVS() {}
-
-	TRainDepthVS(const FMeshMaterialShaderType::CompiledShaderInitializerType& Initializer) :
-		FMeshMaterialShader(Initializer)
-	{
-		BindSceneTextureUniformBufferDependentOnShadingPath(Initializer, PassUniformBuffer);
-	}
-
-public:
-
-	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
-	{
-		if (bUsePositionOnlyStream)
-		{
-			return Parameters.VertexFactoryType->SupportsPositionOnly() && Parameters.MaterialParameters.bIsSpecialEngineMaterial;
-		}
-
-		// Only compile for the default material and masked materials
-		return (
-			Parameters.MaterialParameters.bIsSpecialEngineMaterial ||
-			!Parameters.MaterialParameters.bWritesEveryPixel ||
-			Parameters.MaterialParameters.bMaterialMayModifyMeshPosition ||
-			Parameters.MaterialParameters.bIsTranslucencyWritingCustomDepth);
-	}
-
-	void GetShaderBindings(
-		const FScene* Scene,
-		ERHIFeatureLevel::Type FeatureLevel,
-		const FPrimitiveSceneProxy* PrimitiveSceneProxy,
-		const FMaterialRenderProxy& MaterialRenderProxy,
-		const FMaterial& Material,
-		const FMeshPassProcessorRenderState& DrawRenderState,
-		const FDepthOnlyShaderElementData& ShaderElementData,
-		FMeshDrawSingleShaderBindings& ShaderBindings) const
-	{
-		FMeshMaterialShader::GetShaderBindings(Scene, FeatureLevel, PrimitiveSceneProxy, MaterialRenderProxy, Material, DrawRenderState, ShaderElementData, ShaderBindings);
-	}
-};
-
-class FRainDepthPS : public FMeshMaterialShader
-{
-	DECLARE_SHADER_TYPE(FRainDepthPS, MeshMaterial);
-public:
-
-	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
-	{
-		return
-			// Compile for materials that are masked, avoid generating permutation for other platforms if bUsesMobileColorValue is true
-			((!Parameters.MaterialParameters.bWritesEveryPixel || Parameters.MaterialParameters.bHasPixelDepthOffsetConnected || Parameters.MaterialParameters.bIsTranslucencyWritingCustomDepth) && (!bUsesMobileColorValue || IsMobilePlatform(Parameters.Platform)))
-			// Mobile uses material pixel shader to write custom stencil to color target
-			|| (IsMobilePlatform(Parameters.Platform) && (Parameters.MaterialParameters.bIsDefaultMaterial || Parameters.MaterialParameters.bMaterialMayModifyMeshPosition));
-	}
-
-	FRainDepthPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
-		FMeshMaterialShader(Initializer)
-	{
-		MobileColorValue.Bind(Initializer.ParameterMap, TEXT("MobileColorValue"));
-		BindSceneTextureUniformBufferDependentOnShadingPath(Initializer, PassUniformBuffer);
-	}
-
-	static void ModifyCompilationEnvironment(const FMaterialShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
-	{
-		FMeshMaterialShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-
-		OutEnvironment.SetDefine(TEXT("ALLOW_DEBUG_VIEW_MODES"), AllowDebugViewmodes(Parameters.Platform));
-		if (IsMobilePlatform(Parameters.Platform))
-		{
-			// No access to scene textures during depth rendering on mobile
-			OutEnvironment.SetDefine(TEXT("SCENE_TEXTURES_DISABLED"), 1u);
-		}
-		else
-		{
-			OutEnvironment.SetDefine(TEXT("OUTPUT_MOBILE_COLOR_VALUE"), 0u);
-		}
-	}
-
-	FRainDepthPS() {}
-
-	void GetShaderBindings(
-		const FScene* Scene,
-		ERHIFeatureLevel::Type FeatureLevel,
-		const FPrimitiveSceneProxy* PrimitiveSceneProxy,
-		const FMaterialRenderProxy& MaterialRenderProxy,
-		const FMaterial& Material,
-		const FMeshPassProcessorRenderState& DrawRenderState,
-		const FDepthOnlyShaderElementData& ShaderElementData,
-		FMeshDrawSingleShaderBindings& ShaderBindings) const
-	{
-		FMeshMaterialShader::GetShaderBindings(Scene, FeatureLevel, PrimitiveSceneProxy, MaterialRenderProxy, Material, DrawRenderState, ShaderElementData, ShaderBindings);
-
-		ShaderBindings.Add(MobileColorValue, ShaderElementData.MobileColorValue);
-	}
-
-	LAYOUT_FIELD(FShaderParameter, MobileColorValue);
-};
-
-template<bool bPositionOnly>
-void GetRainDepthPassShaders(
-	const FMaterial& Material,
-	FVertexFactoryType* VertexFactoryType,
-	ERHIFeatureLevel::Type FeatureLevel,
-	TShaderRef<FBaseHS>& HullShader,
-	TShaderRef<FBaseDS>& DomainShader,
-	TShaderRef<TRainDepthVS<bPositionOnly>>& VertexShader,
-	TShaderRef<FRainDepthPS>& PixelShader,
-	FShaderPipelineRef& ShaderPipeline);
 
 class FRainDepthPassMeshProcessor : public FMeshPassProcessor
 {
@@ -208,7 +113,7 @@ public:
 
 	FRainDepthPassMeshProcessor(const FScene* Scene,
 		const FSceneView* InViewIfDynamicMeshCommand,
-		/*const FMeshPassProcessorRenderState& InPassDrawRenderState,*/
+		const FMeshPassProcessorRenderState& InPassDrawRenderState,
 		FMeshPassDrawListContext* InDrawListContext);
 
 	virtual void AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch, uint64 BatchElementMask, const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy, int32 StaticMeshId = -1) override final;
@@ -227,8 +132,4 @@ private:
 		ERasterizerCullMode MeshCullMode);
 
 	FMeshPassProcessorRenderState PassDrawRenderState;
-
-	const bool bRespectUseAsOccluderFlag;
-	const EDepthDrawingMode EarlyZPassMode;
-	const bool bEarlyZPassMovable;
 };

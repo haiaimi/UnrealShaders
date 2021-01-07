@@ -1,0 +1,50 @@
+#include "Common.ush"
+#include "/Engine/Generated/Material.ush"
+#include "/Engine/Generated/VertexFactory.ush"
+
+//#define PassStruct MobileRainDepthPass
+
+void PositionOnlyMain(
+	FPositionOnlyVertexFactoryInput Input,
+	out float4 OutPosition : SV_POSITION
+#if USE_GLOBAL_CLIP_PLANE
+	, out float OutGlobalClipPlaneDistance : SV_ClipDistance
+#endif
+#if INSTANCED_STEREO
+	, uint InstanceId : SV_InstanceID
+#if !MULTI_VIEW
+		, out float OutClipDistance : SV_ClipDistance1
+#else
+		, out uint ViewportIndex : SV_ViewPortArrayIndex
+#endif
+#endif
+	)
+{
+#if INSTANCED_STEREO
+	uint EyeIndex = GetEyeIndex(InstanceId);
+	ResolvedView = ResolveView(EyeIndex);
+
+#if !MULTI_VIEW
+		OutClipDistance = 0.0;
+#else
+		ViewportIndex = EyeIndex;
+#endif
+#else
+	ResolvedView = ResolveView();
+#endif
+	
+	float4 WorldPos = VertexFactoryGetWorldPosition(Input);
+	{
+		OutPosition = INVARIANT(mul(WorldPos, MobileRainDepthPass.ProjectionMatrix));
+		//OutPosition = WorldPos;
+		OutPosition.z /= 2000.f;
+		//OutPosition.z += 1.f;
+		OutPosition.w = 1.f;
+	}
+	
+#if USE_GLOBAL_CLIP_PLANE
+	OutGlobalClipPlaneDistance = dot(ResolvedView.GlobalClippingPlane, float4(WorldPos.xyz - ResolvedView.PreViewTranslation.xyz, 1));
+#endif
+}
+
+

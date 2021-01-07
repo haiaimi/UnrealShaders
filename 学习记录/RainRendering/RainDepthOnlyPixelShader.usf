@@ -1,11 +1,13 @@
 #include "Common.ush"
+#ifndef CONVERT_DEPTH_SHADER
 #include "/Engine/Generated/Material.ush"
 #include "/Engine/Generated/VertexFactory.ush"
+#endif
 
-
+#ifndef CONVERT_DEPTH_SHADER
 void Main(
 #if !MATERIALBLENDING_SOLID || OUTPUT_PIXEL_DEPTH_OFFSET || OUTPUT_MOBILE_COLOR_VALUE
-	in INPUT_POSITION_QUALIFIERSfloat4 SvPosition : SV_Position,
+	in INPUT_POSITION_QUALIFIERS float4 SvPosition : SV_Position,
 #endif
 
 #if !MATERIALBLENDING_SOLID || OUTPUT_PIXEL_DEPTH_OFFSET
@@ -60,4 +62,17 @@ void Main(
 	#endif
 #endif
 	OutColor = 0;
+}
+#endif
+
+Texture2D<float> RainDepthTexture;
+SamplerState DepthTextureSampler;
+
+void ConvertRainDepthPS(float4 SVPos : SV_POSITION, 
+						out float OutColor : SV_Target0)
+{
+	float CurrentDepth = RainDepthTexture.SampleLevel(DepthTextureSampler, SVPos.xy * MobileRainDepthPass.DepthTexSizeAndInvSize.zw, 0);
+	CurrentDepth *= MobileRainDepthPass.MaxDepthSize;
+	CurrentDepth = MobileRainDepthPass.ViewPosition.z - CurrentDepth;
+	OutColor = CurrentDepth;
 }
