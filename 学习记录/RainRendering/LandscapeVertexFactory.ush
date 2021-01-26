@@ -463,11 +463,17 @@ float3 GetLocalPosition(FVertexFactoryIntermediates Intermediates)
 
 float4 VertexFactoryGetWorldPosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates)
 {
+#ifndef RENDER_RAIN_DEPTH
+	#define RENDER_RAIN_DEPTH 0
+#endif
+
+//@StarLight code - BEGIN Add rain depth pass, edit by wanghai
 #if RENDER_RAIN_DEPTH
 	return INVARIANT(TransformLocalToWorld(GetLocalPosition(Intermediates)));
 #else
 	return INVARIANT(TransformLocalToTranslatedWorld(GetLocalPosition(Intermediates)));
 #endif
+//@StarLight code - END Add rain depth pass, edit by wanghai
 }
 
 float4 VertexFactoryGetWorldPositionRainDepth(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates)

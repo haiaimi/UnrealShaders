@@ -1,0 +1,28 @@
+#include "Common.ush"
+
+Texture2D<float4> RainDropTexture;
+Texture2D<float4> NoiseTexture;
+RWTexture2D<float4> NoisedRainDropTexture;
+
+#define N 64
+groupshared float4 gCache[N];
+
+[numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
+void ApplyRainDropNoiseCS(int3 GroupThreadID : SV_GroupThreadID, uint3 ThreadId : SV_DispatchThreadID)
+{
+	float4 Noise = NoiseTexture.Load(int3(ThreadId.xy, 0));
+	float4 RainDropValue = RainDropTexture.Load(int3(ThreadId.xy, 0));
+	
+	gCache[THREADGROUP_SIZE * GroupThreadID.y + GroupThreadID.x] = float4(Noise.x, RainDropValue.x, 0.f, 0.f);
+
+	GroupMemoryBarrierWithGroupSync();
+	
+	float NoiseSum = 0;
+	float RainIntensitySum = 0;
+	UNROLL
+	for (int i = 0; i < N; ++i)
+	{
+		NoiseSum += gCache[i].x;
+		RainIntensitySum += gCache[i].y;
+	}
+}

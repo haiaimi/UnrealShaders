@@ -7,6 +7,16 @@
 #include "SceneManagement.h"
 #include "MeshPassProcessor.inl"
 #include "SceneFilterRendering.h"
+#include "RainDepthRenderCommon.h"
+#include "Components/RainDepthComponent.h"
+#include <RenderResource.h>
+#include "SceneCore.h"
+#include <DynamicBufferAllocator.h>
+
+static TAutoConsoleVariable<int32> CVarRenderRain(
+	TEXT("r.DebugRainDepth"), 0,
+	TEXT("Draw rain depth every frame.\n"),
+	ECVF_RenderThreadSafe);
 
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileRainDepthPassUniformParameters, "MobileRainDepthPass");
 
@@ -38,6 +48,13 @@ public:
 
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
+	#if WITH_EDITOR
+		if(!IsMobilePlatform(Parameters.Platform))
+			return false;
+
+		if(Parameters.MaterialParameters.TessellationMode != MTM_NoTessellation)
+			return false;
+		
 		if (bUsePositionOnlyStream)
 		{
 			return Parameters.VertexFactoryType->SupportsPositionOnly();
@@ -50,6 +67,8 @@ public:
 			Parameters.MaterialParameters.bMaterialMayModifyMeshPosition ||
 			Parameters.MaterialParameters.bIsTranslucencyWritingCustomDepth ||
 			Parameters.MaterialParameters.bIsUsedWithRainOccluder);
+	#endif
+		return false;
 	}
 
 
@@ -77,10 +96,13 @@ public:
 
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
+	#if WITH_EDITOR
 		return
 			((!Parameters.MaterialParameters.bWritesEveryPixel || Parameters.MaterialParameters.bHasPixelDepthOffsetConnected || Parameters.MaterialParameters.bIsTranslucencyWritingCustomDepth) && (IsMobilePlatform(Parameters.Platform)))
 			|| (IsMobilePlatform(Parameters.Platform) && (Parameters.MaterialParameters.bIsDefaultMaterial || Parameters.MaterialParameters.bMaterialMayModifyMeshPosition)
 			|| Parameters.MaterialParameters.bIsUsedWithRainOccluder);
+	#endif
+	return false;
 	}
 
 	FRainDepthPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
@@ -194,7 +216,7 @@ public:
 		
 		FRHIPixelShader* ShaderRHI = RHICmdList.GetBoundPixelShader();
 		SetUniformBufferParameter(RHICmdList, ShaderRHI, RainDepthPassUniformBuffer, InRainDepthUniformBuffer);
-		SetTextureParameter(RHICmdList, ShaderRHI, RainDepthTexture, DepthTextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InRainDepth);
+		SetTextureParameter(RHICmdList, ShaderRHI, RainDepthTexture, DepthTextureSampler, TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), InRainDepth);
 	}
 
 	LAYOUT_FIELD(FShaderUniformBufferParameter, RainDepthPassUniformBuffer)
@@ -226,6 +248,47 @@ IMPLEMENT_GLOBAL_SHADER(FConvertRainDepthPS, "/Engine/Private/RainDepthOnlyPixel
 IMPLEMENT_SHADERPIPELINE_TYPE_VS(RainDepthPosOnlyNoPixelPipeline, TRainDepthVS<true>, true);
 //IMPLEMENT_SHADERPIPELINE_TYPE_VSPS(RainDepthNoColorOutputPipeline, TRainDepthVS<false>, FRainDepthPS, true);
 
+
+/** This shader is used to apply motion blur to rain drop texture*/
+//class FApplyRainDropNoiseCS : public FGlobalShader
+//{
+//	DECLARE_GLOBAL_SHADER(FApplyRainDropNoiseCS)
+//
+//public:
+//	FApplyRainDropNoiseCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
+//		FGlobalShader(Initializer)
+//	{
+//		RainDropTexture.Bind(Initializer.ParameterMap, TEXT("RainDropTexture"));
+//		NoiseTexture.Bind(Initializer.ParameterMap, TEXT("NoiseTexture"));
+//	}
+//	FApplyRainDropNoiseCS() {}
+//
+//	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+//	{
+//		return true;
+//	}
+//
+//	static void ModifyCompilationEnvironment(const FShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+//	{
+//		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+//
+//		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), 8);
+//	}
+//
+//	void SetParameters(FRHICommandList& RHICmdList, FRHITexture2D* InRainDrop, FRHITexture2D* InNoise)
+//	{
+//		FRHIPixelShader* ShaderRHI = RHICmdList.GetBoundPixelShader();
+//		//SetUniformBufferParameter(RHICmdList, ShaderRHI, RainDepthPassUniformBuffer, InRainDepthUniformBuffer);
+//		SetTextureParameter(RHICmdList, ShaderRHI, RainDropTexture, InRainDrop);
+//		SetTextureParameter(RHICmdList, ShaderRHI, NoiseTexture, InNoise);
+//	}
+//
+//	LAYOUT_FIELD(FShaderResourceParameter, RainDropTexture)
+//	LAYOUT_FIELD(FShaderResourceParameter, NoiseTexture)
+//};
+//
+//IMPLEMENT_GLOBAL_SHADER(FApplyRainDropNoiseCS, "/Engine/Private/RainRenderingCommon.usf", "ApplyRainDropNoiseCS", SF_Compute);
+
 void SetupRainDepthPassState(FMeshPassProcessorRenderState& DrawRenderState)
 {
 	// Disable color writes, enable depth tests and writes.
@@ -249,7 +312,7 @@ void FRainDepthPassMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBa
 	//bool bDraw = MeshBatch.bUseForRainDepthPass;
 	const FMaterialRenderProxy* FallbackMaterialRenderProxyPtr = nullptr;
 	const FMaterial& Material = MeshBatch.MaterialRenderProxy->GetMaterialWithFallback(FeatureLevel, FallbackMaterialRenderProxyPtr);
-	bool bDraw = Material.IsUsedWithRainOccluder();
+	bool bDraw = Material.IsUsedWithRainOccluder() && Material.GetTessellationMode() == EMaterialTessellationMode::MTM_NoTessellation;
 	
 	if (bDraw)
 	{
@@ -287,6 +350,7 @@ void FRainDepthPassMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBa
 		if (!bIsTranslucent
 			&& ShouldIncludeDomainInMeshPass(Material.GetMaterialDomain())
 			&& ShouldIncludeMaterialInDefaultOpaquePass(Material)
+			&& MeshBatch.VertexFactory->GetType()->GetFName() != FName(TEXT("FLandscapeFixedGridVertexFactoryMobile"))
 			&& Material.IsUsedWithRainOccluder())
 		{
 			// No mask material
@@ -302,7 +366,7 @@ void FRainDepthPassMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBa
 			// Support for mask material
 			else
 			{
-				const bool bMaterialMasked = !Material.WritesEveryPixel() || Material.IsTranslucencyWritingCustomDepth();
+				const bool bMaterialMasked = !Material.WritesEveryPixel() || Material.IsTranslucencyWritingCustomDepth() || bDraw;
 				if(bMaterialMasked)
 				{
 					const FMaterialRenderProxy* EffectiveMaterialRenderProxy = &MaterialRenderProxy;
@@ -368,12 +432,12 @@ void FRainDepthPassMeshProcessor::Process(const FMeshBatch& MeshBatch, uint64 Ba
 		ShaderElementData);
 }
 
-void SetupRainDepthPassUniformBuffer(const FRainDepthProjectedInfo* ShadowInfo, FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FMobileRainDepthPassUniformParameters& RainDepthPassParameters)
+void SetupRainDepthPassUniformBuffer(const FRainDepthProjectedInfo* RainDepthInfo, FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FMobileRainDepthPassUniformParameters& RainDepthPassParameters)
 {
 	FSceneRenderTargets& SceneRenderTargets = FSceneRenderTargets::Get(RHICmdList);
 	SetupSceneTextureUniformParameters(SceneRenderTargets, View.FeatureLevel, ESceneTextureSetupMode::None, RainDepthPassParameters.SceneTextures);
 
-	FOrthoMatrix OrthoProjMatrix(2000, 2000, 1.f, 0.f);
+	/*FOrthoMatrix OrthoProjMatrix(4000, 4000, 1.f, 0.f);
 	FMatrix ViewRotationMatrix = FInverseRotationMatrix(FRotator(-90.f, 0.f, 0.f));
 
 	FVector ViewOrigin(0, 0.f, 2000.f);
@@ -381,14 +445,14 @@ void SetupRainDepthPassUniformBuffer(const FRainDepthProjectedInfo* ShadowInfo, 
 		FPlane(0, 0, 1, 0),
 		FPlane(1, 0, 0, 0),
 		FPlane(0, 1, 0, 0),
-		FPlane(0, 0, 0, 1));
-	FMatrix ViewProjMatrix = ViewMatrix * OrthoProjMatrix;
+		FPlane(0, 0, 0, 1));*/
+	FMatrix ViewProjMatrix = RainDepthInfo->ViewMatrix * RainDepthInfo->ProjectionMatrix;
 	// #TODO
 	RainDepthPassParameters.ProjectionMatrix = ViewProjMatrix;
-	RainDepthPassParameters.ViewMatrix = ViewMatrix;
-	RainDepthPassParameters.DepthTexSizeAndInvSize = FVector4(ShadowInfo->DepthResolutionX, ShadowInfo->DepthResolutionY, 1.f / ShadowInfo->DepthResolutionX, 1.f / ShadowInfo->DepthResolutionY);
-	RainDepthPassParameters.ViewPosition = FVector(0.f, 0.f, 2000.f);
-	RainDepthPassParameters.MaxDepthSize = 2000.f;
+	RainDepthPassParameters.ViewMatrix = RainDepthInfo->ViewMatrix;
+	RainDepthPassParameters.DepthTexSizeAndInvSize = FVector4(RainDepthInfo->DepthResolutionX, RainDepthInfo->DepthResolutionY, 1.f / RainDepthInfo->DepthResolutionX, 1.f / RainDepthInfo->DepthResolutionY);
+	RainDepthPassParameters.ViewPosition = RainDepthInfo->ViewLocation;
+	RainDepthPassParameters.MaxDepthSize = RainDepthInfo->MaxDepth;
 }
 
 static FORCEINLINE bool UseShaderPipelines(ERHIFeatureLevel::Type InFeatureLevel)
@@ -475,7 +539,51 @@ FMeshPassProcessor* CreateRainDepthPassProcessor(const FScene* Scene, const FSce
 	return new(FMemStack::Get()) FRainDepthPassMeshProcessor(Scene, InViewIfDynamicMeshCommand, RainDepthPassState, InDrawListContext);
 }
 
+#if WITH_EDITOR
 FRegisterPassProcessorCreateFunction RegisterRainDepthPass(&CreateRainDepthPassProcessor, EShadingPath::Mobile, EMeshPass::RainDepthPass, EMeshPassFlags::CachedMeshCommands);
+#endif
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void FScene::AddRainDepthCapture(FRainDepthSceneProxy* RainDepthSceneProxy)
+{
+	check(RainDepthSceneProxy);
+	FScene* Scene = this;
+
+	ENQUEUE_RENDER_COMMAND(FAddRainDepthCommand)(
+		[Scene, RainDepthSceneProxy](FRHICommandListImmediate& RHICmdList)
+	{
+		check(!Scene->RainDepthStack.Contains(RainDepthSceneProxy));
+		Scene->RainDepthStack.Push(RainDepthSceneProxy);
+
+		RainDepthSceneProxy->RainDepthInfo = new FRainDepthProjectedInfo(*RainDepthSceneProxy);
+		
+		Scene->RainDepthInfo = RainDepthSceneProxy->RainDepthInfo;
+	});
+}
+
+void FScene::RemoveRainDepthCapture(FRainDepthSceneProxy* RainDepthSceneProxy)
+{
+	check(RainDepthSceneProxy);
+	FScene* Scene = this;
+
+	ENQUEUE_RENDER_COMMAND(FRemoveRainDepthCommand)(
+		[Scene, RainDepthSceneProxy](FRHICommandListImmediate& RHICmdList)
+	{
+
+		delete RainDepthSceneProxy->RainDepthInfo;
+		Scene->RainDepthStack.RemoveSingle(RainDepthSceneProxy);
+
+		if (Scene->RainDepthStack.Num() > 0)
+		{
+			Scene->RainDepthInfo = Scene->RainDepthStack.Last()->RainDepthInfo;
+		}
+		else
+		{
+			Scene->RainDepthInfo = nullptr;
+		}
+	});
+}
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -487,11 +595,20 @@ void ConvertRainDepth(FRHICommandList& RHICmdList, FRainDepthProjectedInfo& Proj
 
 	const FIntPoint DepthTargetSize = FIntPoint(ProjectedInfo.DepthResolutionX, ProjectedInfo.DepthResolutionY);
 
-	FPooledRenderTargetDesc RainDepthDesc2D = FPooledRenderTargetDesc::Create2DDesc(DepthTargetSize, PF_R16F, FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource, false);
-	TRefCountPtr<IPooledRenderTarget> ConvertedDepthTarget;
-	GRenderTargetPool.FindFreeElement(RHICmdList, RainDepthDesc2D, ConvertedDepthTarget, TEXT("ConvertedDepthTarget"), true, ERenderTargetTransience::Transient);
+	FTextureRHIRef DepthTarget;
+	/*if (GRainDepthResource.DepthRenderTarget.IsValid())
+	{
+		DepthTarget = GRainDepthResource.DepthRenderTarget;
+	}
+	else*/
+	{
+		FPooledRenderTargetDesc RainDepthDesc2D = FPooledRenderTargetDesc::Create2DDesc(DepthTargetSize, PF_R16_UINT, FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_ShaderResource, false);
+		TRefCountPtr<IPooledRenderTarget> ConvertedDepthTarget;
+		GRenderTargetPool.FindFreeElement(RHICmdList, RainDepthDesc2D, ConvertedDepthTarget, TEXT("ConvertedDepthTarget"), true, ERenderTargetTransience::Transient);
+		DepthTarget = ConvertedDepthTarget->GetRenderTargetItem().TargetableTexture;
+	}
 
-	FRHIRenderPassInfo RPInfo(ConvertedDepthTarget->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::DontLoad_Store);
+	FRHIRenderPassInfo RPInfo(DepthTarget, ERenderTargetActions::DontLoad_Store);
 	TransitionRenderPassTargets(RHICmdList, RPInfo);
 	RHICmdList.BeginRenderPass(RPInfo, TEXT("ConvertRainDepth"));
 	{
@@ -527,6 +644,15 @@ void ConvertRainDepth(FRHICommandList& RHICmdList, FRainDepthProjectedInfo& Proj
 				EDRF_UseTriangleOptimization);
 		}
 		RHICmdList.EndRenderPass();
+	}
+
+	if (ProjectedInfo.RainDepthSceneProxy.bShouldSaveTexture)
+	{
+		FRainDepthSceneProxy& SceneProxy = const_cast<FRainDepthSceneProxy&>(ProjectedInfo.RainDepthSceneProxy);
+		if (SceneProxy.bShouldSaveTexture)
+		{
+			SceneProxy.SaveDepthTextureAsAsset(DepthTarget);
+		}
 	}
 }
 
@@ -638,16 +764,49 @@ void GatherRainDepthPrimitives(FRainDepthProjectedInfo& RainProjectedInfo, FScen
 		);*/
 }
 
+void SetDepthRenderTarget(FTextureRenderTargetResource* RenderTarget)
+{
+	if (RenderTarget)
+	{
+		const FTexture2DRHIRef& Texture = RenderTarget->GetRenderTargetTexture();
+		GRainDepthResource.SetRenderResource(Texture);
+	}
+}
+
+FRainDepthProjectedInfo::FRainDepthProjectedInfo(const FRainDepthSceneProxy& InProxy) : 
+	RainDepthSceneProxy(InProxy)
+{
+	FOrthoMatrix OrthoProjMatrix(InProxy.CaptureViewWidth, InProxy.CaptureViewHeight, 1.f, 0.f);
+	FMatrix ViewRotationMatrix = FInverseRotationMatrix(InProxy.DepthCaptureRotation);
+
+	FVector ViewOrigin = InProxy.DepthCapturePosition;
+	const FMatrix TmpViewMatrix = FTranslationMatrix(-ViewOrigin) * ViewRotationMatrix * FMatrix(
+		FPlane(0, 0, 1, 0),
+		FPlane(1, 0, 0, 0),
+		FPlane(0, 1, 0, 0),
+		FPlane(0, 0, 0, 1));
+	FMatrix ViewProjMatrix = TmpViewMatrix * OrthoProjMatrix;
+
+	ProjectionMatrix = OrthoProjMatrix;
+	ViewMatrix = TmpViewMatrix;
+	DepthResolutionX = InProxy.DepthResolution.X;
+	DepthResolutionY = InProxy.DepthResolution.Y;
+	ViewLocation = InProxy.DepthCapturePosition;
+	ViewRotation = InProxy.DepthCaptureRotation;
+	MaxDepth = InProxy.MaxDepth;
+}
+
 FRainDepthProjectedInfo::~FRainDepthProjectedInfo()
 {
 	RainDepthCommandPass.WaitForTasksAndEmpty();
+	RainDepthRenderTarget.SafeRelease();
 }
 
 void FRainDepthProjectedInfo::Init(FSceneRenderer& Renderer, const FViewInfo* View)
 {
 	RainDepthView = const_cast<FViewInfo*>(View);
-	ProjectionMatrix = FMatrix::Identity;
-	ViewMatrix = FMatrix::Identity;
+	/*ViewProjectionMatrix = FMatrix::Identity;
+	ViewMatrix = FMatrix::Identity;*/
 	FeatureLevel = Renderer.FeatureLevel;
 }
 
@@ -663,7 +822,8 @@ void FRainDepthProjectedInfo::Reset()
 	NumDynamicProjectedMeshElements = 0;
 	NumProjectedMeshCommandBuildRequestElements = 0;
 
-	//RainDepthCommandPass.WaitForTasksAndEmpty();
+	/*FParallelMeshDrawCommandPass NewCommandPass;
+	FMemory::Memmove(&RainDepthCommandPass, &NewCommandPass, sizeof(FParallelMeshDrawCommandPass));*/
 }
 
 void FRainDepthProjectedInfo::AllocateRainDepthTargets(FRHICommandListImmediate& RHICmdList)
@@ -725,23 +885,26 @@ void FRainDepthProjectedInfo::GatherDynamicMeshElementsArray(FViewInfo* View, FS
 		{
 			ViewRelevance = PrimitiveSceneInfo->Proxy->GetViewRelevance(View);
 		}
+		//const FMaterialRenderProxy* FallbackMaterialRenderProxyPtr = nullptr;
+		//const FMaterial& Material = PrimitiveSceneInfo->GetMeshBatch(0)->MaterialRenderProxy->GetMaterialWithFallback(FeatureLevel, FallbackMaterialRenderProxyPtr);
 
 		// #TODO Add Rain depth specified relevance 1
-		if (ViewRelevance.bDynamicRelevance)
+		if (ViewRelevance.bDynamicRelevance && !ViewRelevance.bEditorPrimitiveRelevance/* && Material.IsUsedWithRainOccluder()*/)
 		{
 			Renderer.MeshCollector.SetPrimitive(PrimitiveSceneProxy, PrimitiveSceneInfo->DefaultDynamicHitProxyId);
 
 			// Get dynamic mesh batch
-			PrimitiveSceneInfo->Proxy->GetDynamicMeshElements(ReusedViewsArray, Renderer.ViewFamily, 0x1, Renderer.MeshCollector);
+			PrimitiveSceneInfo->Proxy->GetDynamicMeshElements_RainDepthPass(ReusedViewsArray, Renderer.ViewFamily, 0x1, Renderer.MeshCollector);
+			//PrimitiveSceneInfo->Proxy->GetDynamicMeshElements(ReusedViewsArray, Renderer.ViewFamily, 0x1, Renderer.MeshCollector);
 		}
 	}
 	OutNumDynamicSubjectMeshElements = Renderer.MeshCollector.GetMeshElementCount(0);
 }
 
-void FRainDepthProjectedInfo::AddCachedMeshDrawCommandsForPass(int32 PrimitiveIndex, const FPrimitiveSceneInfo* InPrimitiveSceneInfo, const FStaticMeshBatchRelevance& RESTRICT StaticMeshRelevance, const FStaticMeshBatch& StaticMesh, const FScene* Scene, EMeshPass::Type PassType, FMeshCommandOneFrameArray& VisibleMeshCommands, TArray<const FStaticMeshBatch*, SceneRenderingAllocator>& MeshCommandBuildRequests, int32& NumMeshCommandBuildRequestElements)
+bool FRainDepthProjectedInfo::AddCachedMeshDrawCommandsForPass(int32 PrimitiveIndex, const FPrimitiveSceneInfo* InPrimitiveSceneInfo, const FStaticMeshBatchRelevance& RESTRICT StaticMeshRelevance, const FStaticMeshBatch& StaticMesh, const FScene* Scene, EMeshPass::Type PassType, FMeshCommandOneFrameArray& VisibleMeshCommands, TArray<const FStaticMeshBatch*, SceneRenderingAllocator>& MeshCommandBuildRequests, int32& NumMeshCommandBuildRequestElements)
 {
 	if (!StaticMesh.MaterialRenderProxy->GetMaterial(FeatureLevel)->IsUsedWithRainOccluder())
-		return;
+		return false;
 	const EShadingPath ShadingPath = Scene->GetShadingPath();
 	const bool bUseCachedMeshCommand = UseCachedMeshDrawCommands()
 		&& !!(FPassProcessorManager::GetPassFlags(ShadingPath, PassType) & EMeshPassFlags::CachedMeshCommands)
@@ -776,18 +939,20 @@ void FRainDepthProjectedInfo::AddCachedMeshDrawCommandsForPass(int32 PrimitiveIn
 			MeshCommandBuildRequests.Add(&StaticMesh);
 		}
 	}
+
+	return bUseCachedMeshCommand;
 }
 
 void FRainDepthProjectedInfo::AddProjectedPrimitive(FPrimitiveSceneInfo* PrimitiveSceneInfo, FViewInfo* View, ERHIFeatureLevel::Type InFeatureLevel)
 {
-	if (PrimitiveSceneInfo &&  PrimitiveSceneInfo->StaticMeshRelevances.Num() > 0 && View && CachedPrimitives.Find(PrimitiveSceneInfo) == INDEX_NONE)
+	if (PrimitiveSceneInfo && View && CachedPrimitives.Find(PrimitiveSceneInfo) == INDEX_NONE)
 	{
 		CachedPrimitives.Add(PrimitiveSceneInfo);
 		int32 PrimitiveId = PrimitiveSceneInfo->GetIndex();
 		const FPrimitiveSceneProxy* Proxy = PrimitiveSceneInfo->Proxy;
 
 		const FPrimitiveViewRelevance& ViewRelevance = Proxy->GetViewRelevance(View);
-
+		
 		bool bOpaque = false;
 		bool bTranslucentRelevance = false;
 		// #TODO
@@ -799,13 +964,13 @@ void FRainDepthProjectedInfo::AddProjectedPrimitive(FPrimitiveSceneInfo* Primiti
 		if (bOpaque)
 		{
 			bool bDrawingStaticMeshes = false;
-
+			bool bUsedTesselation = false;
 			if (ViewRelevance.bStaticRelevance)
 			{
-				bDrawingStaticMeshes |= ShouldDrawStaticMeshes(*View, PrimitiveSceneInfo);
+				bDrawingStaticMeshes |= ShouldDrawStaticMeshes(*View, PrimitiveSceneInfo, bUsedTesselation);
 			}
 
-			if (!bDrawingStaticMeshes)
+			if (!bDrawingStaticMeshes && !bUsedTesselation)
 			{
 				DynamicProjectedPrimitives.Add(PrimitiveSceneInfo);
 			}
@@ -813,7 +978,7 @@ void FRainDepthProjectedInfo::AddProjectedPrimitive(FPrimitiveSceneInfo* Primiti
 	}
 }
 
-bool FRainDepthProjectedInfo::ShouldDrawStaticMeshes(FViewInfo& InView, FPrimitiveSceneInfo* InPrimitiveSceneInfo)
+bool FRainDepthProjectedInfo::ShouldDrawStaticMeshes(FViewInfo& InView, FPrimitiveSceneInfo* InPrimitiveSceneInfo, bool& bUsedTesselation)
 {
 	bool bDrawingStaticMeshes = false;
 	int32 PrimitiveId = InPrimitiveSceneInfo->GetIndex();
@@ -834,13 +999,18 @@ bool FRainDepthProjectedInfo::ShouldDrawStaticMeshes(FViewInfo& InView, FPrimiti
 		const FStaticMeshBatchRelevance& StaticMeshRelevance = InPrimitiveSceneInfo->StaticMeshRelevances[MeshIndex];
 		const FStaticMeshBatch& StaticMesh = InPrimitiveSceneInfo->StaticMeshes[MeshIndex];
 
-		const bool bUsedWithRainOccluder = StaticMesh.MaterialRenderProxy->GetMaterial(FeatureLevel)->IsUsedWithRainOccluder();
+		const FMaterial* Material = StaticMesh.MaterialRenderProxy->GetMaterial(FeatureLevel);
+
+		bUsedTesselation |= (Material->GetTessellationMode() > EMaterialTessellationMode::MTM_NoTessellation);
+		const bool bUsedWithRainOccluder = Material->IsUsedWithRainOccluder() && Material->GetTessellationMode() == EMaterialTessellationMode::MTM_NoTessellation;
+
 		// #TODO
 		if (bUsedWithRainOccluder && LODToRender.ContainsLOD(StaticMeshRelevance.LODIndex))
 		{
 			if (bCanCache)
 			{
-				AddCachedMeshDrawCommandsForPass(
+			#if WITH_EDITOR
+				bool bAddSuccessful = AddCachedMeshDrawCommandsForPass(
 					PrimitiveId,
 					InPrimitiveSceneInfo,
 					StaticMeshRelevance,
@@ -850,14 +1020,15 @@ bool FRainDepthProjectedInfo::ShouldDrawStaticMeshes(FViewInfo& InView, FPrimiti
 					RainDepthPassVisibleCommands,
 					ProjectedMeshCommandBuildRequests,
 					NumProjectedMeshCommandBuildRequestElements);
-			}
-			else
-			{
-				NumProjectedMeshCommandBuildRequestElements += StaticMeshRelevance.NumElements;
-				ProjectedMeshCommandBuildRequests.Add(&StaticMesh);
-			}
 
-			bDrawingStaticMeshes = true;
+				if (!bAddSuccessful)
+				{
+					NumProjectedMeshCommandBuildRequestElements += StaticMeshRelevance.NumElements;
+					ProjectedMeshCommandBuildRequests.Add(&StaticMesh);
+					bDrawingStaticMeshes = true;
+				}
+			#endif
+			}
 		}
 	}
 
@@ -882,6 +1053,8 @@ void FRainDepthProjectedInfo::SetupMeshDrawCommandsForRainDepth(FSceneRenderer& 
 		ProjectedMeshCommandBuildRequests,
 		NumProjectedMeshCommandBuildRequestElements,
 		RainDepthPassVisibleCommands);
+
+	Renderer.DispatchedShadowDepthPasses.Add(&RainDepthCommandPass);
 }
 
 void FRainDepthProjectedInfo::RenderRainDepthInner(FRHICommandListImmediate& RHICmdList, FSceneRenderer* SceneRenderer)
@@ -901,36 +1074,42 @@ void FRainDepthProjectedInfo::RenderRainDepthInner(FRHICommandListImmediate& RHI
 
 void FMobileSceneRenderer::InitRainDepthRendering(FGlobalDynamicIndexBuffer& InDynamicIndexBuffer, FGlobalDynamicVertexBuffer& InDynamicVertexBuffer, FGlobalDynamicReadBuffer& InDynamicReadBuffer)
 {
- 	RainDepthProjectedInfo.Reset();
-	RainDepthProjectedInfo.Init(*this, &Views[0]);
-	GatherRainDepthPrimitives(RainDepthProjectedInfo, Scene);
+#if WITH_EDITOR
+	if(!Scene->RainDepthInfo || CVarRenderRain.GetValueOnRenderThread() <= 0)
+ 		if(!Scene->RainDepthInfo || !Scene->RainDepthInfo->RainDepthSceneProxy.bShouldSaveTexture) return;
+	Scene->RainDepthInfo->Reset();
+	Scene->RainDepthInfo->Init(*this, &Views[0]);
+	//RainDepthProjectedInfo.Init(*this, &Views[0]);
+	GatherRainDepthPrimitives(*Scene->RainDepthInfo, Scene);
 
 	TArray<const FSceneView*> ReusedViewsArray;
 	ReusedViewsArray.AddZeroed(1);
-	RainDepthProjectedInfo.GatherDynamicMeshElements(*this, ReusedViewsArray, InDynamicIndexBuffer, InDynamicVertexBuffer, InDynamicReadBuffer);
+	Scene->RainDepthInfo->GatherDynamicMeshElements(*this, ReusedViewsArray, InDynamicIndexBuffer, InDynamicVertexBuffer, InDynamicReadBuffer);
+#endif
 }
 
 void FMobileSceneRenderer::RenderRainDepth(FRHICommandListImmediate& RHICmdList)
 {
-	RainDepthProjectedInfo.AllocateRainDepthTargets(RHICmdList);
+#if WITH_EDITOR
+	if(!Scene->RainDepthInfo || CVarRenderRain.GetValueOnRenderThread() <= 0)
+		if(!Scene->RainDepthInfo || !Scene->RainDepthInfo->RainDepthSceneProxy.bShouldSaveTexture) return;
+	Scene->RainDepthInfo->AllocateRainDepthTargets(RHICmdList);
 
 	ERenderTargetLoadAction DepthLoadAction = ERenderTargetLoadAction::EClear;
 
 	SCOPED_DRAW_EVENTF(RHICmdList, EventRainDepths, TEXT("RainDepths"));
-	FRHIRenderPassInfo RPInfo(RainDepthProjectedInfo.RainDepthRenderTarget->GetRenderTargetItem().TargetableTexture, MakeDepthStencilTargetActions(MakeRenderTargetActions(DepthLoadAction, ERenderTargetStoreAction::EStore), ERenderTargetActions::Load_Store), nullptr, FExclusiveDepthStencil::DepthWrite_StencilWrite);
-	RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, RainDepthProjectedInfo.RainDepthRenderTarget->GetRenderTargetItem().TargetableTexture->GetTexture2D());
+	FRHIRenderPassInfo RPInfo(Scene->RainDepthInfo->RainDepthRenderTarget->GetRenderTargetItem().TargetableTexture, MakeDepthStencilTargetActions(MakeRenderTargetActions(DepthLoadAction, ERenderTargetStoreAction::EStore), ERenderTargetActions::Load_Store), nullptr, FExclusiveDepthStencil::DepthWrite_StencilWrite);
+	RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, Scene->RainDepthInfo->RainDepthRenderTarget->GetRenderTargetItem().TargetableTexture->GetTexture2D());
 	RHICmdList.BeginRenderPass(RPInfo, TEXT("RainDepth"));
 
-	RHICmdList.SetViewport(0, 0, 0, RainDepthProjectedInfo.DepthResolutionX, RainDepthProjectedInfo.DepthResolutionY, 1);
+	RHICmdList.SetViewport(0, 0, 0, Scene->RainDepthInfo->DepthResolutionX, Scene->RainDepthInfo->DepthResolutionY, 1);
 
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 
-	//SceneContext.BeginRenderingPrePass(RHICmdList, false);
-
-	RainDepthProjectedInfo.RenderRainDepthInner(RHICmdList, this);
-	//SceneContext.FinishRenderingPrePass(RHICmdList);
+	Scene->RainDepthInfo->RenderRainDepthInner(RHICmdList, this);
 
 	RHICmdList.EndRenderPass();
 
-	ConvertRainDepth(RHICmdList, RainDepthProjectedInfo, RainDepthProjectedInfo.MobileRainDepthPassUniformBuffer, RainDepthProjectedInfo.RainDepthRenderTarget->GetRenderTargetItem().TargetableTexture->GetTexture2D());
+	ConvertRainDepth(RHICmdList, *Scene->RainDepthInfo, Scene->RainDepthInfo->MobileRainDepthPassUniformBuffer, Scene->RainDepthInfo->RainDepthRenderTarget->GetRenderTargetItem().TargetableTexture->GetTexture2D());
+#endif
 }

@@ -22,15 +22,26 @@ END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 //inline void SetupRainDepthPassUniformBuffer(FRainDepthProjectedInfo* Info, FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FMobileRainDepthPassUniformParameters& RainDepthPassParameters);
 
+class FRainDepthSceneProxy;
+class FGlobalDynamicReadBuffer;
+class FGlobalDynamicVertexBuffer;
+class FStaticMeshBatchRelevance;
+
 class FRainDepthProjectedInfo
 {
 public:
-	FRainDepthProjectedInfo(){};
+	FRainDepthProjectedInfo(const FRainDepthSceneProxy& InProxy);
 	~FRainDepthProjectedInfo();
 
 	FViewInfo* RainDepthView = nullptr;
 
 	TUniformBufferRef<FMobileRainDepthPassUniformParameters> MobileRainDepthPassUniformBuffer;
+
+	FVector ViewLocation;
+
+	FRotator ViewRotation;
+
+	float MaxDepth;
 
 	FMatrix ProjectionMatrix;
 
@@ -44,8 +55,8 @@ public:
 
 	FParallelMeshDrawCommandPass RainDepthCommandPass;
 
-	int32 DepthResolutionX = 512;
-	int32 DepthResolutionY = 512;
+	int32 DepthResolutionX = 1024;
+	int32 DepthResolutionY = 1024;
 
 	ERHIFeatureLevel::Type FeatureLevel = ERHIFeatureLevel::ES3_1;
 
@@ -69,7 +80,7 @@ public:
 		TArray<FMeshBatchAndRelevance, SceneRenderingAllocator>& OutDynamicMeshElements,
 		int32& OutNumDynamicSubjectMeshElements);
 
-	void AddCachedMeshDrawCommandsForPass(int32 PrimitiveIndex,
+	bool AddCachedMeshDrawCommandsForPass(int32 PrimitiveIndex,
 		const FPrimitiveSceneInfo* InPrimitiveSceneInfo,
 		const FStaticMeshBatchRelevance& RESTRICT StaticMeshRelevance,
 		const FStaticMeshBatch& StaticMesh,
@@ -81,7 +92,7 @@ public:
 
 	void AddProjectedPrimitive(FPrimitiveSceneInfo* PrimitiveSceneInfo, FViewInfo* View, ERHIFeatureLevel::Type FeatureLevel);
 
-	bool ShouldDrawStaticMeshes(FViewInfo& InView, FPrimitiveSceneInfo* InPrimitiveSceneInfo);
+	bool ShouldDrawStaticMeshes(FViewInfo& InView, FPrimitiveSceneInfo* InPrimitiveSceneInfo, bool& bUsedTesselation);
 
 	void SetupMeshDrawCommandsForRainDepth(FSceneRenderer& Renderer, FRHIUniformBuffer* PassUniformBuffer);
 
@@ -104,6 +115,8 @@ public:
 	int32 NumProjectedMeshCommandBuildRequestElements = 0;
 
 	FMeshCommandOneFrameArray RainDepthPassVisibleCommands;
+
+	const FRainDepthSceneProxy& RainDepthSceneProxy;
 };
 
 
@@ -133,3 +146,38 @@ private:
 
 	FMeshPassProcessorRenderState PassDrawRenderState;
 };
+
+/////////////////////////////////////////////////////////////////////////////////////
+class FRainDepthResource : public FRenderResource
+{
+public:
+	FRainDepthResource() {}
+
+	virtual ~FRainDepthResource() {}
+
+	virtual void InitRHI() override
+	{
+
+	}
+
+	virtual void ReleaseRHI() override
+	{
+		FRenderResource::ReleaseRHI();
+	}
+
+	virtual void ReleaseDynamicRHI()
+	{
+		DepthRenderTarget.SafeRelease();
+	}
+
+	void SetRenderResource(const FTexture2DRHIRef& InResource)
+	{
+		DepthRenderTarget = InResource;
+	}
+
+	FTexture2DRHIRef DepthRenderTarget;
+};
+
+static TGlobalResource<FRainDepthResource> GRainDepthResource;
+
+RENDERER_API void SetDepthRenderTarget(FTextureRenderTargetResource* RenderTarget);

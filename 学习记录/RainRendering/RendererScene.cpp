@@ -4358,6 +4358,12 @@ public:
 	virtual FVolumeCloudSceneProxy* GetVolumetric() override { return NULL; }
 	//@StarLight code -  Mobile Volumetric Cloud, Added by zhouningwei
 
+	//@StarLight code -  BEGIN Add rain depth pass, edit by wanghai
+	virtual void AddRainDepthCapture(FRainDepthSceneProxy* RainDepthSceneProxy) override {};
+	virtual void RemoveRainDepthCapture(FRainDepthSceneProxy* RainDepthSceneProxy) override {};
+	virtual FRainDepthProjectedInfo* GetRainDepthCaptureInfo() override { return nullptr; };
+	//@StarLight code -  END Add rain depth pass, edit by wanghai
+
 	virtual void AddWindSource(class UWindDirectionalSourceComponent* WindComponent) override {}
 	virtual void RemoveWindSource(class UWindDirectionalSourceComponent* WindComponent) override {}
 	virtual const TArray<class FWindSourceSceneProxy*>& GetWindSources_RenderThread() const override

@@ -958,6 +958,8 @@ UMaterial::UMaterial(const FObjectInitializer& ObjectInitializer)
 
 	PhysMaterial = nullptr;
 	PhysMaterialMask = nullptr;
+
+	bUsedWithRainOccluder = true;
 }
 
 void UMaterial::PreSave(const class ITargetPlatform* TargetPlatform)

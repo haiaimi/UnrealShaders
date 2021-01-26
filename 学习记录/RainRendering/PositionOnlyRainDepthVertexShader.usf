@@ -37,8 +37,7 @@ void PositionOnlyMain(
 	{
 		OutPosition = INVARIANT(mul(WorldPos, MobileRainDepthPass.ProjectionMatrix));
 		//OutPosition = WorldPos;
-		OutPosition.z /= 2000.f;
-		//OutPosition.z += 1.f;
+		OutPosition.z /= MobileRainDepthPass.MaxDepthSize;
 		OutPosition.w = 1.f;
 	}
 	

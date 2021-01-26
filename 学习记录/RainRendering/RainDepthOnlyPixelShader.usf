@@ -69,7 +69,7 @@ Texture2D<float> RainDepthTexture;
 SamplerState DepthTextureSampler;
 
 void ConvertRainDepthPS(float4 SVPos : SV_POSITION, 
-						out float OutColor : SV_Target0)
+						out uint OutColor : SV_Target0)
 {
 	float CurrentDepth = RainDepthTexture.SampleLevel(DepthTextureSampler, SVPos.xy * MobileRainDepthPass.DepthTexSizeAndInvSize.zw, 0);
 	CurrentDepth *= MobileRainDepthPass.MaxDepthSize;

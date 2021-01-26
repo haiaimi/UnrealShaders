@@ -3,11 +3,9 @@
 #include "/Engine/Generated/Material.ush"
 #include "/Engine/Generated/VertexFactory.ush"
 
-#if USING_TESSELLATION	
-	#define VertexFactoryGetInterpolants VertexFactoryGetInterpolantsVSToDS
-#else
-	#define VertexFactoryGetInterpolants VertexFactoryGetInterpolantsVSToPS
-#endif
+#define USE_RAW_WORLD_POSITION ((!MATERIALBLENDING_SOLID || OUTPUT_PIXEL_DEPTH_OFFSET) && USE_WORLD_POSITION_EXCLUDING_SHADER_OFFSETS)
+
+#define VertexFactoryGetInterpolants VertexFactoryGetInterpolantsVSToPS
 
 struct FRainDepthOnlyVSToPS
 {
@@ -27,7 +25,7 @@ void Main(
 	FVertexFactoryInput Input,
 	OPTIONAL_VertexID
 	out FRainDepthOnlyVSToPS Output
-#if USE_GLOBAL_CLIP_PLANE && !USING_TESSELLATION
+#if USE_GLOBAL_CLIP_PLANE
 	, out float OutGlobalClipPlaneDistance : SV_ClipDistance
 #endif
 #if INSTANCED_STEREO
@@ -67,8 +65,8 @@ void Main(
 		float4 RasterizedWorldPosition = VertexFactoryGetRasterizedWorldPosition(Input, VFIntermediates, WorldPos);
 		
 		Output.Position = INVARIANT(mul(RasterizedWorldPosition, MobileRainDepthPass.ProjectionMatrix));
-		Output.Position.z /= 2000.f;
-		Output.Position.w = 1.f;
+		Output.Position.z /= MobileRainDepthPass.MaxDepthSize;
+		Output.Position.w = 1.0f;
 	}
 
 #if INSTANCED_STEREO && !MULTI_VIEW
@@ -101,11 +99,11 @@ void Main(
 
 #endif
 
-#if !MATERIALBLENDING_SOLID || OUTPUT_PIXEL_DEPTH_OFFSET
-#if !USING_TESSELLATION	
-	Output.PixelPosition = WorldPos;
-#endif
-#endif
+//#if !MATERIALBLENDING_SOLID || OUTPUT_PIXEL_DEPTH_OFFSET
+//#if !USING_TESSELLATION	
+//	Output.PixelPosition = WorldPos;
+//#endif
+//#endif
 
 #if USE_RAW_WORLD_POSITION
 	Output.PixelPositionExcludingWPO = WorldPositionExcludingWPO.xyz;

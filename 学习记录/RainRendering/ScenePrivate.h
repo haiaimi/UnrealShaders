@@ -92,6 +92,9 @@ class UWindDirectionalSourceComponent;
 class FRHIGPUBufferReadback;
 class FRHIGPUTextureReadback;
 class FRuntimeVirtualTextureSceneProxy;
+//@StarLight code -  BEGIN Add rain depth pass, edit by wanghai
+class FRainDepthSceneProxy;
+//@StarLight code -  END Add rain depth pass, edit by wanghai
 
 /** Holds information about a single primitive's occlusion. */
 
@@ -2706,6 +2709,12 @@ public:
 	TArray<FVolumeCloudSceneProxy*> VolumeCloudStack;
 	//@StarLight code -  Mobile Volumetric Cloud, Added by zhouningwei
 
+	//@StarLight code - BEGIN Add rain depth pass, edit by wanghai
+	FRainDepthProjectedInfo* RainDepthInfo = nullptr;
+
+	TArray<FRainDepthSceneProxy*> RainDepthStack;
+	//@StarLight code - END Add rain depth pass, edit by wanghai
+
 	/** The wind sources in the scene. */
 	TArray<class FWindSourceSceneProxy*> WindSources;
 
@@ -2846,6 +2855,12 @@ public:
 	virtual void RemoveVolumetricCloud(FVolumeCloudSceneProxy* VolumetricCloudSceneProxy) override;
 	virtual FVolumeCloudSceneProxy* GetVolumetric() override { return VolumeCloud; }
 	//@StarLight code -  Mobile Volumetric Cloud, Added by zhouningwei
+
+	//@StarLight code -  BEGIN Add rain depth pass, edit by wanghai
+	virtual void AddRainDepthCapture(FRainDepthSceneProxy* RainDepthSceneProxy) override;
+	virtual void RemoveRainDepthCapture(FRainDepthSceneProxy* RainDepthSceneProxy) override;
+	virtual FRainDepthProjectedInfo* GetRainDepthCaptureInfo() override { return RainDepthInfo; };
+	//@StarLight code -  END Add rain depth pass, edit by wanghai
 
 	virtual void AddWindSource(UWindDirectionalSourceComponent* WindComponent) override;
 	virtual void RemoveWindSource(UWindDirectionalSourceComponent* WindComponent) override;

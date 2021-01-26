@@ -1881,9 +1881,14 @@ protected:
 	void MobileComputeLightGrid(FRHICommandListImmediate& RHICmdList);
 	// end
 
-	// @StarLight code - BEGIN HZB Created By YJH
-	void MobileRenderHZB(FRHICommandListImmediate& RHICmdList);
-	// @StarLight code - BEGIN HZB Created By YJH
+	// @StarLight code - BEGIN HZB Created By yanjianhong
+	void MobileBuildHzb(FRHICommandListImmediate& RHICmdList);
+	void MobileSubmitHzb(FRHICommandListImmediate& RHICmdList);
+	// @StarLight code - BEGIN HZB Created By yanjianhong
+
+	// @StarLight code - BEGIN GPU-Driven Created By yanjianhong
+	void MobileGPUCulling(FRHICommandListImmediate& RHICmdList);
+	// @StarLight code - BEGIN GPU-Driven Created By yanjianhong
 
 	void InitViews(FRHICommandListImmediate& RHICmdList);
 
@@ -1937,7 +1942,11 @@ protected:
 	/** Renders the base pass for translucency. */
 	void RenderTranslucency(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*> PassViews, bool bRenderToSceneColor, bool bShouldRenderDownSampleTranslucency);
 
+	// @StarLight code - BEGIN DownSampleSeparate Translucency Created By yanjianhong
 	void RenderTranslucency_DownSampleSeparate(FRHICommandListImmediate& RHICmdList, const TArrayView<const FViewInfo*>& PassViews);
+	void MobileDownSampleDepth(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, float DownsamplingScale);
+	void UpsampleTranslucency(FRHICommandList& RHICmdList, const FViewInfo& View, float DownsamplingScale);
+	// @StarLight code - END DownSampleSeparate Translucency Created By yanjianhong
 
 	/** Perform upscaling when post process is not used. */
 	void BasicPostProcess(FRHICommandListImmediate& RHICmdList, FViewInfo &View, bool bDoUpscale, bool bDoEditorPrimitives);
@@ -1950,13 +1959,6 @@ protected:
 
 	/** On chip pre-tonemap before scene color MSAA resolve (iOS only) */
 	void PreTonemapMSAA(FRHICommandListImmediate& RHICmdList);
-
-	//YJH
-	void MobileDownSampleDepth(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, float DownsamplingScale);
-
-	void UpsampleTranslucency(FRHICommandList& RHICmdList, const FViewInfo& View, float DownsamplingScale);
-	//YJH End
-
 
 	void SortMobileBasePassAfterShadowInit(FExclusiveDepthStencil::Type BasePassDepthStencilAccess, FViewVisibleCommandsPerView& ViewCommandsPerView);
 	void SetupMobileBasePassAfterShadowInit(FExclusiveDepthStencil::Type BasePassDepthStencilAccess, FViewVisibleCommandsPerView& ViewCommandsPerView);
@@ -1979,7 +1981,7 @@ private:
 	//end
 
 	//@StarLight code -  BEGIN Add rain depth pass, edit by wanghai
-	FRainDepthProjectedInfo RainDepthProjectedInfo;
+	//ParallelMeshDrawCommandPass RainDepthCommandPass;
 	//@StarLight code -  END Add rain depth pass, edit by wanghai
 };
 

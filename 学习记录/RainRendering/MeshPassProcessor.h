@@ -22,7 +22,11 @@ namespace EMeshPass
 	enum Type
 	{
 		DepthPass,
+//@StarLight code - BEGIN Add rain depth pass, edit by wanghai
+#if WITH_EDITOR
 		RainDepthPass,
+#endif
+//@StarLight code - END Add rain depth pass, edit by wanghai
 		BasePass,
 		SkyPass,
 		SingleLayerWaterPass,
@@ -61,6 +65,11 @@ inline const TCHAR* GetMeshPassName(EMeshPass::Type MeshPass)
 	switch (MeshPass)
 	{
 	case EMeshPass::DepthPass: return TEXT("DepthPass");
+//@StarLight code - BEGIN Add rain depth pass, edit by wanghai
+#if WITH_EDITOR
+	case EMeshPass::RainDepthPass : return TEXT("RainDepthPass");
+#endif
+//@StarLight code - END Add rain depth pass, edit by wanghai
 	case EMeshPass::BasePass: return TEXT("BasePass");
 	case EMeshPass::SkyPass: return TEXT("SkyPass");
 	case EMeshPass::SingleLayerWaterPass: return TEXT("SingleLayerWaterPass");
