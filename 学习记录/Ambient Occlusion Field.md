@@ -78,6 +78,59 @@ $r_0$是从对象的中心位置到凸包的径向距离，这个必须为每个
 
     $r_0(\hat{\omega}), 1$ distance from center to convex hull
 
-    可以看出总共有7个标量，可以使用Ray Tracing的方式和光栅化的方式来计算这些采样信息。
+    可以看出总共有7个标量，可以使用Ray Tracing的方式和光栅化的方式来计算这些采样信息，这里使用光栅化的方式来生成，然后从显存回读到内存进行处理，这里可以使用一些优化方式，如使用Stencil-Buffer和bitmasks来优化回读次数。我们集中精力和精度用于计算表面根据$r$对数分布的采样点。我们不会再凸包体内部或者太远的位置进行采样。
+
+    $\varepsilon_{\Omega}(\hat{\omega})=\sum^{N}_{i=1}(\Omega(\hat{\omega},r_i)-\tilde{\Omega}(\hat\omega,r_i))^2$
+
+    上式中$\Omega(\hat{\omega},r_i)$就是采样的遮挡值，$\tilde{\Omega}(\hat\omega,r_i)$就是采样点$(\hat\omega,r_i)$处的近似值，$N$就是采样点的数量。拟合过程就为每个方向$\hat{\omega}$得出$a,b,c$系数。
+
+    为了适应模型平均方向$\tilde{\Upsilon}$，我们最小化采样方向误差：
+
+    $\varepsilon_{\Upsilon}(\hat{\omega})=\sum^{N}_{i=1}(1-\Upsilon(\hat{\omega},r_i)\cdot\Upsilon(\hat\omega,r_i))^2$
+
+    上式中$\Upsilon(\hat{\omega},r_i)$就是平均方向，$\hat\Upsilon(\hat\omega,r_i)$是近似方向。
+
+    尽管AO通常是空间平滑的，但是难免会有高频细节，因此需要注意采样不足的Artifact。我们使用标准方案进行解决，就是在采样前对信号进行low-pass滤波，这可以通过构建高分辨率的Cube-map然后降采样滤波（例如高斯滤波）。尽管分辨率很低的cube-map，例如8x8也可以有很好的效果
 
 * Run-Time
+  
+    当渲染接收表面时，多项式信息就会从对应的遮挡体的cube-map获取到。为了从方向$\Upsilon$和指向的固体角$\Omega$计算出AO值我们需要进行余弦权重（Spherical Cap）积分。直接进行积分在PS中会十分昂贵。所以我们通过固体角和相对于表面的仰角对查找表参数化。当我们超出拟合范围时，方法$\tilde{\Omega}(\omega,r)$和$\tilde\Upsilon(\omega,r)$就会偏离真实的$\Omega$和$\Upsilon$，解决方案是到达一定的距离时AO值设为0，因为AO只能影响一定范围内，同时也优化了性能。所有的处理流程包括查找、计算最终的AO值都是在Fragment阶段完成，下面一段伪代码就表示在Shader中的处理流程：
+    
+    **Inupt:**
+
+    $x$: 接收点的位置（相对于场空间）
+
+    $n$: 接收点表面法线
+
+    **Output:**
+
+    $\tilde{A}$: 环境光遮蔽值
+
+    **Constants:**
+
+    $r_{near}$: 衰减近处距离
+
+    $r_{far}$：衰减远处距离
+
+    $A_0$：凸包体内部的固定AO值
+
+    $p$：凸包体内部衰减
+
+    **Textures**
+
+    $T_{O_{cc}}$：遮挡数据Cube-map
+
+    $T_{C_{0}}$：方向数据Cube-map
+
+    $T_{LUT}$：Spherical cap积分查找表
+
+
+    $r=||x||\newline \omega=normalize(x)\newline if\ r>r_{far}\ then\ dsicard \newline (a,b,c,r_0)=T_{O_{cc}}\newline r_{clamp}=max(r,r_0)\newline\tilde{\Omega}=(ar_{clamp}^2+br_{clamp}+c)^{-1}\newline\tilde{\Upsilon}=normalize(T_{C_0}[\omega]-r_{clamp}\omega)\newline\tilde{A}=T_{LUT}[\tilde{\Omega,n\cdot\tilde{\Upsilon}}]\newline if\ r<r_0\ then\newline t=(r/r_0)^p\newline \tilde{A}=t\tilde{A}+(1-t)A_0\newline endif\newline\tilde{A}=\tilde{A}*smoothstep(r_{far},r_{near},r)\newline return\  \tilde{A}$
+
+* Combine Occluders
+
+    在实际情况中一定要考虑多个环境光遮蔽投射体叠加的情况。理论上，两个表示遮挡体的Spherical Caps可以通过查找表结合，但是由于Spherical Cap在一个任意的位置已经是近似值，不值得做额外的计算。实际上我们只是简单的进行$1-A$的相乘混合，这其实时有理论基础的，现在先考虑两个遮挡体重叠的情况，为了计算$a$，$b$两个遮挡体，需要解算下面的积分：
+
+    $A_{ab}(x,n)=\frac{1}{\pi}\int V_{ab}(x,\omega)\lfloor \omega\cdot n \rfloor d{\omega}$
+
+    $V_{ab}(x,n)$就是$a$，$b$两个对象的可见性函数的结合
