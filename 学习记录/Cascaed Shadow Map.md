@@ -52,3 +52,27 @@ $\lambda$控制着矫正的强度。
 ![image]()
 
 同时，将光源的ModelView矩阵$M$设为朝向光源方向，并且设置了通用正交投影矩阵$P=I$。然后将相机平截头体的每个角点投影到光源的Homogeneous空间的$P_h=PM_P$。每个方向上的最小$m_i$和最大$M_i$形成一个包围盒，该包围盒和光源视锥体对齐，从中我们可以确定缩放比例和偏移来使通用光源视锥与之重合。实际上这样可以确保我们在z轴上获得最佳精度，在x，y轴上尽可能的减少损失，这是通过构建矩阵$C$来实现的。最终光源投影矩阵$P$被改成$P=CP_z$，$P_z$矩阵是一个带有远近平面的矩阵。
+
+# CSM In UE4
+
+在UE4中有自带的Cascaded Shadow Map实现，下面主要是关于UE4中的CSM的渲染流程，主要针对的是移动管线。
+
+## 流程
+
+### Dynamic Shadow初始化
+准备绘制CSM所需要的内容，主要内容在*FMobileSceneRenderer::InitDynamicShadows*中。
+
+* FShadowProjectionMatrix：阴影投影矩阵
+
+1. 收集受阴影影响的图元，这里就涉及到*FMobileCSMSubjectPrimitives*，该结构体用于存储受阴影投射的图元。
+   调用堆栈：
+   
+    * *FSceneRenderer::InitDynamicShadows* 
+        * *FSceneRenderer::AddViewDependentWholeSceneShadowsForView*：为指定光源整个场景的Shadow生成*FProjectedShadowInfos*。
+          * *FDirectionalLightSceneProxy::GetShadowSplitBounds*：获取当前等级ShadowMap的Bound
+          * *FProjectedShadowInfo::SetupWholeSceneProjection*：设置整个场景的投影信息
+            * *FProjectedShadowInfo::UpdateShaderDepthBias*：更新当前的Bias
+        * *FSceneRenderer::InitProjectedShadowVisibility*：初始化投影的阴影可见性，有的物体不在范围内就不会投射阴影，这里只是准备所需要的信息，一部分是前面计算好的
+        * *FSceneRenderer::GatherShadowPrimitives*：进行视锥剔除，收集需要投射阴影的Primitive，这里使用八叉树收集然后多线程异步执行判断流程，这里面会收集PreShadow和ViewDependentWholeSceneShadow两种，前者就是烘焙阴影后者才是动态阴影
+          * *FGatherShadowPrimitivesPacket::FilterPrimitiveForShadows*：多线程中的判断实际运行的函数
+        * *FSceneRenderer::AllocateShadowDepthTargets*：为ShadowDepth分配RT
