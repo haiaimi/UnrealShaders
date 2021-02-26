@@ -117,7 +117,7 @@ $\lambda$控制着矫正的强度。
 * FWholeSceneProjectedShadowInitializer：全场景阴影所需的信息
   * FProjectedShadowInitializer：投影阴影的Transform信息
     * FVector PreShadowTranslation：在被一个阴影矩阵转换到世界空间前的Translation
-    * FMatrix WorldToLight：光源矩阵信息，如果是平行光就是一个旋转矩阵
+    * FMatrix WorldToLight：光源矩阵信息，如果是平行光就是一个旋转矩阵，一般是*FInverseRotationMatrix*
     * FVector Scales；
     * FVector FaceDirection：向前的方向，一般是*FVector(1,0,0)*
     * FBoxSphereBounds SubjectBounds：局部空间的Bounds信息，就是当前级别的
@@ -137,7 +137,48 @@ $\lambda$控制着矫正的强度。
     * int32 ShadowSplitIndex：当前级的Index
     * float CascadeBiasDistribution：级联阴影的Bias
 
-*FProjectedShadowInfo::SetupWholeSceneProjection*函数就是用来计算绘制阴影深度所需要的矩阵和一些其他的空间信息
+*FProjectedShadowInfo::SetupWholeSceneProjection*函数就是用来计算绘制阴影深度所需要的矩阵和一些其他的空间信息：
+
+```cpp
+FVector	XAxis, YAxis;
+Initializer.FaceDirection.FindBestAxisVectors(XAxis,YAxis);
+// 获取光源的World下的矩阵，注意这里Scale的y，z分量是 1/SphereRadius，这是为了后面的投影矩阵，因为ShadowProjectionMatrix没有区域的长和宽，所以直接在这里乘
+const FMatrix WorldToLightScaled = Initializer.WorldToLight * FScaleMatrix(Initializer.Scales);
+// 朝向矩阵，该矩阵可以理解为View Matrix，这里的FBasisVectorMatrix相当于重新构建了一个坐标系，有了这个转换后面就不需要乘以坐标系转换矩阵
+const FMatrix WorldToFace = WorldToLightScaled * FBasisVectorMatrix(-XAxis,YAxis,Initializer.FaceDirection.GetSafeNormal(),FVector::ZeroVector);
+
+{
+    const float DepthRangeClamp = 5000;
+    MaxSubjectZ = FMath::Max(MaxSubjectZ, DepthRangeClamp);
+    MinSubjectZ = FMath::Min(MinSubjectZ, -DepthRangeClamp);
+
+    // 把Shadow的Transform转换到Shadowmap的空间中
+    const FVector TransformedPosition = WorldToFace.TransformPosition(-PreShadowTranslation);
+
+    // 在阴影贴图DownSamples时允许的最大比例系数
+    const int32 MaxDownsampleFactor = 4;
+    // 当前阴影位置会多出的距离，为了下面的对齐
+    const float SnapX = FMath::Fmod(TransformedPosition.X, 2.0f * MaxDownsampleFactor / InResolutionX);
+    const float SnapY = FMath::Fmod(TransformedPosition.Y, 2.0f * MaxDownsampleFactor / InResolutionY);
+    // 减去刚才超出的距离，并且转回到原来的坐标系下，这就与指定大小的阴影采样块对齐了，这样做主要是为了防止镜头移动的时候产生边缘闪烁
+    const FVector SnappedWorldPosition = WorldToFace.InverseFast().TransformPosition(TransformedPosition - FVector(SnapX, SnapY, 0.0f));
+    PreShadowTranslation = -SnappedWorldPosition;
+    
+    // 计算用于绘制深度的ViewProjection matrix
+    SubjectAndReceiverMatrix = WorldToFace * FShadowProjectionMatrix(MinSubjectZ, MaxSubjectZ, Initializer.WAxis);
+    
+    // View matrix
+    ShadowViewMatrix = Initializer.WorldToLight * 
+		FMatrix(
+		FPlane(0,	0,	1,	0),
+		FPlane(1,	0,	0,	0),
+		FPlane(0,	1,	0,	0),
+		FPlane(0,	0,	0,	1));
+}
+```
+
+
 
 ### Render Shadow Depth
 准备好需要投射阴影的物件后，就进行深度绘制，在
+
