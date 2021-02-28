@@ -179,6 +179,183 @@ const FMatrix WorldToFace = WorldToLightScaled * FBasisVectorMatrix(-XAxis,YAxis
 
 
 
+*FSceneRenderer::UpdatePreshadowCache*，改函数是用来准备需要的PreShadow（PreShadow就是在使用Per Object阴影时会用到），加入到Cache，这里就不进行描述。
+
+*FSceneRenderer::GatherShadowPrimitives*，就是筛选出需要绘制深度的图元，这里会先简单的进行一次阴影视锥剔除，然后在使用多线程进行精确剔除：
+
+```cpp
+// 对所有级别的阴影视锥进行逐个剔除
+for (int32 ShadowIndex = 0, Num = ViewDependentWholeSceneShadows.Num();ShadowIndex < Num;ShadowIndex++)
+{
+    const FProjectedShadowInfo* RESTRICT ProjectedShadowInfo = ViewDependentWholeSceneShadows[ShadowIndex];
+    const FLightSceneInfo& RESTRICT LightSceneInfo = ProjectedShadowInfo->GetLightSceneInfo();
+    const FLightSceneProxy& RESTRICT LightProxy = *LightSceneInfo.Proxy;
+
+    const FVector LightDirection = LightProxy.GetDirection();
+    const FVector PrimitiveToShadowCenter = ProjectedShadowInfo->ShadowBounds.Center - PrimitiveBounds.Origin;
+    // Project the primitive's bounds origin onto the light vector
+    const float ProjectedDistanceFromShadowOriginAlongLightDir = PrimitiveToShadowCenter | LightDirection;
+    // Calculate the primitive's squared distance to the cylinder's axis
+    const float PrimitiveDistanceFromCylinderAxisSq = (-LightDirection * ProjectedDistanceFromShadowOriginAlongLightDir + PrimitiveToShadowCenter).SizeSquared();
+    const float CombinedRadiusSq = FMath::Square(ProjectedShadowInfo->ShadowBounds.W + PrimitiveBounds.SphereRadius);
+
+    // Note: Culling based on the primitive's bounds BEFORE dereferencing PrimitiveSceneInfo / PrimitiveProxy
+
+    // Check if this primitive is in the shadow's cylinder
+    if (PrimitiveDistanceFromCylinderAxisSq < CombinedRadiusSq
+        // If the primitive is further along the cone axis than the shadow bounds origin, 
+        // Check if the primitive is inside the spherical cap of the cascade's bounds
+        && !(ProjectedDistanceFromShadowOriginAlongLightDir < 0 && PrimitiveToShadowCenter.SizeSquared() > CombinedRadiusSq)
+        // Test against the convex hull containing the extruded shadow bounds
+        // 这里就是使用之前得到的精确几何体进行相交检测
+        && ProjectedShadowInfo->CascadeSettings.ShadowBoundsAccurate.IntersectBox(PrimitiveBounds.Origin, PrimitiveBounds.BoxExtent))
+    {
+        // Distance culling for RSMs
+        const float MinScreenRadiusForShadowCaster = ProjectedShadowInfo->bReflectiveShadowmap ? GMinScreenRadiusForShadowCasterRSM : GMinScreenRadiusForShadowCaster;
+
+        bool bScreenSpaceSizeCulled = false;
+        check(ProjectedShadowInfo->DependentView);
+
+        {
+            const float DistanceSquared = (PrimitiveBounds.Origin - ProjectedShadowInfo->DependentView->ShadowViewMatrices.GetViewOrigin()).SizeSquared();
+            bScreenSpaceSizeCulled = FMath::Square(PrimitiveBounds.SphereRadius) < FMath::Square(MinScreenRadiusForShadowCaster) * DistanceSquared * ProjectedShadowInfo->DependentView->LODDistanceFactorSquared;
+        }
+
+        bool bCastsInsetShadows = PrimitiveProxy->CastsInsetShadow();
+        // If light attachment root is valid, we're in a group and need to get the flag from the root.
+        if (PrimitiveSceneInfo->LightingAttachmentRoot.IsValid())
+        {
+            FAttachmentGroupSceneInfo& AttachmentGroup = PrimitiveSceneInfo->Scene->AttachmentGroups.FindChecked(PrimitiveSceneInfo->LightingAttachmentRoot);
+            bCastsInsetShadows = AttachmentGroup.ParentSceneInfo && AttachmentGroup.ParentSceneInfo->Proxy->CastsInsetShadow();
+        }
+		
+        // 下面是一段属性检测
+        if (!bScreenSpaceSizeCulled
+            && ProjectedShadowInfo->GetLightSceneInfoCompact().AffectsPrimitive(PrimitiveBounds, PrimitiveProxy)
+            // Include all primitives for movable lights, but only statically shadowed primitives from a light with static shadowing,
+            // Since lights with static shadowing still create per-object shadows for primitives without static shadowing.
+            && (!LightProxy.HasStaticLighting() || (!LightSceneInfo.IsPrecomputedLightingValid() || LightProxy.UseCSMForDynamicObjects()))
+            // Only render primitives into a reflective shadowmap that are supposed to affect indirect lighting
+            && !(ProjectedShadowInfo->bReflectiveShadowmap && !PrimitiveProxy->AffectsDynamicIndirectLighting())
+            // Exclude primitives that will create their own per-object shadow, except when rendering RSMs
+            && (!bCastsInsetShadows || ProjectedShadowInfo->bReflectiveShadowmap)
+            // Exclude primitives that will create a per-object shadow from a stationary light
+            && !ShouldCreateObjectShadowForStationaryLight(&LightSceneInfo, PrimitiveProxy, true)
+            // Only render shadows from objects that use static lighting during a reflection capture, since the reflection capture doesn't update at runtime
+            && (!bStaticSceneOnly || PrimitiveProxy->HasStaticLighting())
+            // Render dynamic lit objects if CSMForDynamicObjects is enabled.
+            && (!LightProxy.UseCSMForDynamicObjects() || !PrimitiveProxy->HasStaticLighting()))
+        {
+            ViewDependentWholeSceneShadowSubjectPrimitives[ShadowIndex].Add(PrimitiveSceneInfo);
+        }
+    }
+}
+```
+
+添加Mesh Emelents：
+
+```cpp
+for (int32 ShadowIndex = 0; ShadowIndex < ViewDependentWholeSceneShadowSubjectPrimitives.Num(); ShadowIndex++)
+{
+    FProjectedShadowInfo* ProjectedShadowInfo = ViewDependentWholeSceneShadows[ShadowIndex];
+
+    bool bRecordShadowSubjectsForMobile = false;
+
+    if (FSceneInterface::GetShadingPath(FeatureLevel) == EShadingPath::Mobile)
+    {
+        // record shadow casters if CSM culling is enabled for the light's mobility type and the culling mode requires the list of casters.
+        static auto* CVarMobileEnableStaticAndCSMShadowReceivers = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.EnableStaticAndCSMShadowReceivers"));
+        static auto* CVarMobileEnableMovableLightCSMShaderCulling = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.EnableMovableLightCSMShaderCulling"));
+        static auto* CVarMobileCSMShaderCullingMethod = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.Shadow.CSMShaderCullingMethod"));
+        uint32 MobileCSMCullingMode = CVarMobileCSMShaderCullingMethod->GetValueOnRenderThread()  & 0xF;
+        bRecordShadowSubjectsForMobile = 
+            (MobileCSMCullingMode == 2 || MobileCSMCullingMode == 3)
+            && ((CVarMobileEnableMovableLightCSMShaderCulling->GetValueOnRenderThread() && ProjectedShadowInfo->GetLightSceneInfo().Proxy->IsMovable() && ProjectedShadowInfo->GetLightSceneInfo().ShouldRenderViewIndependentWholeSceneShadows())
+                || (CVarMobileEnableStaticAndCSMShadowReceivers->GetValueOnRenderThread() && ProjectedShadowInfo->GetLightSceneInfo().Proxy->UseCSMForDynamicObjects()));
+    }
+
+    for (int32 PrimitiveIndex = 0; PrimitiveIndex < ViewDependentWholeSceneShadowSubjectPrimitives[ShadowIndex].Num(); PrimitiveIndex++)
+    {
+        // 这里就是开始收集Mesh Elements，在FPojectedShadowInfo::ShouldDrawStaticMeshes函数中如果是StaticRelevance就直接添加，如果是Dynamic在下面的函数里处理，如那些HISM。。。
+        ProjectedShadowInfo->AddSubjectPrimitive(ViewDependentWholeSceneShadowSubjectPrimitives[ShadowIndex][PrimitiveIndex], NULL, FeatureLevel, bRecordShadowSubjectsForMobile);
+    }
+}
+```
+
+
+
+*FSceneRenderer::GatherShadowDynamicMeshElements*，这里就是收集所有的Dynamic Mesh Elements用于后面的深度绘制了：
+
+```cpp
+TArray<const FSceneView*> ReusedViewsArray;
+ReusedViewsArray.AddZeroed(1);
+
+for (int32 AtlasIndex = 0; AtlasIndex < SortedShadowsForShadowDepthPass.ShadowMapAtlases.Num(); AtlasIndex++)
+{
+    FSortedShadowMapAtlas& Atlas = SortedShadowsForShadowDepthPass.ShadowMapAtlases[AtlasIndex];
+
+    for (int32 ShadowIndex = 0; ShadowIndex < Atlas.Shadows.Num(); ShadowIndex++)
+    {
+        FProjectedShadowInfo* ProjectedShadowInfo = Atlas.Shadows[ShadowIndex];
+        FVisibleLightInfo& VisibleLightInfo = VisibleLightInfos[ProjectedShadowInfo->GetLightSceneInfo().Id];
+        ProjectedShadowInfo->GatherDynamicMeshElements(*this, VisibleLightInfo, ReusedViewsArray, DynamicIndexBuffer, DynamicVertexBuffer, DynamicReadBuffer);
+    }
+}
+```
+
+
+
+*FMobileSceneRenderer::BuildCSMVisibilityState*，构建接收CSM的图元列表，用于检测场景中是否会有图元接收CSM阴影，这也就决定了当前视口的情况下需不需要绘制阴影，比如相机对准天空，没有一个图元会接收阴影，那么就不需要绘制CSM，这里就会用到前面得出的*ReceiverFrustum*来进行相交检测：
+
+```cpp
+// 在之前的SetupWholeSceneProjection函数里计算得到，就是阴影视锥，不过范围限制住了
+FConvexVolume& ShadowReceiverFrustum = ProjectedShadowInfo->ReceiverFrustum;
+FVector& PreShadowTranslation = ProjectedShadowInfo->PreShadowTranslation;
+
+// Common receiver test functions.
+// Test receiver bounding box against view+shadow frustum only
+auto IsShadowReceiver = [&ViewFrustum, &ShadowReceiverFrustum, &PreShadowTranslation](const FVector& PrimOrigin, const FVector& PrimExtent)
+{
+    return ViewFrustum.IntersectBox(PrimOrigin, PrimExtent)
+        && ShadowReceiverFrustum.IntersectBox(PrimOrigin + PreShadowTranslation, PrimExtent);
+};
+```
+
+检测的结果就在*FMobileCSMVisibilityInfo*结构体中：
+
+```cpp
+class FMobileCSMVisibilityInfo
+{
+public:
+	/** true if there are any primitives affected by CSM subjects */
+	uint32 bMobileDynamicCSMInUse : 1;
+}
+```
+
+
+
+```cpp
+/** dynamic shadow casting elements */
+// 存放动态物体的Mesh
+PrimitiveArrayType DynamicSubjectPrimitives;
+
+// 存放静态物体的mesh elemtent cache
+FMeshCommandOneFrameArray ShadowDepthPassVisibleCommands;
+
+// 最后用于Dispatch的 MeshDrawCommands
+FParallelMeshDrawCommandPass ShadowDepthPass;
+```
+
+
+
 ### Render Shadow Depth
-准备好需要投射阴影的物件后，就进行深度绘制，在
+准备好需要投射阴影的物件后，就进行深度绘制，绘制阴影就很简单了，就是把之前的*ShadowDepthPass*直接Dispatch出去，还有就是设置一些UniformBuffer和RenderState，如下：
+
+```cpp
+// Disable color writes
+DrawRenderState.SetBlendState(TStaticBlendState<CW_NONE>::GetRHI());
+DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<true, CF_LessEqual>::GetRHI());
+```
+
+
 
