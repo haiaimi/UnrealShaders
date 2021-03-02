@@ -359,3 +359,10 @@ DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<true, CF_LessEqual
 
 
 
+# CSM-Scrolling
+
+在场景中绘制大量静态物体的阴影时，其实可以进行Cache，因为中间大部分都是没有出子视锥的范围，只需要重新绘制边缘的部分，而且ShadowDepth并不是和视锥完全对应，ShadowDepth对应的区域是一个球体，实际如下图：
+
+![image](../RenderPictures/CascadedShadowMaps/CSM_06.png)
+
+最外面的方形才是ShadowDepth的区域，这样看来我们可以Cache住子视锥附近的图元深度，在视角移动的时候可以通过给ShadowDepth添加偏移来达到视口移动的效果。可以想象一种最理想情况，视锥的包围球位置不动，视锥在球里面旋转，那么就没有任何图元需要绘制
