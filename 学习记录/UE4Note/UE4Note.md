@@ -34,3 +34,7 @@ virtual bool ShouldCache(EShaderPlatform Platform, const FShaderType* ShaderType
     ...
 }
 ```
+
+6. UE4中的FPlane中，Normal（也就是x，y，z）表示的是平面朝外的方向，在几何体求交的时候，就是通过这种规则检测，也就是物体完全在一个平面的另一面（也就是-Normal方向）才是在几何体内。
+
+7. UE4在运行DX12 API时写自定义Shader时，一定要注意VS和PS的参数顺序要一致，否则运行期会发生编译错误。
