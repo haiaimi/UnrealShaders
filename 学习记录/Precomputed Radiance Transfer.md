@@ -92,5 +92,72 @@ $$\frac{\Phi}{sin\theta}\frac{\partial}{\partial \theta}(sin\theta\frac{\partial
 $$\frac{sin^2\theta}{\Theta\Phi}$$
 得：
 
+$$\frac{sin\theta}{\Theta}\frac{\partial}{\partial \theta}(sin\theta\frac{\partial \Theta}{\partial \theta})+l(l+1) sin^2\theta=-\frac{1}{\Phi}\frac{\partial^2\Phi}{\partial \phi^2}$$
+
+左边是$\theta$得函数，跟$\phi$无关，右边是$\phi$相关得，所以相等不可能，除非是个常量，记为$\lambda$：
+
+$$\frac{sin\theta}{\Theta}\frac{\partial}{\partial \theta}(sin\theta\frac{\partial \Theta}{\partial \theta})+l(l+1) sin^2\theta=-\frac{1}{\Phi}\frac{\partial^2\Phi}{\partial \phi^2}=\lambda$$
+
+又拆解成两个常微分方程：
+$$\frac{\partial^2\Phi}{\partial \phi^2}+\lambda \Phi=0$$
+$$\sin\theta\frac{\partial}{\partial \theta}(sin\theta\frac{\partial \Theta}{\partial \theta})+[l(l+1) sin^2\theta-\lambda]\Theta=0$$
+
+对于常微分方程，有一个隐含得“自然周期条件”，$(\Phi(\phi+2\pi)=\Theta(\phi))$，两者构成本征值（特征值）问题，即：
+$$\lambda=m^2,(m=0,\pm1,\pm2...)$$
+
+其周期解得复数形式为：
+$$\Phi(\phi)=e^{im\phi},m=0,\pm1,\pm2...$$
+
+$$cosm\phi+isin m\phi=e^{im\phi}$$
+
+可以把上面得常微分方程改成：
+$$\frac{1}{sin\theta}\theta\frac{\partial}{\partial \theta}(sin\theta\frac{\partial \Theta}{\partial \theta})+[l(l+1) sin^2\theta-\lambda]\Theta=0$$
+
+令$x=cos\theta$则：
+$$\frac{\partial\Theta}{\partial\theta}=\frac{\partial\Theta}{\partial x}\frac{\partial x}{\partial\theta}=-sin\theta\frac{\partial\Theta}{\partial x}$$
+
+代入上面得常微分方程可得：
+$$(1-x^2)\frac{\partial^2\Theta}{\partial^2x}-2x\frac{\partial\Theta}{\partial x}+[l(l+1)-\frac{m^2}{1-x^2}]\Theta=0$$
+
+上述得方程就是**I次连代勒让德方程**，当$m=0$时的特例就是：
+$$(1-x^2)\frac{\partial^2}{\partial x^2}-2x\frac{\partial \Theta}{\partial x}+l(l+1)\Theta=0$$
+
+称为**I次勒让德方程**
+
+后面只考虑连带勒让德方程，它的解就称为**连带勒让德函数**，只有当$\lambda=l(l+1),l=0,1,...$时有周期解，用$P_l^m(x)$表示，即
+$$\Theta(\theta)=P_l^m(cos\theta){m=0,\pm1,...,\pm l}$$
+
+连带勒让德函数表示为：
+$$P_l^m(x)=\frac{(-1)^m(1-x^2)^{\frac{m}{2}}}{2^ll!}\frac{d^{l+m}}{dx^{l+m}}(x^2-1)^l$$
+
+上面就是l次m阶连代勒让德函数，当$m>l$，连带勒让德函数里面有一个$m+l$次导数计算，在计算机上很难处理，但是有递归关系，如下：
+$$
+\begin{cases}
+(l-m)P_l^m(x)=x(2l-1)P_{l-1}^m(x)-(l+m-1)P_{l-2}^m(x)\\
+P_m^m(x)=(-1)^m(2m-1)!!(1-x^2)^{m/2}\\
+P_{m+1}^m(x)=x(2m+1)P_m^m(x)
+\end{cases}
+$$
+$!!$表示双阶乘，即$(2m-1)!!=1\cdot3\cdot5\cdot\cdot\cdot(2m-1)$
+
+l次m阶连带勒让德函数得关系等式：
+$$P_l^m(x)=(-1)^m\frac{(l+m)!}{(l-m)!}P_l^{-m}(x)$$
+
+代入到球函数中，它的$Y(\theta,\phi)$的通解复数形式表示为：
+$$Y(\theta,\phi)=\sum^{\infin}_{l=0}\sum^{l}_{k=-l}P_l^k(cos\theta)e^{im\phi},m=0,\pm1,\pm2,...$$
+
+一般得l次m阶球谐函数$Y_{lm}(\theta,\phi)$的复数形式可以表示为：
+$$Y_{lm}(\theta,\phi)=P_{lm}(cos\theta)e^{im\phi},m=0,\pm1,\pm2,...$$
+
+球谐函数的模长表示为：
+$$(N_l^m)^2=\int\int_SY_{lm}(x)[Y_{lm}(x)]^*sin\theta d\theta d\phi=\frac{2}{2l+1}\frac{(l+|m|)!}{(l-|m|)!}2\pi$$
+
+归一化球谐函数$Y_l^m(\theta,\phi)$的复数形式表示为：
+$$Y_l^m(\theta,\phi)=K_l^mY_{lm}(\theta,\phi)$$
+
+其中$K_l^m$表示为：
+$$K_l^m=\frac{1}{N_l^m}=\sqrt{\frac{2l+1}{4\pi}\frac{(l-|m|)!}{(l+|m|)!}}$$
+
+其中$Y_{lm}(\theta,\phi)$表示一般形式的球谐函数，$Y_l^m(\theta,\phi)$表示归一化球谐函数。
 
 把球谐函数记为$Y_l^m(\theta,\phi)$，表达式为：
