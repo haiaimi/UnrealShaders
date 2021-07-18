@@ -124,13 +124,13 @@ $$(1-x^2)\frac{\partial^2}{\partial x^2}-2x\frac{\partial \Theta}{\partial x}+l(
 
 称为**I次勒让德方程**
 
-后面只考虑连带勒让德方程，它的解就称为**连带勒让德函数**，只有当$\lambda=l(l+1),l=0,1,...$时有周期解，用$P_l^m(x)$表示，即
-$$\Theta(\theta)=P_l^m(cos\theta){m=0,\pm1,...,\pm l}$$
+后面只考虑连带勒让德方程，它的解就称为**连带勒让德函数**，只有当$\lambda=l(l+1),l=0,1,...$时有周期解，用$P_l^m(x)$表示，*这里把$x$替换成$cos\theta$*，即
+$$\Theta(\theta)=P_l^m(cos\theta)\space\{m=0,\pm1,...,\pm l\}$$
 
-连带勒让德函数表示为：
+连带勒让德函数（连带勒让德方程的解）表示为：
 $$P_l^m(x)=\frac{(-1)^m(1-x^2)^{\frac{m}{2}}}{2^ll!}\frac{d^{l+m}}{dx^{l+m}}(x^2-1)^l$$
 
-上面就是l次m阶连代勒让德函数，当$m>l$，连带勒让德函数里面有一个$m+l$次导数计算，在计算机上很难处理，但是有递归关系，如下：
+上面就是l次m阶连代勒让德函数，当$m>l$，连带勒让德函数里面有一个$m+l$（上式内容$\frac{d^{l+m}}{dx^{l+m}}(x^2-1)^l$）次导数计算，在计算机上很难处理，但是有递归关系，如下：
 $$
 \begin{cases}
 (l-m)P_l^m(x)=x(2l-1)P_{l-1}^m(x)-(l+m-1)P_{l-2}^m(x)\\
@@ -143,7 +143,7 @@ $!!$表示双阶乘，即$(2m-1)!!=1\cdot3\cdot5\cdot\cdot\cdot(2m-1)$
 l次m阶连带勒让德函数得关系等式：
 $$P_l^m(x)=(-1)^m\frac{(l+m)!}{(l-m)!}P_l^{-m}(x)$$
 
-代入到球函数中，它的$Y(\theta,\phi)$的通解复数形式表示为：
+代入到球函数中，它的$Y(\theta,\phi)$的通解复数形式（结合前面的$\Phi(\phi)=e^{im\phi}$）表示为：
 $$Y(\theta,\phi)=\sum^{\infin}_{l=0}\sum^{l}_{k=-l}P_l^k(cos\theta)e^{im\phi},m=0,\pm1,\pm2,...$$
 
 一般得l次m阶球谐函数$Y_{lm}(\theta,\phi)$的复数形式可以表示为：
@@ -160,4 +160,49 @@ $$K_l^m=\frac{1}{N_l^m}=\sqrt{\frac{2l+1}{4\pi}\frac{(l-|m|)!}{(l+|m|)!}}$$
 
 其中$Y_{lm}(\theta,\phi)$表示一般形式的球谐函数，$Y_l^m(\theta,\phi)$表示归一化球谐函数。
 
-把球谐函数记为$Y_l^m(\theta,\phi)$，表达式为：
+球谐函数的实数表现形式，当$m>0$时采用实数$cos$部分，当$m<0$时采用虚数$sin$部分，归一化的球谐函数的实数表现形式为：
+$$Y_l^m(\theta,\phi)=
+\begin{cases}
+\sqrt{2}K_l^mcos(m\phi)P_l^m(cos\theta)\space m>0\\
+\sqrt{2}K_l^msin(-m\phi)P_l^{-m}(cos\theta)\space m<0\\
+K_l^0P_l^m(cos\theta)\space m=0
+\end{cases}
+$$
+
+根据上面的公式就可以推导出球谐函数。
+
+### 球谐性质
+
+* 正交完备性
+* 旋转不变性
+
+#### 正交完备性
+任意两个归一化的球谐函数在球面上的积分有：
+$$\int_S\int Y_l^m(\theta,\phi)Y_k^n(\theta,\phi)sin\theta d\theta d\phi=
+\begin{cases}
+0 \space m\neq n,l\neq k\\
+1 \space m=n,l=k
+\end{cases}
+$$
+
+这就表示由球谐函数构成的函数组$\{Y_l^m(\theta,\phi)\}$是正交归一化的。
+
+以某一正交归一函数组为基，把一个给定的函数用这个函数以线性组合来表示，这是一种重要的展开，一个著名的例子就是傅里叶变换。
+
+任意一个球面函数$f(\theta,\phi)$可以用正交归一的球函数$Y_l^m(\theta,\phi)$进行展开，这种展开就是类似于傅里叶展开，称为**广义傅里叶展开**：
+$$f(\theta,\phi)=\sum^\infin_{l=0}\sum^l_{m=-1}C_l^mY_l^m(\theta,\phi)$$
+
+其中**广义傅里叶系数$C_l^m$**为：
+$$C_l^m=\int_0^{2\pi}\int_0^{\pi}f(\theta,\phi)Y_l^m(\theta,\phi)sin\theta d\theta d\phi$$
+当$l\to\infin$时，展开级数和会平均收敛于$f(\theta,\phi)$，也就是当$l$越大，级数和就会越趋近于被展开的函数$f(\theta,\phi)$。平均收敛并不代表收敛只是趋近的含义。
+$n$的取值不可能无限大，一般就是取固定系数如$n=2$，如下：
+$$\{Y_l^m(\theta,\phi)\}=\{Y_0^0,Y_1^{-1},Y_1^0,Y_1^1\}$$
+
+给定系数$n$，得到的球谐函数组的个数就为$n^2$
+广义傅里叶系数相当于这样的排列：
+$$C_0^0,C_1^{-1},C_1^0,C_1^1,C_2^{-2}...$$
+
+用一个系数$c_k$来表示上面的广义傅里叶系数，用函数$y_k(\theta,\phi)$来表示球谐函数，可以换成如下形式：
+$$f(\theta,\phi)=\sum_{k=0}^{n^2-1}c_ky_k(\theta,\phi)$$
+
+球谐函数相当于正交基，将函数$f(\theta,\phi)$表示为这组正交基的线性组合，生成线性组合系数的过程就是**投影**。相反，利用这组系数和正交基组合。得到函数的过程就是**重建**。投影就相当于计算函数积分，计算消耗大，一般离线处理。但是在实时中可以快速重建原始函数。
