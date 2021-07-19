@@ -192,7 +192,7 @@ $$
 任意一个球面函数$f(\theta,\phi)$可以用正交归一的球函数$Y_l^m(\theta,\phi)$进行展开，这种展开就是类似于傅里叶展开，称为**广义傅里叶展开**：
 $$f(\theta,\phi)=\sum^\infin_{l=0}\sum^l_{m=-1}C_l^mY_l^m(\theta,\phi)$$
 
-其中**广义傅里叶系数$C_l^m$**为：
+其中**广义傅里叶系数**$C_l^m$为：
 $$C_l^m=\int_0^{2\pi}\int_0^{\pi}f(\theta,\phi)Y_l^m(\theta,\phi)sin\theta d\theta d\phi$$
 当$l\to\infin$时，展开级数和会平均收敛于$f(\theta,\phi)$，也就是当$l$越大，级数和就会越趋近于被展开的函数$f(\theta,\phi)$。平均收敛并不代表收敛只是趋近的含义。
 $n$的取值不可能无限大，一般就是取固定系数如$n=2$，如下：
@@ -206,3 +206,43 @@ $$C_0^0,C_1^{-1},C_1^0,C_1^1,C_2^{-2}...$$
 $$f(\theta,\phi)=\sum_{k=0}^{n^2-1}c_ky_k(\theta,\phi)$$
 
 球谐函数相当于正交基，将函数$f(\theta,\phi)$表示为这组正交基的线性组合，生成线性组合系数的过程就是**投影**。相反，利用这组系数和正交基组合。得到函数的过程就是**重建**。投影就相当于计算函数积分，计算消耗大，一般离线处理。但是在实时中可以快速重建原始函数。
+
+#### 傅里叶级数（Fourier Series）
+任意周期的函数都可以写成三角函数之和，傅里叶级数就是通过三角函数和常数项来叠加逼近周期为T的函数$f(x)$，任何周期函数都可以看成是不同振幅，不同相位正弦波叠加。
+傅里叶级数就是向量，如下：
+$$f(x)=a_0+\sum^\infin_{n=1}(a_ncos(\frac{2\pi n}{T}x)+b_nsin(\frac{2\pi n}{T}x))$$
+
+上面实际上就是把$f(x)$当作如下基的向量：
+$$\{1,cos(\frac{2\pi n}{T}),sin(\frac{2\pi n}{T}x)\}$$
+
+为了求基的系数，可以两边同时乘以$cosnx$，如下：
+$$\int_{-\pi}^{\pi}f(x)cosnxdx=a_0\int_{-\pi}^{\pi}cosnxdx+\sum_{n=1}^{\infin}a_n\int_{-\pi}^{\pi}cosnxcosnxdx+\sum_{n=1}^{\infin}b_n\int_{-\pi}^{\pi}sinnxcosnxdx$$
+
+由于不同向量是正交的（周期内积分为0），所以非零项只有$\sum_{n=1}^{\infin}a_n\int_{-\pi}^{\pi}cos^2nxdx$，$a_n\int_{-\pi}^{\pi}cos^2nxdx=\pi a_n$也就得到：
+$$an=\frac{1}{\pi}\int_{-\pi}^{\pi}f(x)cosnxdx$$
+
+可以用下面的方式表示：
+$$an=\frac{<f(x),cosnx>}{<cosnx,cosnx>}$$
+
+时域就是我们正常看到的波形。
+
+正弦波其实就是一个圆周运动在一条直线上得投影，频域得基本单元可以理解为一个始终在旋转得圆：
+
+![image](../RenderPictures/Fourier/Fourier01.jpg)
+
+那么多个正弦波叠加情况就如下动图：
+
+![image](https://upload.wikimedia.org/wikipedia/commons/1/1a/Fourier_series_square_wave_circles_animation.gif)
+
+至于频域的表示，横轴就是正弦波函数，也就是基，纵轴（高度）就是振幅，也就是向量：
+
+![image](https://en.wikipedia.org/wiki/File:Fourier_series_and_transform.gif)
+
+在频域分析中振幅、频率、相位缺一不可，不同相位决定了波的位置，首先要直到时间差，时间差就是距离频率轴最近的波峰的距离，相位差就是时间差在一个周期里的比例，并乘以2PI。
+
+#### 傅里叶变换（Fourier Transformation）
+上面说的傅里叶级数是时域周期且连续的函数，频域是一个非周期离散函数。
+傅里叶变换就是把一个时域非周期的连续信号转换为一个频域非周期的连续信号。
+
+之前的区间都是$[-\pi,\pi]$，这里需要把区间换成$[-a,a]$，相当于把函数和基都拉伸了$a/\pi$倍
+
