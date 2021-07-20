@@ -150,7 +150,7 @@ $$Y(\theta,\phi)=\sum^{\infin}_{l=0}\sum^{l}_{k=-l}P_l^k(cos\theta)e^{im\phi},m=
 $$Y_{lm}(\theta,\phi)=P_{lm}(cos\theta)e^{im\phi},m=0,\pm1,\pm2,...$$
 
 球谐函数的模长表示为：
-$$(N_l^m)^2=\int\int_SY_{lm}(x)[Y_{lm}(x)]^*sin\theta d\theta d\phi=\frac{2}{2l+1}\frac{(l+|m|)!}{(l-|m|)!}2\pi$$
+$$(N_l^m)^2=\iint_SY_{lm}(x)[Y_{lm}(x)]^*sin\theta d\theta d\phi=\frac{2}{2l+1}\frac{(l+|m|)!}{(l-|m|)!}2\pi$$
 
 归一化球谐函数$Y_l^m(\theta,\phi)$的复数形式表示为：
 $$Y_l^m(\theta,\phi)=K_l^mY_{lm}(\theta,\phi)$$
@@ -244,5 +244,121 @@ $$an=\frac{<f(x),cosnx>}{<cosnx,cosnx>}$$
 上面说的傅里叶级数是时域周期且连续的函数，频域是一个非周期离散函数。
 傅里叶变换就是把一个时域非周期的连续信号转换为一个频域非周期的连续信号。
 
-之前的区间都是$[-\pi,\pi]$，这里需要把区间换成$[-a,a]$，相当于把函数和基都拉伸了$a/\pi$倍
+之前的区间都是$[-\pi,\pi]$，这里需要把区间换成$[-a,a]$，相当于把函数和基都拉伸了$a/\pi$倍，基也就变成了：
+$$\{1,sin\space nwx,cos\space nwx\},\{exp(inwx)\},w=\frac{\pi}{a}$$
 
+傅里叶级数也让就变成了如下：
+$$f(x)=a_0+\sum_{n=1}^{\infin}a_ncos\space nwx+b_nsin\space nwx ,or \space f(x)=\sum_{n=-\infin}^{\infin}c_nexp(inwx)$$
+
+* 区间变成$[-a,a]$后，两边同时乘以$exp(-inwx)$，并在$[-a,a]$上积分，傅里叶系数就变为:
+  $$\int_{-a}^{a}f(x)exp(-inwx)dx=\sum_{n=-\infin}^{\infin}\int_{-a}^{a}c_nexp(inwx)exp(-inwx)dx$$
+  $$c_n=\frac{1}{2a}\int_{-a}^{a}f(t)exp(-in\pi t/a)dt$$
+* 把傅里叶系数代入到$f(x)$中，得到：
+  $$f(x)={lim}_{a\to\infin}[\sum_{n=-\infin}^{\infin}(\frac{1}{2a}\int_{-a}^{a}f(t)exp(-in\pi t/a)dt)exp(in\pi x/a)]$$
+* 上式积分是与$t$相关的，外部的项$exp(in\pi x/a)$与$t$无关，可以写成：
+  $$f(x)={lim}_{a\to\infin}[\sum_{n=-\infin}^{\infin}\frac{1}{2a}\int_{-a}^{a}f(t)exp(in\pi(x-t)/a)dt]$$
+* 为了凑出黎曼和，令$\lambda_n=\frac{n\pi}{a},\Delta\lambda=\lambda_{n+1}-\lambda_{n}=\frac{\pi}{a}$，代入上式：
+  $$f(x)={lim}_{a\to\infin}[\sum_{n=-\infin}^{\infin}\frac{1}{2\pi}\int_{-a}^{a}f(t)exp(i\lambda_n(x-t))dt]\Delta\lambda$$
+* 当$a\to\infin$时，$\Delta\lambda\to 0$，由于是[黎曼和](https://zh.wikipedia.org/wiki/%E9%BB%8E%E6%9B%BC%E7%A7%AF%E5%88%86)的形式上式可以写成定积分：
+  $$f(x)=\frac{1}{2\pi}\int_{-\infin}^{\infin}[\int_{-\infin}^{\infin}f(t)exp(i\lambda(x-t))dt]d\lambda$$
+* 上式变形可得：
+  $$f(x)=\frac{1}{\sqrt{2\pi}}\int_{-\infin}^{\infin}(\frac{1}{\sqrt{2\pi}}\int_{-\infin}^{\infin}f(t)exp(-i\lambda t)dt)exp(i\lambda x)d\lambda$$
+
+
+在$a\to\infin$下，本质上还是求和式，因为极限写成了积分，这里把$f(x)$写成了$exp(i\lambda x)d\lambda$的线性组合。这里的变量$\lambda$是取遍整个数轴的，数轴上每个点都对应函数的一个基。括号里的内容就是函数的傅里叶变换：
+$$\hat{f(x)}=\frac{1}{\sqrt{2\pi}}\int_{-\infin}^{\infin}f(t)exp(-i\lambda t)dt$$
+这个函数的意义：在$\lambda$处的函数值$\hat{f(\lambda)}$表示函数$f(x)$在$\lambda$对应基上的系数。
+
+#### 球谐旋转不变性
+旋转不变性，表示原函数发生了旋转，只需要对生成的广义傅里叶系数进行变换，就能保证变换后的系数能等价还原出新函数。在图形渲染上的表现就是当光源发生旋转后，只需要同步计算出变换后的广义傅里叶系数，就能保证画面的光照效果不会抖动跳变。旋转不变性并不是表示原函数发生旋转后对重建结果没有影响。
+如何对生成的系数进行变换：
+
+对于$l$次的球谐函数，会有$2l+1$个系数，表示为：
+$$C_l=\{C_l^{-l},C_l^{-l+1},...,C_l^{l-1},C_l^l\}$$
+设变换矩阵为$R_{SH}^l$，它是一个$(2l+1)*(2l+1)$的矩阵，系数的变换可以表示为：
+$$B_l^m=\sum_{k=-l}^{k=l}M_l^{m,k}C_l^k$$
+用向量与矩阵的乘积形式，为：
+$$B_l=C_l\cdot R_{SH}^l$$
+经过旋转变换后的函数展开就可以表示为：
+$$f(R(\theta,\phi))=\sum_{l=0}^{\infin}\sum_{m=-1}^lB_l^mY_l^m(\theta,\phi)$$
+
+系数的变换是基于球谐函数的次数，即第3次的球谐函数的系数$B_3$只能由第3次的球谐函数的系数$C_3$变换而来。若取前3次的球谐函数构成正交基，函数组共有0，1，2次三类球谐函数，则三个子矩阵需要整合成一个完整的变换矩阵，对于前3次球谐函数的例子，就组成一个9x9的变换矩阵，形状如下：
+$$\left(
+ \begin{matrix}
+   X & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+   0 & X & X & X & 0 & 0 & 0 & 0 & 0 \\
+   0 & X & X & X & 0 & 0 & 0 & 0 & 0 \\
+   0 & X & X & X & 0 & 0 & 0 & 0 & 0 \\
+   0 & 0 & 0 & 0 & X & X & X & X & X \\
+   0 & 0 & 0 & 0 & X & X & X & X & X \\
+   0 & 0 & 0 & 0 & X & X & X & X & X \\
+   0 & 0 & 0 & 0 & X & X & X & X & X \\
+   0 & 0 & 0 & 0 & X & X & X & X & X \\
+\end{matrix}
+  \right)
+$$
+
+在低维情况下，旋转可以用旋转矩阵，欧拉角，四元数表示，任意一个旋转矩阵$R$可以用$Z_\alpha Y_\beta Z_\gamma$型的欧拉角表示：
+$$\left(
+ \begin{matrix}
+   R_{0,0} & R_{0,1} & R_{0,1} \\
+   R_{1,0} & R_{1,1} & R_{1,2} \\
+   R_{2,0} & R_{2,1} & R_{2,2} \\
+\end{matrix}
+  \right)=
+  \left(
+ \begin{matrix}
+   c_\alpha c_\beta c_\gamma-s_\alpha s_\gamma & c_\alpha s_\gamma + s_\alpha c_\beta c_\gamma & -s_\beta c_\gamma \\
+   -s_\alpha c_\gamma-c_\alpha c_\beta s_\gamma & c_\alpha c_\gamma-s_\alpha c_\beta s\gamma & s_\beta s_\gamma \\
+   c_\alpha s_\beta & s_\alpha s_\beta & c_\beta \\
+\end{matrix}
+  \right)
+$$
+$c$表示$cos$，$s$表示$sin$。
+
+有了这个变换，可以很容易的计算出欧拉角$\alpha,\beta, \gamma$：
+$$sin\beta=\sqrt{1-R_{2,2}^2}$$
+$$
+\begin{cases}
+\alpha=atan2f(R_{2,1}/sin\beta,R_{2,0}/sin\beta) \\
+\beta=atan2f(sin\beta,R_{2,2}) \\
+\gamma=atan2f(R_{1,2}/sin\beta,-R_{0,2}/sin\beta)
+\end{cases}
+$$
+
+在$R_{2,2}=1$的退化情况下，欧拉角表示：
+$$
+\begin{cases}
+\alpha=atan2f(R_{0,1},R_{0,0}) \\
+\beta=0 \\
+\gamma=0
+\end{cases}
+$$
+
+相应的$l$次球谐系数的变换矩阵可以表示为：
+$$R_{SH}^l(\alpha,\beta,\gamma)=Z_{\gamma}Y_{-90}Z_{\beta}Y_{+90}Z_{\alpha}$$
+
+第0次球谐变换矩阵为：
+$$R_{SH}^0(\alpha,\beta,\gamma)=1$$
+
+第一次球谐变换矩阵：
+$$R_{SH}^1(\alpha,\beta,\gamma)= 
+  \left(
+ \begin{matrix}
+   c_\alpha c_\gamma-s_\alpha c_\beta s_\gamma & -s_\beta s_\gamma & - s_\alpha c_\gamma-c_\alpha c_\beta s_\gamma \\
+   -s_\alpha s_\gamma & c_\beta & -c_\alpha s_\beta \\
+   c_\alpha s_\gamma + s_\alpha c_\beta c_\gamma & s_\beta c_\gamma & c_\alpha c_\beta c_\gamma - s_\alpha s_\gamma\\
+\end{matrix}
+  \right)=\left(
+ \begin{matrix}
+   R_{1,1} & -R_{1,2} & R_{1,0} \\
+   -R_{2,1} & R_{2,2} & R_{2,0} \\
+   R_{0,1} & -R_{0,2} & R_{0,0} \\
+\end{matrix}
+  \right)
+$$
+
+旋转特性后面再说
+
+### 预计算传输与着色
+了解了球谐的基本理论，就要应用到具体的光照计算上
