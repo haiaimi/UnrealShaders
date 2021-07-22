@@ -18,6 +18,20 @@ $$I=E[\frac{f(x)}{p(x)}]\approx\frac{1}{N}\sum_{i=1}^{N}\frac{f(x^i)}{p(x^i)}$$
 意思就是随机均匀选取一些采样点
 
 我们这里需要对球面进行积分，所以需要有均匀的随机变量，所以$\theta,\phi$如下：
+球面上的面积微元$d_A$里的采样概率：
+$$P_A=p(v)dA=\frac{1}{4\pi}dA$$
+$$d_A=sin\theta d\theta d\phi$$
+参数化概率密度函数为：
+$$p(\theta,\phi)=\frac{1}{4\pi}sin\theta$$
+求两个二维独立随机变量的概率密度函数的边缘密度函数：
+$$f(\theta)=\int_{0}^{2\pi}p(\theta,\phi)d\phi=\frac{sin\theta}{2}$$
+$$f(\phi)=\int_{0}^{\pi}p(\theta,\phi)d\theta=\frac{1}{2\pi}$$
+再来一次边缘密度函数：
+$$F_\theta(\theta)=\int_0^{\theta}f(\hat\theta)d\hat{\theta}=\frac{1-cos\theta}{2}$$
+$$F_\phi(\phi)=\int_{0}^{\phi}f(\hat\phi)d\hat{\phi}=\frac{\phi}{2\pi}$$
+
+求反函数：
+
 $$
 \begin{cases}
 \theta=2arccos(\sqrt{1-\xi_x})\\
@@ -144,7 +158,7 @@ l次m阶连带勒让德函数得关系等式：
 $$P_l^m(x)=(-1)^m\frac{(l+m)!}{(l-m)!}P_l^{-m}(x)$$
 
 代入到球函数中，它的$Y(\theta,\phi)$的通解复数形式（结合前面的$\Phi(\phi)=e^{im\phi}$）表示为：
-$$Y(\theta,\phi)=\sum^{\infin}_{l=0}\sum^{l}_{k=-l}P_l^k(cos\theta)e^{im\phi},m=0,\pm1,\pm2,...$$
+$$Y(\theta,\phi)=\sum^{\infty}_{l=0}\sum^{l}_{k=-l}P_l^k(cos\theta)e^{im\phi},m=0,\pm1,\pm2,...$$
 
 一般得l次m阶球谐函数$Y_{lm}(\theta,\phi)$的复数形式可以表示为：
 $$Y_{lm}(\theta,\phi)=P_{lm}(cos\theta)e^{im\phi},m=0,\pm1,\pm2,...$$
@@ -178,7 +192,7 @@ $$
 
 #### 正交完备性
 任意两个归一化的球谐函数在球面上的积分有：
-$$\int_S\int Y_l^m(\theta,\phi)Y_k^n(\theta,\phi)sin\theta d\theta d\phi=
+$$\iint_S Y_l^m(\theta,\phi)Y_k^n(\theta,\phi)sin\theta d\theta d\phi=
 \begin{cases}
 0 \space m\neq n,l\neq k\\
 1 \space m=n,l=k
@@ -190,11 +204,11 @@ $$
 以某一正交归一函数组为基，把一个给定的函数用这个函数以线性组合来表示，这是一种重要的展开，一个著名的例子就是傅里叶变换。
 
 任意一个球面函数$f(\theta,\phi)$可以用正交归一的球函数$Y_l^m(\theta,\phi)$进行展开，这种展开就是类似于傅里叶展开，称为**广义傅里叶展开**：
-$$f(\theta,\phi)=\sum^\infin_{l=0}\sum^l_{m=-1}C_l^mY_l^m(\theta,\phi)$$
+$$f(\theta,\phi)=\sum^\infty_{l=0}\sum^l_{m=-1}C_l^mY_l^m(\theta,\phi)$$
 
 其中**广义傅里叶系数**$C_l^m$为：
 $$C_l^m=\int_0^{2\pi}\int_0^{\pi}f(\theta,\phi)Y_l^m(\theta,\phi)sin\theta d\theta d\phi$$
-当$l\to\infin$时，展开级数和会平均收敛于$f(\theta,\phi)$，也就是当$l$越大，级数和就会越趋近于被展开的函数$f(\theta,\phi)$。平均收敛并不代表收敛只是趋近的含义。
+当$l\to\infty$时，展开级数和会平均收敛于$f(\theta,\phi)$，也就是当$l$越大，级数和就会越趋近于被展开的函数$f(\theta,\phi)$。平均收敛并不代表收敛只是趋近的含义。
 $n$的取值不可能无限大，一般就是取固定系数如$n=2$，如下：
 $$\{Y_l^m(\theta,\phi)\}=\{Y_0^0,Y_1^{-1},Y_1^0,Y_1^1\}$$
 
@@ -210,15 +224,15 @@ $$f(\theta,\phi)=\sum_{k=0}^{n^2-1}c_ky_k(\theta,\phi)$$
 #### 傅里叶级数（Fourier Series）
 任意周期的函数都可以写成三角函数之和，傅里叶级数就是通过三角函数和常数项来叠加逼近周期为T的函数$f(x)$，任何周期函数都可以看成是不同振幅，不同相位正弦波叠加。
 傅里叶级数就是向量，如下：
-$$f(x)=a_0+\sum^\infin_{n=1}(a_ncos(\frac{2\pi n}{T}x)+b_nsin(\frac{2\pi n}{T}x))$$
+$$f(x)=a_0+\sum^\infty_{n=1}(a_ncos(\frac{2\pi n}{T}x)+b_nsin(\frac{2\pi n}{T}x))$$
 
 上面实际上就是把$f(x)$当作如下基的向量：
 $$\{1,cos(\frac{2\pi n}{T}),sin(\frac{2\pi n}{T}x)\}$$
 
 为了求基的系数，可以两边同时乘以$cosnx$，如下：
-$$\int_{-\pi}^{\pi}f(x)cosnxdx=a_0\int_{-\pi}^{\pi}cosnxdx+\sum_{n=1}^{\infin}a_n\int_{-\pi}^{\pi}cosnxcosnxdx+\sum_{n=1}^{\infin}b_n\int_{-\pi}^{\pi}sinnxcosnxdx$$
+$$\int_{-\pi}^{\pi}f(x)cosnxdx=a_0\int_{-\pi}^{\pi}cosnxdx+\sum_{n=1}^{\infty}a_n\int_{-\pi}^{\pi}cosnxcosnxdx+\sum_{n=1}^{\infty}b_n\int_{-\pi}^{\pi}sinnxcosnxdx$$
 
-由于不同向量是正交的（周期内积分为0），所以非零项只有$\sum_{n=1}^{\infin}a_n\int_{-\pi}^{\pi}cos^2nxdx$，$a_n\int_{-\pi}^{\pi}cos^2nxdx=\pi a_n$也就得到：
+由于不同向量是正交的（周期内积分为0），所以非零项只有$\sum_{n=1}^{\infty}a_n\int_{-\pi}^{\pi}cos^2nxdx$，$a_n\int_{-\pi}^{\pi}cos^2nxdx=\pi a_n$也就得到：
 $$an=\frac{1}{\pi}\int_{-\pi}^{\pi}f(x)cosnxdx$$
 
 可以用下面的方式表示：
@@ -236,7 +250,7 @@ $$an=\frac{<f(x),cosnx>}{<cosnx,cosnx>}$$
 
 至于频域的表示，横轴就是正弦波函数，也就是基，纵轴（高度）就是振幅，也就是向量：
 
-![image](https://en.wikipedia.org/wiki/File:Fourier_series_and_transform.gif)
+![image](https://upload.wikimedia.org/wikipedia/commons/2/2b/Fourier_series_and_transform.gif)
 
 在频域分析中振幅、频率、相位缺一不可，不同相位决定了波的位置，首先要直到时间差，时间差就是距离频率轴最近的波峰的距离，相位差就是时间差在一个周期里的比例，并乘以2PI。
 
@@ -248,25 +262,25 @@ $$an=\frac{<f(x),cosnx>}{<cosnx,cosnx>}$$
 $$\{1,sin\space nwx,cos\space nwx\},\{exp(inwx)\},w=\frac{\pi}{a}$$
 
 傅里叶级数也让就变成了如下：
-$$f(x)=a_0+\sum_{n=1}^{\infin}a_ncos\space nwx+b_nsin\space nwx ,or \space f(x)=\sum_{n=-\infin}^{\infin}c_nexp(inwx)$$
+$$f(x)=a_0+\sum_{n=1}^{\infty}a_ncos\space nwx+b_nsin\space nwx ,or \space f(x)=\sum_{n=-\infty}^{\infty}c_nexp(inwx)$$
 
 * 区间变成$[-a,a]$后，两边同时乘以$exp(-inwx)$，并在$[-a,a]$上积分，傅里叶系数就变为:
-  $$\int_{-a}^{a}f(x)exp(-inwx)dx=\sum_{n=-\infin}^{\infin}\int_{-a}^{a}c_nexp(inwx)exp(-inwx)dx$$
+  $$\int_{-a}^{a}f(x)exp(-inwx)dx=\sum_{n=-\infty}^{\infty}\int_{-a}^{a}c_nexp(inwx)exp(-inwx)dx$$
   $$c_n=\frac{1}{2a}\int_{-a}^{a}f(t)exp(-in\pi t/a)dt$$
 * 把傅里叶系数代入到$f(x)$中，得到：
-  $$f(x)={lim}_{a\to\infin}[\sum_{n=-\infin}^{\infin}(\frac{1}{2a}\int_{-a}^{a}f(t)exp(-in\pi t/a)dt)exp(in\pi x/a)]$$
+  $$f(x)={lim}_{a\to\infty}[\sum_{n=-\infty}^{\infty}(\frac{1}{2a}\int_{-a}^{a}f(t)exp(-in\pi t/a)dt)exp(in\pi x/a)]$$
 * 上式积分是与$t$相关的，外部的项$exp(in\pi x/a)$与$t$无关，可以写成：
-  $$f(x)={lim}_{a\to\infin}[\sum_{n=-\infin}^{\infin}\frac{1}{2a}\int_{-a}^{a}f(t)exp(in\pi(x-t)/a)dt]$$
+  $$f(x)={lim}_{a\to\infty}[\sum_{n=-\infty}^{\infty}\frac{1}{2a}\int_{-a}^{a}f(t)exp(in\pi(x-t)/a)dt]$$
 * 为了凑出黎曼和，令$\lambda_n=\frac{n\pi}{a},\Delta\lambda=\lambda_{n+1}-\lambda_{n}=\frac{\pi}{a}$，代入上式：
-  $$f(x)={lim}_{a\to\infin}[\sum_{n=-\infin}^{\infin}\frac{1}{2\pi}\int_{-a}^{a}f(t)exp(i\lambda_n(x-t))dt]\Delta\lambda$$
-* 当$a\to\infin$时，$\Delta\lambda\to 0$，由于是[黎曼和](https://zh.wikipedia.org/wiki/%E9%BB%8E%E6%9B%BC%E7%A7%AF%E5%88%86)的形式上式可以写成定积分：
-  $$f(x)=\frac{1}{2\pi}\int_{-\infin}^{\infin}[\int_{-\infin}^{\infin}f(t)exp(i\lambda(x-t))dt]d\lambda$$
+  $$f(x)={lim}_{a\to\infty}[\sum_{n=-\infty}^{\infty}\frac{1}{2\pi}\int_{-a}^{a}f(t)exp(i\lambda_n(x-t))dt]\Delta\lambda$$
+* 当$a\to\infty$时，$\Delta\lambda\to 0$，由于是[黎曼和](https://zh.wikipedia.org/wiki/%E9%BB%8E%E6%9B%BC%E7%A7%AF%E5%88%86)的形式上式可以写成定积分：
+  $$f(x)=\frac{1}{2\pi}\int_{-\infty}^{\infty}[\int_{-\infty}^{\infty}f(t)exp(i\lambda(x-t))dt]d\lambda$$
 * 上式变形可得：
-  $$f(x)=\frac{1}{\sqrt{2\pi}}\int_{-\infin}^{\infin}(\frac{1}{\sqrt{2\pi}}\int_{-\infin}^{\infin}f(t)exp(-i\lambda t)dt)exp(i\lambda x)d\lambda$$
+  $$f(x)=\frac{1}{\sqrt{2\pi}}\int_{-\infty}^{\infty}(\frac{1}{\sqrt{2\pi}}\int_{-\infty}^{\infty}f(t)exp(-i\lambda t)dt)exp(i\lambda x)d\lambda$$
 
 
-在$a\to\infin$下，本质上还是求和式，因为极限写成了积分，这里把$f(x)$写成了$exp(i\lambda x)d\lambda$的线性组合。这里的变量$\lambda$是取遍整个数轴的，数轴上每个点都对应函数的一个基。括号里的内容就是函数的傅里叶变换：
-$$\hat{f(x)}=\frac{1}{\sqrt{2\pi}}\int_{-\infin}^{\infin}f(t)exp(-i\lambda t)dt$$
+在$a\to\infty$下，本质上还是求和式，因为极限写成了积分，这里把$f(x)$写成了$exp(i\lambda x)d\lambda$的线性组合。这里的变量$\lambda$是取遍整个数轴的，数轴上每个点都对应函数的一个基。括号里的内容就是函数的傅里叶变换：
+$$\hat{f(x)}=\frac{1}{\sqrt{2\pi}}\int_{-\infty}^{\infty}f(t)exp(-i\lambda t)dt$$
 这个函数的意义：在$\lambda$处的函数值$\hat{f(\lambda)}$表示函数$f(x)$在$\lambda$对应基上的系数。
 
 #### 球谐旋转不变性
@@ -280,7 +294,7 @@ $$B_l^m=\sum_{k=-l}^{k=l}M_l^{m,k}C_l^k$$
 用向量与矩阵的乘积形式，为：
 $$B_l=C_l\cdot R_{SH}^l$$
 经过旋转变换后的函数展开就可以表示为：
-$$f(R(\theta,\phi))=\sum_{l=0}^{\infin}\sum_{m=-1}^lB_l^mY_l^m(\theta,\phi)$$
+$$f(R(\theta,\phi))=\sum_{l=0}^{\infty}\sum_{m=-1}^lB_l^mY_l^m(\theta,\phi)$$
 
 系数的变换是基于球谐函数的次数，即第3次的球谐函数的系数$B_3$只能由第3次的球谐函数的系数$C_3$变换而来。若取前3次的球谐函数构成正交基，函数组共有0，1，2次三类球谐函数，则三个子矩阵需要整合成一个完整的变换矩阵，对于前3次球谐函数的例子，就组成一个9x9的变换矩阵，形状如下：
 $$\left(
@@ -361,4 +375,19 @@ $$
 旋转特性后面再说
 
 ### 预计算传输与着色
-了解了球谐的基本理论，就要应用到具体的光照计算上
+了解了球谐的基本理论，就要应用到具体的光照计算上：
+首先光照公式：
+$$L(x,\vec{\omega}_{o})=L_e(x,\omega_{o})+\int_s f_r(x,\vec{\omega}_i\to \vec{\omega}_o)L(x',\vec{\omega}_i)G(x,x')V(x,x')d{\omega_i}$$
+
+$L(x,\vec{\omega}_o)$：在$x$点$\omega_o$的方向反射的光强
+
+$L_e(x,\vec{\omega}_o)$：$x$点的自发光
+
+$f_r(x,\vec{\omega}_i\to \vec{\omega}_o)$：光源在$x$点表面从入射方向$\vec{\omega}_i$到出射方向$\vec{\omega}_o$的BRDF结果
+
+$L(x',\vec{\omega}_i)$：从另一个物体的$x'$点沿着$\vec{\omega}_i$方向到达的光
+
+$G(x,x')$：$x$与$x'$之间的几何关系
+
+$V(x,x')$：$x$到$x'$的可见性
+
