@@ -374,7 +374,7 @@ $$
 
 旋转特性后面再说
 
-### 预计算传输与着色
+### 具体实现与预计算传输与着色
 了解了球谐的基本理论，就要应用到具体的光照计算上：
 首先光照公式：
 $$L(x,\vec{\omega}_{o})=L_e(x,\omega_{o})+\int_s f_r(x,\vec{\omega}_i\to \vec{\omega}_o)L(x',\vec{\omega}_i)G(x,x')V(x,x')d{\omega_i}$$
@@ -390,4 +390,99 @@ $L(x',\vec{\omega}_i)$：从另一个物体的$x'$点沿着$\vec{\omega}_i$方�
 $G(x,x')$：$x$与$x'$之间的几何关系
 
 $V(x,x')$：$x$到$x'$的可见性
+
+#### 蒙特卡洛积分
+配合前文的蒙特卡洛积分和球面均匀采样，一段伪代码如下：
+```cpp
+struct SHSample
+{
+  float3 sph;
+  float3 vec;
+  double *coff;
+}
+
+void SH_setup_spherical_samples(SHSample samples[], int sqrt_n_samples)
+{
+  int i = 0;
+  double oneoverN = 1.0 / sqrt_n_samples;
+  for(int a = 0; a < sqrt_n_samples; ++a)
+  {
+    for(int b = 0; b < sqrt_n_samples; ++b)
+    {
+      double x = (a + random()) * oneoverN;
+      double y = (b + random()) * oneoverN;
+
+      //转换为球面采样值
+      double theta = 2.0f * acos(sqrt(1- x));
+      double phi = 2.0 * PI * y;
+
+      samples[i].sph = float3(theta, phi, 1.f);
+      samples[i].vec = float3(sin(theta)*cos(phi), sin(theta)sin(phi), cos(theta));
+
+      // 计算当前采样的球谐系数
+      for(int l = 0; l < n_bands; ++l)
+        for(int m = 0; m < l; ++m)
+        {
+          int index = l*(l+1)+m;
+          samples[i].coff[index] = SH(l,m,theta,phi);
+        }
+      ++i;
+    }
+  }
+}
+```
+
+#### 球谐
+上面的SH函数就是计算球谐系数，其实如果阶数比较少，可以直接硬编码，但是这里作者还是使用代码计算，如下：
+```cpp
+// 求伴随勒让德多项式的解
+double P(int l, int m, double x)
+{
+  double pmm = 1.f;
+  if(m>0)
+  {
+    double somx2 =sqrt(2 * m + 1) * pmm;
+    double fact = 1;
+    for(int i = 1; i <= m; ++i)
+    {
+      pmm*=(-fact)*somx2;
+      fact+=2.f;
+    }
+  }
+    if(l==m+1)return pmmp1;
+    double pll = 0;
+    for(int ll = m + 2; ll <= l; ++ll)
+    {
+      pll=((2.0 * ll - 1.0)*x*pmm1-(ll+m-1.0)*pmm)/(ll-m);
+      pmm=pmm1;
+      pmm1=pll;
+    }
+    return pll;
+}
+
+// 求K，也就是模长
+double k(int l, int m)
+{
+  double = temp = ((2 * l + 1)*factroial(l-m))/(4.f * PI * factorial(l+m));
+  return sqrt(temp);
+}
+
+double SH(int l, int m, double theta, double phi)
+{
+  const double sqrt2 = sqrt(2.f);
+  if(m==0) return K(1) * P(l, m, cos(theta));
+  else if(m > 0) return sqrt2*k(l, m)*cos(m * phi)*P(l, m, cos(theta));
+  else if return sqrt2 * k(l, -m)*sin(-m*phi)*P(l, -m, cos(theta));
+}
+```
+
+#### 球谐投影
+把球谐函数投影到球谐系数上是很简单的，计算指定阶的系数，只需要对函数$f$和球谐函数$y$点积的积分：
+$$c_l^m=\int_S f(s)y_l^m(s)ds$$
+
+其中$s$表示对应的采样点，后面将会把这个等式具体化，参数化。 
+
+至于重建过程，如下：
+$$\tilde{} $$
+
 
