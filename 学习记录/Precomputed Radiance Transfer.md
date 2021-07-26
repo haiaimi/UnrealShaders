@@ -483,6 +483,270 @@ $$c_l^m=\int_S f(s)y_l^m(s)ds$$
 其中$s$表示对应的采样点，后面将会把这个等式具体化，参数化。 
 
 至于重建过程，如下：
-$$\tilde{} $$
+$$\tilde{f}(s)=\sum_{l=0}^{n-1}\sum_{m=-1}^{l}c_l^my_l^m(s)=\sum_{i=0}^{n^2}c_iy_i(s)$$
+使用上面的公式就可以对$f$函数近似拟合。
+这里使用一个简单的光照公式来用于下面的计算，当然实际情况下可能会使用ray tracer：
+$$light(\theta,\phi)=max(0,5cos(\theta)-4)+max(0,-4sin(\theta-\pi)*cos(\phi-2.5)-3)$$
 
+在球面上对函数$f$积分使用如下公式：
+$$\int_0^{2\pi}\int_{0}^{\pi}f(\theta,\phi)sin\theta d\theta d\phi$$
 
+这里有$sin\theta$是因为$sin\theta d\theta d\phi$是单位球面微元面积。
+
+根据上面的公式可知把光照函数投影到球谐系数上如下：
+$$c_i=\int_0^{2\pi}\int_0^{\pi}light(\theta,\phi)y_i(\theta,\phi)sin\theta d\theta d\phi$$
+
+我们需要使用蒙特卡洛积分对上面的公式求积：
+$$\int_sfds\approx\frac{1}{N}\sum_{j=1}^{N}f(x_j)w(x_j)$$
+
+这里的$f(x_j)$就是点积$f(x_j)=light(x_j)y_i(x_j)$，由于我们在球面每个点的采样概率是一样的$p(x_j)=\frac{1}{4\pi}$，所以权重函数$w(x_j)=\frac{1}{p(x_j)}=4\pi$。由于使用无偏采样意味着球体的任何其他参数化都会产生具有相同概率的相同样本集，所以这里以让$sin(\theta)$消失。
+
+$$c_i=\frac{1}{N}\sum_{j=1}^{N}light(x_j)y_i(x_j)4\pi$$
+$$=\frac{4\pi}{N}\sum_{j=1}^{N}light(x_j)y(x_j)$$
+
+使用前面的SH_setup_spherical_samples函数可以预计算出无偏的采样值和每一阶的球谐系数,这里实现只需要进行简单循环加减就行:
+
+```cpp
+typedef double (*SH_polar_fn)(double theta, double phi);
+
+void SH_project_polar_function(SH_polar_fn fn, const SHSample samples[], double result[])
+{
+    const double weight = 4.0 * PI;
+
+    for(int i = 0; i < n_samples; ++i)
+    {
+        double theta = samples[i].sph.x;
+        double phi = samples[i].sph.y;
+        for(int n = 0; n < n_coeff; ++n)
+        {
+            result[n] += fn(theta, phi) * samples[i].coeff[n];
+        }
+    }
+    double factor = weight / n_samples;
+    for(i = 0; i < n_coeff; ++i)
+    {
+        result[i] = result[i] * factor;
+    }
+}
+```
+
+#### 球谐函数的属性
+球谐除了正交性，还有一个特别重要的属性就是旋转不变性：
+$$\tilde g(s)=\tilde f{R(s)}$$
+换句话说，就是球谐投影旋转后的函数$g$依然可以得到相同的结果，这也就意味着在渲染时可以改变光源的方向。
+
+下一个属性才是最重要的，我们计算光照，通常是把入射光照乘以描述表面反射系数（通常称为**传输方程**）来得到最后的结果，需要对整个表面入射光进行积分：
+$$\int_s L(s)t(s)ds$$
+
+上面的$L$就是入射光，$t$就是传输方程。如果把光照和传输方程都投影到球谐系数上，正交性可以保证函数的积分等于和系数的积分：
+$$\int_s L(s)t(s)ds=\sum_{i=0}^{n^2}L_it_i$$ 
+
+如果这里有一个任意的光照函数$a(s)$，阴影遮挡函数$b(s)$。我们需要有一个方法可以把入射光的系数转换到已经被阴影函数遮挡的光照系数，我们称之为$c(s)$。我们可以构建一个线性操作使用*转换矩阵*把光照$a(s)$的球谐投影直接映射到受阴影遮挡影响的光照$c(s)$的球谐系数，并且不需要知道光照函数$a(s)$，为了计算这个矩阵，每个元素被标记为$i,j$，计算是：
+$$M_{ij}=\int_s b(s)y_i(s)y_j(s)ds$$
+
+这个矩阵可以用来把光源转换到受阴影遮挡的光源：
+$$c_i=\sum_{j=1}^{n^2}M_{ij}a_i$$
+
+如果找到一个看起来完全像球谐函数之一的阴影函数，例如$b(s)=y_2^2(s)$，这意味着我们需要对球谐函数计算三次点积：
+$$\int_s y_2^2(s)y_i(s)y_j(s)ds$$
+
+#### 球谐旋转
+球谐旋转是比较复杂的部分，最终进行旋转的操作可能比较简单，但是高效的获得旋转系数远非简单。
+这里可以用另一种方式表示球面坐标，使用$(x,y,z)$笛卡尔坐标系来代替:
+$$r=\sqrt{x^2+y^2+z^2}$$
+我们可以通过构建一个矩阵来构建 SH 函数的旋转矩阵，其中每个元素都使用旋转 SH 样本与未旋转版本的符号积分来计算：
+$$M_{ij}=\int_s y_i(Rs)y_j(s)ds$$
+
+这将会构建一个$n^2\times n^2$的矩阵，把一个未旋转的球谐系数向量映射到旋转后的：
+$$M_{ij}=\int_0^{2\pi}\int_{0}^{2\pi}y_i(\theta,\phi+\alpha)y_j(\theta,\phi)sin(\theta)d\theta d\phi$$
+
+#### SH Lighting Diffuse Surfaces
+可以为Diffuse表面生成三种类型的传输方程，难度是逐渐复杂。
+
+**Diffuse Unshadowed Transfer**
+$$L(x,{\omega}_{o})=\int_s f_r(x,{\omega}_o,{\omega}_i)L(x,{\omega}_i)H(x,{\omega}_i)d{\omega_i}$$
+
+注意BRDF中的Diffuse项在各个方向都是一样的反射量，所以以视线方向无关，所以$\omega_o$可以约掉：
+
+$$L_{DU}=\frac{\rho_x}{\pi}\int_S L_i(x,\omega_i)max(N_x\cdot\omega_i,0)d\omega_i$$
+
+上式中$\rho_x$是点$x$表面的albedo，$N_x$是$x$点表面的法线。
+
+这里把$M_{DU}=max(N\cdot s,0)$作为传输方程，可以看到限制到非负数，我们使用之前的预计算球谐系数和采样点进行计算，如下实现：
+```cpp
+for(int i = 0; i < n_samples; ++i)
+{
+  double H = DotProduct(samplep[i].vec, normal);
+  if(H > 0)
+  {
+    for(int j = 0; j < n_coeff; ++j)
+    {
+      value = HS * sample[i].coeff[j];
+      results[j + red_offset] += albedo_red * value;
+      results[j + green_offset] += albedo_green * value;
+      results[j + blue_offset] += albedo_blue * value;
+    }
+  }
+  else
+  {
+  }
+
+  double factor = area / n_samples;
+  for(int i = 0; i < 3 * n_coeff; ++i)
+  {
+    coeff[i] = result[i] * factor;
+  }
+```
+其渲染出来的结果就是普通的点积光照，如下：
+![image]()
+
+**Shadowed Diffuse Transfer**
+现在可以对现有的光照模型添加一个可见性项，如下：
+$$L(x)=\frac{\rho_x}{\pi}\int_\Omega L_i(x,\omega_i)V(\omega_i )max(N_x\cdot\omega_i,0)d\omega_i$$
+
+这里的$V(\omega_i)$就是可见性函数，如果被遮挡就返回0。
+
+有了这一项，表面的点不再认为是无限远的平面上，可以和附近的几何相交，传输方程记为$M^{DS}$：
+$$M^{DS}=V(\omega_i)max(N\cdot\omega_i,0)$$
+
+这有时也被称为环境光遮挡，是GI与传统CG最显著区别之一，我们需要在当前点Ray Trace来确定是否被遮挡，只需要返回一个布尔值：
+```cpp
+for(int i = 0; i < n_samples; ++i)
+{
+  double H = DotProduct(samplep[i].vec, normal);
+  if(H > 0)
+  {
+    if(!self_shadow(pos, sample[i].vec))
+    {
+      for(int j = 0; j < n_coeff; ++j)
+      {
+        value = HS * sample[i].coeff[j];
+        results[j + red_offset] += albedo_red * value;
+        results[j + green_offset] += albedo_green * value;
+        results[j + blue_offset] += albedo_blue * value;
+      }
+    }
+  }
+  else
+  {
+  }
+
+  double factor = area / n_samples;
+  for(int i = 0; i < 3 * n_coeff; ++i)
+  {
+    coeff[i] = result[i] * factor;
+  }
+```
+
+self_shadow()怎么实现具体取决于raytracer，主要有以下3点：
+1. 如果使用空间加速结构，如体素、层级包围盒、BSP等，每一条ray的起点将会在物体的bounding box里面，所以不需要初始ray-box交点来找到ray的起始点。只需要选择对应的离散数据点即可。
+2. 在做射线检测的时候，通常会对一个点各个方向发射多个射线，问题是和顶点邻接的面会和很多射线重合，所以这可能会返回原点，所以这可能产生错误。
+3. 在做Ray-trace的时候需要处理对单面图元测试的问题，所以不能使用单面模型。
+
+**Diffuse Interreflected Transfer**
+最后一个也是效果最明显的一个，因为在实时渲染中直接光只是其中一部分，从其他图元反射过来的光影响也很大，所以可以写成下面：
+$$L_{DI}(x)=L_{DS}(x)+\frac{\rho_x}{\pi}\int_\Omega \bar L(x',\omega_i)(1-V(\omega_i ))max(N_x\cdot\omega_i,0)d\omega_i$$
+
+$L_{DS}$：前面两部分计算的内容，Diffuse Shadowed Lighting
+
+$V(\omega_i)$：前面的可见性测试
+
+$\bar L(x',\omega_i)$：从另一点$x'$反射过来的光
+
+Interreflected Lighting直接用数学表达比较麻烦，但是实际算法很容易解释，主要有4步：
+
+1. 计算该点的直接光影响，就是之前的Diffuse项。
+2. 从当前点的一个方向发射一条射线，直到与另一个面相交，使用命中的重心坐标在三角形的每个角处线性内插 SH 函数。这个传输方程表示该点向着色点反射的光量。
+3. 把反射的光和x点法线与射线出射方向的点积相乘，并把它加到一个空的SH向量，然后进行蒙特卡洛积分。
+4. 在所有的点都计算完了，这就完成了一个带有一次反射的球谐向量，如果要计算额外的反射，只需要再次执行上面的步骤，直到没有能量反射。
+
+伪代码实现：
+```cpp
+void self_transfer_sh()
+{
+  const double area = 4.0 * PI;
+  double *sh_buffer[n_bounes+1];
+
+  sh_buffer[0]=sh_coeff;
+  for(int i = 0; i <= n_bounces; ++i)
+  {
+    sh_buffer[i] = new double[n_lighting * 3 * n_coeff];
+    memset(sh_buffer[i], 0, n_lighting * 3 * n_coeff * sizeof(double));
+  }
+
+  for(int bounce = 1; bounce <= n_bounces; ++bounce)
+  {
+      for(int i = 0; i < n_lighting; ++i)
+      {
+        bitvector::iterator j;
+        int n = 0;
+        double u = 0, v= 0, w = 0;
+        Face *fptr = 0;
+        double sh[3*n_coeff];
+
+        double albeda_red = mlist[plist[i],material].kd.x / PI;
+        double albeda_green = mlist[plist[i],material].kd.y / PI;
+        double albeda_blue = mlist[plist[i],material].kd.z / PI;
+
+        for(j = hit_self[i].begin(); j != hit_self[i].end(); ++n, ++j)
+        {
+          if(*j)
+          {
+             float Hs = DotProduct(sample[n].vec, plist[i].norm);
+             if(Hs > 0.0) 
+             {
+               u = v = w = 0.0;
+               fptr = 0;
+               bool ret = raytrace_closest_triangle(plist[i].pos, sample[n].vec, face_ptr, u, v);
+               if(ret)
+               {
+                 w = 1 - (u + v);
+                 double *ptr0 = sh_buffer[bounce - 1] + face_ptr->vert[0] * 3 * n_coeff;
+                 double *ptr1 = sh_buffer[bounce - 1] + face_ptr->vert[1] * 3 * n_coeff;
+                 double *ptr2 = sh_buffer[bounce - 1] + face_ptr->vert[2] * 3 * n_coeff;
+                 for(int k = 0; k < 3 * n_coeff; ++k)
+                 {
+                   sh[k] = u * (*ptr0++) + v * (*ptr1++) + w * (*ptr2++);
+                 }
+
+                 for(k = 0; k < n_coeff; ++k)
+                 {
+                   sh_buffer[bounce][i * 3 * n_coeff + k + 0 * n_coeff] += albedo_red * Hs * sh[k + 0 * n_coeff];
+                   sh_buffer[bounce][i * 3 * n_coeff + k + 1 * n_coeff] += albedo_coeff * Hs * sh[k + 1 * n_coeff];
+                   sh_buffer[bounce][i * 3 * n_coeff + k + 2 * n_coeff] += albedo_blue * Hs * sh[k + 2 * n_coeff];
+                 }
+               }
+             }
+          }
+        }
+      }
+      const double factor = area / n_samples;
+      double *ptr = sh_buffer[bounces];
+      for(int j = 0; j < n_lighting * 3 * n_coeff; ++j)
+      {
+        *ptr++ *= factor;
+      }
+  }
+
+  for(i = 1; i < n_bounces; ++i)
+  {
+    double *ptra = sh_biffer[0];
+    double *ptrb = sh_buffer[i];
+    for(int j = 0; j < n_lighting * 3 * n_coeff; ++j)
+    {
+      *ptra++ += *ptrb++;
+    }
+  }
+  for(i = 1; i <= n_bounces; ++i)
+  {
+    delete[] sh_buffer[i];
+  }
+
+  return;
+}
+```
+
+**Rendering SH Diffuse Surfaces**
+为每个顶点都计算了球谐系数，在实时渲染中就需要把他们应用上，前面的内容可知球谐光照的内容就是球谐投影的光照和球谐传输函数的点积：
+$$\int_s\tilde L(s)\tilde{t}_(s)ds=\sum_{i=0}^{n^2}L_it_i$$
+$$=L_0t_0+L_1t_1+L_2t_2+...$$
