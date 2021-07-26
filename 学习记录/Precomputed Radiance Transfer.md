@@ -667,15 +667,17 @@ void self_transfer_sh()
   const double area = 4.0 * PI;
   double *sh_buffer[n_bounes+1];
 
-  sh_buffer[0]=sh_coeff;
+  sh_buffer[0]=sh_coeff;  // sh_coeff是直接光产生的球谐系数
   for(int i = 0; i <= n_bounces; ++i)
   {
     sh_buffer[i] = new double[n_lighting * 3 * n_coeff];
     memset(sh_buffer[i], 0, n_lighting * 3 * n_coeff * sizeof(double));
   }
 
+  // 计算所有反弹的球谐系数
   for(int bounce = 1; bounce <= n_bounces; ++bounce)
   {
+      // 模型上的光照点（由于球谐系数存储在顶点）
       for(int i = 0; i < n_lighting; ++i)
       {
         bitvector::iterator j;
@@ -684,10 +686,11 @@ void self_transfer_sh()
         Face *fptr = 0;
         double sh[3*n_coeff];
 
-        double albeda_red = mlist[plist[i],material].kd.x / PI;
-        double albeda_green = mlist[plist[i],material].kd.y / PI;
-        double albeda_blue = mlist[plist[i],material].kd.z / PI;
+        double albedo_red = mlist[plist[i],material].kd.x / PI;
+        double albedo_green = mlist[plist[i],material].kd.y / PI;
+        double albedo_blue = mlist[plist[i],material].kd.z / PI;
 
+        // 计算每个方向反射球谐系数
         for(j = hit_self[i].begin(); j != hit_self[i].end(); ++n, ++j)
         {
           if(*j)
@@ -750,3 +753,31 @@ void self_transfer_sh()
 为每个顶点都计算了球谐系数，在实时渲染中就需要把他们应用上，前面的内容可知球谐光照的内容就是球谐投影的光照和球谐传输函数的点积：
 $$\int_s\tilde L(s)\tilde{t}_(s)ds=\sum_{i=0}^{n^2}L_it_i$$
 $$=L_0t_0+L_1t_1+L_2t_2+...$$
+
+由于数据都是存在顶点上的，所以必定会使用高洛德着色，如果需要旋转光源或者重定向物体，需要把光照转到对象空间，如下是一段代码：
+```cpp
+for(int j = 0; j < n_coeff; ++j)
+{
+  vertex[i].red += light_red[j] * vertex[i].sh_red[j];
+  vertex[i].green += light_green[j] * vertex[i].sh_green[j];
+  vertex[i].blue += light_blue[j] * vertex[i].sh_blue[j];
+}
+```
+
+**Creating Light Sources**
+还需要讨论的就是天空光照模型，拿CIE阴天的照明方法：
+$$L_\beta=L_z\frac{1+wsin\beta}{3}$$
+
+$L_z$：太阳在天空正上方的时候的亮度
+
+$\beta$：天顶与视线方向的夹角
+
+CIE晴天的模型会更复杂一点，需要考虑太阳所在得位置，类似于如今的大气散射，如下：
+$$L_{\theta,\phi}=L_z\frac{(0.91+10e^{-3\gamma}+0.45cos^2\gamma)(1-e^{\frac{-0.32}{cos\theta}})}{(0.91+10e^{-3S}+0.45cos^2S)(1-e^{-0.32})}$$
+
+$L_{\theta,\phi}$：在p点（$\theta,\phi$）的光照强度
+
+$L_z$：太阳在天空正上方的时候的亮度
+
+$\theta$：视线方向与天顶角的夹角
+
