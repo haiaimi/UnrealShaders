@@ -564,6 +564,8 @@ $$M_{ij}=\int_0^{2\pi}\int_{0}^{2\pi}y_i(\theta,\phi+\alpha)y_j(\theta,\phi)sin(
 可以为Diffuse表面生成三种类型的传输方程，难度是逐渐复杂。
 
 **Diffuse Unshadowed Transfer**
+
+
 $$L(x,{\omega}_{o})=\int_s f_r(x,{\omega}_o,{\omega}_i)L(x,{\omega}_i)H(x,{\omega}_i)d{\omega_i}$$
 
 注意BRDF中的Diffuse项在各个方向都是一样的反射量，所以以视线方向无关，所以$\omega_o$可以约掉：
@@ -590,17 +592,21 @@ for(int i = 0; i < n_samples; ++i)
   else
   {
   }
+}
 
-  double factor = area / n_samples;
-  for(int i = 0; i < 3 * n_coeff; ++i)
-  {
-    coeff[i] = result[i] * factor;
-  }
+double factor = area / n_samples;
+for(int i = 0; i < 3 * n_coeff; ++i)
+{
+  coeff[i] = result[i] * factor;
+}
 ```
 其渲染出来的结果就是普通的点积光照，如下：
-![image]()
+
+![image](../RenderPictures/PrecomputedRadianceTransfer/PRT_Render01.png)
 
 **Shadowed Diffuse Transfer**
+
+
 现在可以对现有的光照模型添加一个可见性项，如下：
 $$L(x)=\frac{\rho_x}{\pi}\int_\Omega L_i(x,\omega_i)V(\omega_i )max(N_x\cdot\omega_i,0)d\omega_i$$
 
@@ -643,7 +649,13 @@ self_shadow()怎么实现具体取决于raytracer，主要有以下3点：
 2. 在做射线检测的时候，通常会对一个点各个方向发射多个射线，问题是和顶点邻接的面会和很多射线重合，所以这可能会返回原点，所以这可能产生错误。
 3. 在做Ray-trace的时候需要处理对单面图元测试的问题，所以不能使用单面模型。
 
+目前的结果如下：
+
+![image](../RenderPictures/PrecomputedRadianceTransfer/PRT_Render02.png)
+
 **Diffuse Interreflected Transfer**
+
+
 最后一个也是效果最明显的一个，因为在实时渲染中直接光只是其中一部分，从其他图元反射过来的光影响也很大，所以可以写成下面：
 $$L_{DI}(x)=L_{DS}(x)+\frac{\rho_x}{\pi}\int_\Omega \bar L(x',\omega_i)(1-V(\omega_i ))max(N_x\cdot\omega_i,0)d\omega_i$$
 
@@ -659,6 +671,8 @@ Interreflected Lighting直接用数学表达比较麻烦，但是实际算法很
 2. 从当前点的一个方向发射一条射线，直到与另一个面相交，使用命中的重心坐标在三角形的每个角处线性内插 SH 函数。这个传输方程表示该点向着色点反射的光量。
 3. 把反射的光和x点法线与射线出射方向的点积相乘，并把它加到一个空的SH向量，然后进行蒙特卡洛积分。
 4. 在所有的点都计算完了，这就完成了一个带有一次反射的球谐向量，如果要计算额外的反射，只需要再次执行上面的步骤，直到没有能量反射。
+
+需要注意的是，计算反射值，只需要计算有遮挡的部分。
 
 伪代码实现：
 ```cpp
@@ -690,7 +704,7 @@ void self_transfer_sh()
         double albedo_green = mlist[plist[i],material].kd.y / PI;
         double albedo_blue = mlist[plist[i],material].kd.z / PI;
 
-        // 计算每个方向反射球谐系数
+        // 计算每个方向反射球谐系数，只计算不可见部分
         for(j = hit_self[i].begin(); j != hit_self[i].end(); ++n, ++j)
         {
           if(*j)
@@ -748,9 +762,15 @@ void self_transfer_sh()
   return;
 }
 ```
+多重反射的结果：
+
+![image](../RenderPictures/PrecomputedRadianceTransfer/PRT_Render03.png)
 
 **Rendering SH Diffuse Surfaces**
+
+
 为每个顶点都计算了球谐系数，在实时渲染中就需要把他们应用上，前面的内容可知球谐光照的内容就是球谐投影的光照和球谐传输函数的点积：
+
 $$\int_s\tilde L(s)\tilde{t}_(s)ds=\sum_{i=0}^{n^2}L_it_i$$
 $$=L_0t_0+L_1t_1+L_2t_2+...$$
 
@@ -764,8 +784,18 @@ for(int j = 0; j < n_coeff; ++j)
 }
 ```
 
+以上都是默认光源是无限远的，如平行光，因为局部光源打破了模型低光照方差的假设，但是如果需要对局部光源进行球谐投影呢，需要在模型表面放一些位置预计算好的点，然后计算光照方程。通过计算每个顶点的光照采样点的加权来重建局部光照，权重是顶点到采样点的距离，权重表示如下：
+
+$$w(i,j)=(\frac{1}{dist(i,j)})^n$$
+
 **Creating Light Sources**
+
+
 还需要讨论的就是天空光照模型，拿CIE阴天的照明方法：
+
+![image](../RenderPictures/PrecomputedRadianceTransfer/PRT_LightSource01.png)
+
+
 $$L_\beta=L_z\frac{1+wsin\beta}{3}$$
 
 $L_z$：太阳在天空正上方的时候的亮度
@@ -773,6 +803,10 @@ $L_z$：太阳在天空正上方的时候的亮度
 $\beta$：天顶与视线方向的夹角
 
 CIE晴天的模型会更复杂一点，需要考虑太阳所在得位置，类似于如今的大气散射，如下：
+
+![image](../RenderPictures/PrecomputedRadianceTransfer/PRT_LightSource02.png)
+
+
 $$L_{\theta,\phi}=L_z\frac{(0.91+10e^{-3\gamma}+0.45cos^2\gamma)(1-e^{\frac{-0.32}{cos\theta}})}{(0.91+10e^{-3S}+0.45cos^2S)(1-e^{-0.32})}$$
 
 $L_{\theta,\phi}$：在p点（$\theta,\phi$）的光照强度
@@ -780,4 +814,6 @@ $L_{\theta,\phi}$：在p点（$\theta,\phi$）的光照强度
 $L_z$：太阳在天空正上方的时候的亮度
 
 $\theta$：视线方向与天顶角的夹角
+
+Reference: [Spherical Harmonic Lighting](http://www.cse.chalmers.se/~uffe/xjobb/Readings/GlobalIllumination/Spherical%20Harmonic%20Lighting%20-%20the%20gritty%20details.pdf)
 
