@@ -100,3 +100,12 @@ template<typename T>				struct TIsSame<T, T>	{ enum { Value = true	}; };
 
 ## 注意事项
 1. 编写自定义Shader时一定要对每个ShaderParameter进行序列化，这些参数是放在ConstBuffer中，序列化后才能和绑定的参数对应上，不进行序列化可能会导致对应的参数传不进去。
+
+## 光照相关
+
+1. Stationary天光在烘焙的时候会产生影响，但是静态物体天光高光项还是在runtime计算。Static天光会在只在烘焙时起作用，runtime静态物体不受天光影响，所以就没有天光高光。Movale天光则是纯实时运算，不参与烘焙。
+
+|天光/Object|Static|Staionary|Movable|
+|:----:|:----:|:----:|:----:|
+|Static|烘焙天光Diffuse|烘焙天光Diffuse、Runtime天光高光|Runtime天光Diffuse、天光高光|
+|Movable|无天光|Runtime天光Diffuse、天光高光|Runtime天光Diffuse、天光高光|
