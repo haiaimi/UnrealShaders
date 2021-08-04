@@ -109,3 +109,34 @@ template<typename T>				struct TIsSame<T, T>	{ enum { Value = true	}; };
 |:----:|:----:|:----:|:----:|
 |Static|烘焙天光Diffuse|烘焙天光Diffuse、Runtime天光高光|Runtime天光Diffuse、天光高光|
 |Movable|无天光|Runtime天光Diffuse、天光高光|Runtime天光Diffuse、天光高光|
+
+2. 移动平台的SkyLight高光无法正常显示，这是因为在Mobile天光预计算的Pixel Shader里有错误，在*ReflectionEnvironmentShaders.usf*中的*FilterPS*中：
+```cpp
+uint CubeSize = 1 << (NumMips - 1);
+// (6*CubeSize*CubeSize)在移动平台上会当作半精度计算，所以这里会溢出
+const float SolidAngleTexel = 4 * PI / (6 * CubeSize * CubeSize) * 2;
+```
+如下修改即可：
+```cpp
+uint CubeSize = 1 << (NumMips - 1);
+const float SolidAngleTexel = 4 * PI / float(6 * CubeSize * CubeSize) * 2;
+```
+
+3. 在烘焙时，如果天空材质勾选*IsSky*选项，在开始烘焙是，天空的材质就不会被Capture到，因为烘焙时的Capture会设置为*EmmisveOnly*，这就导致Capture的标记*ViewFamily.EngineShowFlags.Lighting = !bCaptureEmissiveOnly;*为false，那么在CopmuteRelevance时被标记为*bDynamicRelevance*，但是在后续的*ComputeDynamicMeshRelevance*函数中又不会添加*EMeshPass::SkyPass*的材质，这也就导致天空球画不出来，解决方法就是在CopmuteRelevance时跳过这个选项，如下：
+```cpp
+bool IsRichView(const FSceneViewFamily& ViewFamily)
+{
+	// Flags which make the view rich when absent.
+	if( !ViewFamily.EngineShowFlags.LOD ||
+		// Force FDrawBasePassDynamicMeshAction to be used since it has access to the view and can implement the show flags
+		!ViewFamily.EngineShowFlags.VolumetricLightmap ||
+		!ViewFamily.EngineShowFlags.IndirectLightingCache ||
+		(!ViewFamily.EngineShowFlags.Lighting) || // 这里就是非Lighting标记下，就会强制标记为DynamicRelevance，所以这里可以选择使用其他条件跳过
+		!ViewFamily.EngineShowFlags.Materials)
+	{
+		return true;
+	}
+}
+```
+
+4. 天光IBL的Diffuse和Specular都是在GPU计算的，桌面端和移动端都会进行实时计算，主要内容就在*ReflectionEnvironmentCapture.cpp*中，入口函数就是*UpdateSkyCaptureContents()*， *ComputeAverageBrightness()* 函数计算平均亮度，*FilterReflectionEnvironment()* 计算Diffuse球谐系数和Specular预积分。
