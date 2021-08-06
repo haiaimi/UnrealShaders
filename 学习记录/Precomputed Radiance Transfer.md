@@ -815,5 +815,73 @@ $L_z$：太阳在天空正上方的时候的亮度
 
 $\theta$：视线方向与天顶角的夹角
 
-Reference: [Spherical Harmonic Lighting](http://www.cse.chalmers.se/~uffe/xjobb/Readings/GlobalIllumination/Spherical%20Harmonic%20Lighting%20-%20the%20gritty%20details.pdf)
+最重要的是，要用球谐表示光源，这样才能在Runtime进行Transfer后的光照。
+
+### 球谐实际应用
+
+**Zonal Harmonics** 对于平行光，我们一般需要*Zonal Harmonics（区域谐波）* 来表示，就是绕一个旋转轴对称的球谐投影称为*ZH*，如果它们的方向是绕着Z，那么函数的零点将会表示成固定的维度线，函数只受$\theta$的影响。并且这个方向上每个band只有一个非0的系数，所以原本需要$n^2$的系数，现在只需要$n$个，并且有了这个就可以用来模拟光源，对应方向进行旋转操作即可。*ZH* 的旋转会比正常的SH更容易一些，它可以用有效的对角矩阵来完成，并且只需要在新的方向 d 上评估 SH 基函数。给定一个*Zh* 系数$z_l$，可以使用下面的公式把它转到对应的方向上：
+$$f(s)=\sum_l z_l\sqrt{\frac{4\pi}{2l+1}}\sum_m y_l^m(d)y_l^m(s)$$
+
+最终的球谐系数是：
+$$f_l^m=\sqrt{\frac{4\pi}{2l+1}}z_ly_l^m(d)$$
+
+**SH Products** 两个函数$f$，$g$的系数点积第k个系数使用n阶球谐投影可以用下面的方法表示：
+$$p_k=\int y_k(s)(\sum_{i=0}^{n^2}f_iy_i(s))(\sum_{j=0}^{n^2}g_iy_j(s))d_s=\sum_{ij}\Gamma_{ijk}f_ig_i$$
+
+$\Gamma$如下表示
+$$\Gamma_{ijk}=\int y_i(s)y_j(s)y_k(s)ds$$
+
+#### Lighting Models
+可以用球谐表示各种光照模型，比如说最常见的环境光CubeMap，平行光
+
+**Projection from Cube Maps**
+
+这个实际上就是对每个方向的纹素进行球谐基投影，如下伪代码：
+```cpp
+float f[], s[];
+float fWtSum = 0;
+Foreach(cube map face)
+  foreach(texel)
+    float fTmp = 1 + u^2 + v^2;
+    float fWt = 4 / (sqrt(fTmp) * fTmp);
+    EvalSHBasis(texel, s);
+    f += t(texel) * fWt * s;
+    fWtSum += fWt;
+
+f *= 4 * Pi / fWtSum;
+```
+上面的u,v表示Cubemap当前面的坐标，t(texel)是当前纹素的Color。
+
+**Analytic Models**
+
+还有比较重要的就是解析光模型，如平行光，球面光。
+
+1. 平行光，这个比较容易实现，就是在指定光源方向计算球谐基函数，然后就行缩放，这也就会需要用到Normalization。
+2. Spherical Light，球面光可以用到ZH相关的特性，根据一个角度$\alpha$就可以推出ZH系数，球面光如下图，C就表示光源：
+![image](../RenderPictures/PrecomputedRadianceTransfer/PRT_SHLigtingModel01.png)
+
+下面就是求前三阶ZH的式子：
+$$L=0 \space -\sqrt{\pi}(-1+cos(\alpha))$$
+$$L=1 \space \frac{1}{2}\sqrt{3}\sqrt{\pi}sin(\alpha)^2$$
+$$L=2 \space -\frac{1}{2}\sqrt{5}\sqrt{\pi}cos(\alpha)(-1+cos(\alpha))(cos(\alpha)+1)$$
+
+然后再结合球谐基方向投影就可以得出指定方向的球面光球谐系数。
+
+3. 上面的方法同样可以用来解析Cone Light（一个亮圆盘在无限远出，想象Sun Disk），只不过这个需要归一化
+
+**Normalization**
+需要一个系数c，当和Lighting向量$L$相乘是一个单位反射辐射率，同时和向量$T$积分，又会表示一个未遮挡的Clamped余弦波瓣，如下：
+$$1=\int cL(s)T(s)ds\to c=\frac{1}{dot(L,V)}$$
+
+只有在渲染时会用到的band才会计算对应的归一化系数，前6个Band的系数：
+$$\frac{1}{2\sqrt{\pi}},\frac{\sqrt{3}}{3\sqrt{\pi}},\frac{\sqrt{5}}{8\sqrt{\pi}},0,\frac{-1}{16\sqrt{\pi}},0$$
+
+对解析光可以使用解析光归一化，角度为$\alpha$的Cone light的归一化系数为：
+
+$$\frac{1}{sin^2\alpha}$$
+
+Reference: 
+[Spherical Harmonic Lighting:The Gritty Details ](http://www.cse.chalmers.se/~uffe/xjobb/Readings/GlobalIllumination/Spherical%20Harmonic%20Lighting%20-%20the%20gritty%20details.pdf)
+
+[Stupid Spherical Harmonics (SH) Tricks](https://www.ppsloan.org/publications/StupidSH36.pdf)
 
