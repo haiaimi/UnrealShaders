@@ -140,3 +140,17 @@ bool IsRichView(const FSceneViewFamily& ViewFamily)
 ```
 
 4. 天光IBL的Diffuse和Specular都是在GPU计算的，桌面端和移动端都会进行实时计算，主要内容就在*ReflectionEnvironmentCapture.cpp*中，入口函数就是*UpdateSkyCaptureContents()*， *ComputeAverageBrightness()* 函数计算平均亮度，*FilterReflectionEnvironment()* 计算Diffuse球谐系数和Specular预积分。
+
+5. 在UE4中添加一个新的MeshPass时，要注意要专门为材质编辑器修改对应的代码，否则就会报错，在*PreviewmMaterial.cpp*文件中的*void ShouldCache*函数中：
+```cpp
+virtual bool ShouldCache(EShaderPlatform Platform, const FShaderType* ShaderType, const FVertexFactoryType* VertexFactoryType) const
+{
+	//```
+	if (FCString::Stristr(ShaderType->GetName(), TEXT("RainDepth")))
+	{
+		bShaderTypeMatches = true;
+	}
+	//```
+}
+```
+如果添加了一个名为*RainDepth*的Pass，需要加入上面一段代码，这样在检测的时候才不会Shader对应不上。

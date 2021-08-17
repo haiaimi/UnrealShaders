@@ -885,3 +885,18 @@ Reference:
 
 [Stupid Spherical Harmonics (SH) Tricks](https://www.ppsloan.org/publications/StupidSH36.pdf)
 
+
+### Implementation In UE4
+由于上面的计算都是基于模型的，但是实际上是不可能这样实现，因为这会消耗大量的内存，所以实际上还是会使用空间Probe的方式，类似于[Far Cry3](https://ubm-twvideo01.s3.amazonaws.com/o1/vault/gdc2012/slides/Programming%20Track/Stefanov_Nikolay_DeferredRadianceTransfer.pdf)的方式：
+* 每个Probe给定4个Basis基方向，在这四个方向做Transfer投影，在着色时根据法线方向进行插值。
+* 同时计算每个基方向的SkyVisibility，用于天光部分的计算，相当于粗略的天光可见性Mask。
+* 在运行期做Relighting，首先要有一个Pass预先计算当前光照情况下的Probe的Lighting，可以存储在3DTexture中，在PixelShader中直接进行插值。
+* 根据玩家的位置，增量更新3DTexture，在光照环境不变的情况下，可以保持每帧只更新很小一部分的数据。
+
+需要注意的是，如果使用Probe的方式，就无法进行多次反弹，或者需要把多次反弹的计算放到RunTime，但是这会使用大量的额外数据，育碧[Global Illumination in Tom Clancy’s The Division](http://mrakobes.com/Nikolay.Stefanov.GDC.2016.pdf)中就是这样的实现，移动平台不实际，所以目前就进行单次反射。
+
+Probe的烘焙：
+最直接的方法就是对每个Probe进行Capture，最直接最简单，但是如果场景复杂比较大的时候，就需要耗费不短的时间，如全场景500000个Probe，500000x6/60/3600 = 13.88，可见每帧一个面，烘焙500000个Probe需要13.88个小时，这肯定不可能，所以需要优化烘焙：
+* 每个Probe的每个面限制绘制的最大距离30m，这样就少了很多GPU时间[Assassin's Creed 4:Black Flag](https://bartwronski.files.wordpress.com/2014/05/assassin_s-creed-4-digital-dragons-2014.pdf)。
+* 对空间体素化，找到对整个场景都Visible的少量Probe（可以理解为自动放置Reflection Capture），[Remedy](http://advances.realtimerendering.com/s2015/SIGGRAPH_2015_Remedy_Notes.pdf)中相关的介绍，总结就是最大的Capture可用区域，到物体表面最短距离。
+* 有了上面的Probe，那么所有的PRT Probe都可以使用这些Probe的数据，所以就不需要进行大量的渲染，只是进行采样复用这些数据，这在COD的PPT中有相关介绍[Volumetric Global Illumination At Treyarch](https://www.activision.com/cdn/research/Volumetric_Global_Illumination_at_Treyarch.pdf)。
