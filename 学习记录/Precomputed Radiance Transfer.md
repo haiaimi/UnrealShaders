@@ -898,5 +898,141 @@ Reference:
 Probe的烘焙：
 最直接的方法就是对每个Probe进行Capture，最直接最简单，但是如果场景复杂比较大的时候，就需要耗费不短的时间，如全场景500000个Probe，500000x6/60/3600 = 13.88，可见每帧一个面，烘焙500000个Probe需要13.88个小时，这肯定不可能，所以需要优化烘焙：
 * 每个Probe的每个面限制绘制的最大距离30m，这样就少了很多GPU时间[Assassin's Creed 4:Black Flag](https://bartwronski.files.wordpress.com/2014/05/assassin_s-creed-4-digital-dragons-2014.pdf)。
-* 对空间体素化，找到对整个场景都Visible的少量Probe（可以理解为自动放置Reflection Capture），[Remedy](http://advances.realtimerendering.com/s2015/SIGGRAPH_2015_Remedy_Notes.pdf)中相关的介绍，总结就是最大的Capture可用区域，到物体表面最短距离。
+* 对空间体素化，找到对整个场景都Visible的少量Probe（可以理解为自动放置Reflection Capture），[Remedy](http://advances.realtimerendering.com/s2015/SIGGRAPH_2015_Remedy_Notes.pdf)中相关的介绍，总结就是最大的Capture可用区域，到物体表面最短距离，具体的实现可以借助距离场来快速的找到。
 * 有了上面的Probe，那么所有的PRT Probe都可以使用这些Probe的数据，所以就不需要进行大量的渲染，只是进行采样复用这些数据，这在COD的PPT中有相关介绍[Volumetric Global Illumination At Treyarch](https://www.activision.com/cdn/research/Volumetric_Global_Illumination_at_Treyarch.pdf)。
+
+最终决定还是采用DXR进行烘焙，保证结果的正确以及速度，首先看一下UE4的GPULightMass，然后根据UE4的GPULightMass来实现自己的PRT烘焙，理论上PRT的烘焙会更简单，因为PRT烘焙不需要处理光源，没有光源意味着都不需要进行PathTracing，实际上就是利用DXR的空间加速结构快速得到结果。
+
+## UE4 GPULightMass
+这里只讨论UE4中用GPU烘焙Volumetric LightMap（VLM），GPULightmass使用PathTracing进行烘焙，首先解析UE4中使用的PathTracing方法，然后还有场景的体素化及Probe的摆放。
+
+### PathTracing In UE4
+UE4中的PathTracing没有使用Bidirection Path Tracing(BDPT)，而是使用比较常规的方法，但是加上了NEE（Next-event estimation）和MIS（Multiple Importance Sample），从而有比较快的收敛。对应入口Shader为："GPULightmass/Shaders/Private/LightmapPathTracing.usf" void VolumetricLightmapPathTracingMainRG()。
+1. 使用莫顿编码生成对应Cell位置的编码，然后结合当前帧数生成低差异序列，用作采样位置的抖动。
+```cpp
+    float3 RandSample = float3(
+        Halton(MortonEncode3(CellPosInVLM) + FrameNumber / 2, 2), 
+        Halton(MortonEncode3(CellPosInVLM) + FrameNumber / 2, 3),
+        Halton(MortonEncode3(CellPosInVLM) + FrameNumber / 2, 5)
+      );
+		float3 Jitter = RandSample;
+```
+2. Shading Normal，根据当前帧数单双决定：
+```cpp
+    float3 ShadingNormal = float3(0, 0, (FrameNumber % 2 == 0) ? 1 : -1);
+```
+3. 下面就是PathTracing的核心代码：
+  0 bounce：
+  * 从起始点开始，根据Random Seed采样光源，就在"Shaders\Private\PathTracing\Light\PathTracingLightSampling.ush"中的SampleLight函数中，这个会首先对所有光源的亮度进行前缀和，然后计算每个光源所在的权重，最后根据随机数所在的权重范围，选择当前bounce所对应的光源以及改光源对应的pdf（void SampleLightSelection()），然后就是对指定类型的光源进行采样，同样也需要使用到前面的Random数，如平行光就会随机一个方向，这里获得的PDf就是NEE pdf：
+  ```cpp
+    void DirectionalLight_SampleLight(
+    RayDesc Ray,
+    FMaterialClosestHitPayload Payload,
+    float4 RandSample,
+    int LightId,
+    out float3 OutLightUV,
+    out float OutPdf
+  )
+  {
+    float3 N = normalize(GetNormal(LightId));
+    float3 dPdu = float3(1, 0, 0);
+    if (dot(N, dPdu) != 0)
+    {
+      dPdu = cross(N, dPdu);
+    }
+    else
+    {
+      dPdu = cross(N, float3(0, 1, 0));
+    }
+    float3 dPdv = cross(dPdu, N);
+
+    float Radius = GetRadius(LightId);
+    float2 DiskUV = UniformSampleDiskConcentric(RandSample.yz) * Radius;
+
+    float3 Direction = N;
+    OutLightUV = Direction + dPdu * DiskUV.x + dPdv * DiskUV.y;
+    OutPdf = 1.0;
+  }
+  ```
+  * 生成光源的Ray(void GenerateLightRay())，以起始点为起点，上面生成的LightUV作为方向是，进行可见性检测，调用（TraceVisibilityRay()），如果没有击中任何物体，就计算光源对当前点对应权重的影响：
+  ```cpp
+  // 获取光源的颜色
+  void EvalLight();
+  // 计算当前点的材质，并根据输入信息（光源入射方向）和材质信息（normal、albedo、roughness...）计算irradiance，并计算对应ShadingModel的PDF，和IBL预计分时的PDf一样。第0次反弹时就只考虑光源对probe的pdf，Material Pdf
+  void EvalMaterial();
+  ```
+  * 进行MIS（Multiple Importance sample）计算:
+  ```cpp
+  // Apply material Pdf for correct MIS weight
+  float MisWeight = 1.0;
+  MisWeight = NeePdf / (NeePdf + MaterialEvalPdf);
+
+  if (Bounces == 1 && SceneLightsData.Mobility[LightId] == 0)
+  {
+    // 记录第一次NEE的光照方向，以及Radiance值，用于后面球谐系数的计算
+    DirectLightingNEERadianceValue += Radiance * MaterialThroughput * RayThroughput * MisWeight / (NeePdf * RayPdf);
+    DirectLightingNEERadianceDirection = LightRay.Direction;
+  }
+  else if (Bounces > 1 || SceneLightsData.Mobility[LightId] == 0)  
+  {
+    // 超过0次反弹的直接加到最终的irradiance上
+    Irradiance += Radiance * MaterialThroughput * RayThroughput * MisWeight / (NeePdf * RayPdf);
+  }
+  ```
+ * 进行Trace点的材质计算：
+  ```cpp
+  // 采样材质，第0次反弹就是根据随机值生成一个方向，这第一个方向也就决定了当前采样点的出射方向，这里输出的Throughput为1，同时输出SamplePdf，表示当前采样方向的Pdf
+   SampleMaterial(Ray.Direction, RayHitInfo, Ior1, RandSample, Bounces == 1, Direction, Throughput, SamplePdf, SignedPositionBias);
+   // 输出当前材质Pdf，第0次计算Probe的Pdf，由于probe没有材质，所以就使用出射方向和法线的点积为权重
+   PdfMaterial(Ray.Direction, Direction, Payload, Ior1, Bounces == 1, MaterialPdf);
+
+   // 更新Ray的新方向
+   Ray.Direction = Direction;
+   // 更新当前TracePoint的的Irradiance传输值，这个值最后会累加成Radiance，在NEE中计算
+   RayThroughput *= Throughput;
+	 RayPdf *= SamplePdf;
+  ```
+  * 俄罗斯轮盘赌，在能量超过一定的阈值或者超过一定的反弹次数，在经过随机判断来决定是否要结束这次Trace。
+  * 进行下一次Trace
+
+  1st Bounce
+  * 流程和上面一样，这里多了个检测天光的过程，如果TraceMiss则判定为击中天光：
+  ```cpp
+    // Environment contribution
+		if (Payload.IsMiss())
+		{
+			uint SkyLightId = 0;
+			float3 EnvironmentRadiance = 0.0;
+
+      // 直接采样天光，得出Radiance
+			SkyLight_EvalLight(SkyLightId, Ray.Direction, Ray, EnvironmentRadiance);
+			if (length(EnvironmentRadiance) > 0.0)
+			{
+        if (IsUnidirectionalEnabled)
+				{
+					// Apply NEE Pdf for correct MIS weight
+					float MisWeight = 1.0;
+					if (IsNextEventEstimationEnabled && Bounces > 0 && bIsNeeValid)
+					{
+						float NeePdf = 0.0;
+						float3 LightUV = GetLightUV(SkyLightId, Ray, Payload);
+            // 获取天光的NEE 的PDf
+						PdfLight(Ray, PrevMaterialPayload, SkyLightId, LightUV, NeePdf);
+	
+						// 应用NEE Pdf来矫正MIS权重
+						MisWeight = MaterialPdf / (MaterialPdf + NeePdf);
+					}
+					
+					if (Bounces > 1 || SceneLightsData.Mobility[SkyLightId] == 0)
+					{
+            // 累加irradiance
+						Irradiance += EnvironmentRadiance * RayThroughput * MisWeight / RayPdf;
+					}
+      }
+    }
+    // 继续计算Emmisive和上面一样
+  ```
+  * 继续做NEE检测和第0次反弹一样的操作
+  * 材质采样，RayThroughput计算
+  * 俄罗斯轮盘赌
+  * 继续Trace
