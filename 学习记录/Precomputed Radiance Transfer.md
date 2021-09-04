@@ -1036,3 +1036,168 @@ UE4中的PathTracing没有使用Bidirection Path Tracing(BDPT)，而是使用比
   * 材质采样，RayThroughput计算
   * 俄罗斯轮盘赌
   * 继续Trace
+
+  ### VLM Voxelization
+  要使用VLM，还需要在场景中按照物体的分布在对应块里均匀放置，这就需要对场景进行体素化。UE4中的GPU体素化方式比较简单，简单来说就是通过Geometry Shader进行保守性光栅，给场景中所有图元体素化，然后根据当前块里的体素数量来决定当前块的probe密度，一般密度分为3个level。这个方案的具体内容可以参考Nvidia的教程，[Nvidia GPU Voxelization](https://developer.nvidia.com/content/basics-gpu-voxelization)和[Nvidia Conservative Rasterization](https://developer.nvidia.com/gpugems/gpugems2/part-v-image-oriented-computing/chapter-42-conservative-rasterization)，因为这个过程需要用到保守光栅化，Nvidia也有相关的教程
+  构建过程主要有下面几个：
+  * FVoxelizeImportanceVolumeCS：Importance Volume初始化体素数据
+  * FVLMVoxelizationVS/GS/PS：对每个Mesh进行体素化，并进行标记
+  * FDilateVolumeCS：
+  * FDownsampleVolumeCS：
+  * FCountNumBricksCS：
+  * FGatherBrickRequestsCS：
+  * FSplatVolumeCS：
+
+  #### FVLMVoxelizationVS/GS/PS
+  这个Shader主要就是对场景进行体素化：
+  * VLMVoxelizationVS，就是计算相对于VLM的Volume的相对位置，范围是(-1, 1)
+  * VLMVoxelizationGS，Geometry Shader，输出的结构如下：
+  ```cpp
+  struct FVLMVoxelizationVertex
+  {
+    float4 ScreenPosition : SV_POSITION;
+    uint DominantAxis : DOMAXIS;
+    float4 AABB : AABB;
+  };
+  ```
+  下面是为了找到三个轴方向中面积最大的一个方向，为了更加准确的光栅化，否则会有裂缝，如下：
+  ![image](../RenderPictures/PrecomputedRadianceTransfer/GPUVoxelization01.png)
+  ![image](../RenderPictures/PrecomputedRadianceTransfer/GPUVoxelization02.png)
+
+  这里就是用三角面的法线的最大分量的绝对值来决定面积最大的那个面，并使它朝向z方向
+ ```cpp
+ // Dominant axis selection
+	float3 TriangleNormal = normalize(cross(Inputs[1].WorldPosition.xyz - Inputs[0].WorldPosition.xyz, Inputs[2].WorldPosition.xyz - Inputs[0].WorldPosition.xyz));
+	float3 AxisProjection = abs(TriangleNormal);
+	
+	float MaxAxisProjection = -1;
+	uint DominantAxis;
+	if (AxisProjection.x > MaxAxisProjection)
+	{
+		MaxAxisProjection = AxisProjection.x;
+		DominantAxis = 0;
+	}
+	if (AxisProjection.y > MaxAxisProjection)
+	{
+		MaxAxisProjection = AxisProjection.y;
+		DominantAxis = 1;
+	}
+	if (AxisProjection.z > MaxAxisProjection)
+	{
+		MaxAxisProjection = AxisProjection.z;
+		DominantAxis = 2;
+	}
+	
+	// Axis permutation
+	FVLMVoxelizationVertex Vertices[3];
+	
+  // 重新设置对应朝向的点坐标
+	for (int i = 0; i < 3; i++)
+	{
+		FVLMVoxelizationVSToGS Input = Inputs[i];
+		
+		FVLMVoxelizationVertex Vertex = (FVLMVoxelizationVertex)0;
+		if (DominantAxis == 0)
+		{
+			Vertex.ScreenPosition.xyz = Input.WorldPosition.yzx;
+		}
+		else if (DominantAxis == 1)
+		{
+			Vertex.ScreenPosition.xyz = Input.WorldPosition.zxy;
+		}
+		else
+		{
+			Vertex.ScreenPosition.xyz = Input.WorldPosition.xyz;
+		}
+		Vertex.ScreenPosition.w = 1.0f;
+
+		Vertex.DominantAxis = DominantAxis;
+		
+		Vertices[i] = Vertex;
+	}
+ ``` 
+
+ 计算当前三角形的AABB，后续用于在PS中剔除多余的体素：
+ ```cpp
+ // Calculate AABB to clip excessive pixels caused by edge extension
+	float4 AABB;
+	AABB.xy = Vertices[0].ScreenPosition.xy;
+	AABB.zw = Vertices[0].ScreenPosition.xy;
+	AABB.xy = min(AABB.xy, Vertices[1].ScreenPosition.xy);
+	AABB.zw = max(AABB.zw, Vertices[1].ScreenPosition.xy);
+	AABB.xy = min(AABB.xy, Vertices[2].ScreenPosition.xy);
+	AABB.zw = max(AABB.zw, Vertices[2].ScreenPosition.xy);
+	AABB.xy -= float2(1.0f / VLMVoxelizationParams.VolumeMaxDim, 1.0f / VLMVoxelizationParams.VolumeMaxDim);
+	AABB.zw += float2(1.0f / VLMVoxelizationParams.VolumeMaxDim, 1.0f / VLMVoxelizationParams.VolumeMaxDim);
+	
+	Vertices[0].AABB = AABB;
+	Vertices[1].AABB = AABB;
+	Vertices[2].AABB = AABB;
+ ```
+
+ 然后进行保守性光栅，需要把当前三角形往外扩一个单位大小：
+  ![image](../RenderPictures/PrecomputedRadianceTransfer/GPUVoxelization03.png)
+  ![image](../RenderPictures/PrecomputedRadianceTransfer/GPUVoxelization04.png)
+  ![image](../RenderPictures/PrecomputedRadianceTransfer/GPUVoxelization05.png)
+  ![image](../RenderPictures/PrecomputedRadianceTransfer/GPUVoxelization06.png)
+ ```cpp
+  // 计算三个边的向量
+  float3 Edge[3] = {
+		Vertices[1].ScreenPosition.xyz - Vertices[0].ScreenPosition.xyz,
+		Vertices[2].ScreenPosition.xyz - Vertices[1].ScreenPosition.xyz,
+		Vertices[0].ScreenPosition.xyz - Vertices[2].ScreenPosition.xyz
+	};
+	
+  // 就是上图中每个正方形中的每个半对角线
+	float2 SemiDiagonalVectors[4] = {
+		{ sqrt(2.0f) / VLMVoxelizationParams.VolumeMaxDim,  sqrt(2.0f) / VLMVoxelizationParams.VolumeMaxDim},
+		{ sqrt(2.0f) / VLMVoxelizationParams.VolumeMaxDim, -sqrt(2.0f) / VLMVoxelizationParams.VolumeMaxDim},
+		{-sqrt(2.0f) / VLMVoxelizationParams.VolumeMaxDim,  sqrt(2.0f) / VLMVoxelizationParams.VolumeMaxDim},
+		{-sqrt(2.0f) / VLMVoxelizationParams.VolumeMaxDim, -sqrt(2.0f) / VLMVoxelizationParams.VolumeMaxDim}
+	};
+	
+  // 计算当前边到扩大后的边的距离，只需要对每个边的法线与4个半对角线点积算出最大值即可，如上图，红色·
+	float MaxProj[3] = {0, 0, 0};
+	float3 EdgeNormal[3];
+	for (int i = 0; i < 3; i++)
+	{
+		EdgeNormal[i] = cross(Edge[i], float3(0,0, TriangleNormal[DominantAxis] > 0 ? 1 : -1)); // Unnormalized, doesn't matter
+		for (int Dir = 0; Dir < 4; Dir++)
+		{
+			MaxProj[i] = max(dot(SemiDiagonalVectors[Dir], EdgeNormal[i]), MaxProj[i]);
+		}
+	}
+
+  // 有了最大距离，那么就可以求出扩张后的顶点位置，就如上面第三张图，从顶点顺着边的方向延长，如上图，红色表示边的法线及距离，蓝色表示边的延长线到邻接边，这样其实就可以根据这两个信息求出两条延长线的长度，从而得出最终的偏移坐标
+	Vertices[0].ScreenPosition.xyz += ( MaxProj[0] * Edge[2]/dot(Edge[2].xy,EdgeNormal[0].xy) + MaxProj[2] * Edge[0]/dot(Edge[0].xy,EdgeNormal[2].xy) );
+	Vertices[1].ScreenPosition.xyz += ( MaxProj[1] * Edge[0]/dot(Edge[0].xy,EdgeNormal[1].xy) + MaxProj[0] * Edge[1]/dot(Edge[1].xy,EdgeNormal[0].xy) );
+	Vertices[2].ScreenPosition.xyz += ( MaxProj[2] * Edge[1]/dot(Edge[1].xy,EdgeNormal[2].xy) + MaxProj[1] * Edge[2]/dot(Edge[2].xy,EdgeNormal[1].xy) );
+ ```
+
+最后把深度值映射在(0,1)：
+```cpp
+for (int i = 0; i < 3; i++)
+{
+  Vertices[i].ScreenPosition.z += 1;
+  Vertices[i].ScreenPosition.z /= 2;
+
+  OutStream.Append(Vertices[i]);
+}
+```
+
+* VLMVoxelizationPS，对输出的结果进行处理，标记是否应该体素化：
+```cpp
+  // Recover {[-1, 1], [-1, 1], [-1, 1]} bounding box normalized coordinates from SV_Position (which is in {[0, ResX], [0, ResY], [0, 1]}
+  // 把SV_Position的位置重新映射到[-1, 1]
+	Input.ScreenPosition.xyz /= 0.5f;
+	Input.ScreenPosition.xy /= VLMVoxelizationParams.VolumeMaxDim;
+	Input.ScreenPosition.x -= 1;
+	Input.ScreenPosition.y = 1 - Input.ScreenPosition.y;
+	Input.ScreenPosition.z -= 1;
+
+  // 如果在AABB区域外就不进行标记，为剔除多余的体素
+  if (any(Input.ScreenPosition.xy < Input.AABB.xy) || any(Input.ScreenPosition.xy > Input.AABB.zw)) discard;
+
+  // 下面就是直接进行标记即可
+  ...
+```
