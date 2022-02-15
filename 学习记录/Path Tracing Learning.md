@@ -141,9 +141,11 @@ $$\frac{d\omega_i}{dA}=\frac{cos\theta_o}{r^2}$$
 对Disk采样可以近似理解为对太阳采样，要在Disk上均匀采样一点需要介入**Concentric Mapping**，这可以保证采样出来的点是均匀分布的，对应的[Paper](https://paperzz.com/doc/8612181/a-low-distortion-map-between-disk-and-square)。
 
 其本质上就是现在正方形区域均匀采样，然后再把正方形转换成圆形，如下图：
+
 ![image](../RenderPictures/PathTracing/PathTracing09.png)
 
 对应的点转换方式如下图：
+
 ![image](../RenderPictures/PathTracing/PathTracing10.png)
 
 把两个随机$a,b$数映射到[-1,1]，所以转化关系为：
@@ -157,9 +159,11 @@ $$\phi = \frac{\pi}{4}\frac{b}{a}$$
 球面采样很容易，可以在球面随机均匀采样点，但是更好的方法是只采对当前点有贡献的部分，比如那些背面的部分就可以不进行采样，这也就提高了采样效率，加快收敛。
 
 如果已知一点p，一个Sphere光源$p_c$，其可采样区域如下：
+
 ![image](../RenderPictures/PathTracing/PathTracing12.png)
 
 这里可以求出最大夹角$\theta_{max}$，对其采样需要两个角度值$(\theta,\phi)$，这里$\phi\in[0,2\pi]$，$\theta\in[0,\theta_{max}]$，要求出球面点到球面中心点的方向，有如下关系：
+
 ![image](../RenderPictures/PathTracing/PathTracing13.png)
 
 这里就是为了求出$\alpha$，这里需要用到余弦定理：$$c=\sqrt{a^2+b^2-2ab\cdot cos\gamma}$$
@@ -180,6 +184,28 @@ $$1=c(2\pi(1-cos\theta_{max}))$$
 
 所以$pdf=\frac{1}{2\pi(1-cos\theta_{max})}$。
 
-### Sampling Spheres
+### Sampling SkyLight
+采样天光还是比较麻烦的，因为我们正常使用CubeMap来表示天光，正方体有六个面，所以也必定会导致采样的Pdf不是均匀的，需要进行转换，把在CubeMap上采样的点转换到Sphere上：
 
-上面都是一些理论上的解释，但是UE4在PathTracing的实现中并没有按照这些理论来，使用了很直接的Pdf，
+设$(\alpha,\beta,1)$为cubemap一个面上的点，$p$是圆上的点，如下映射关系：
+$$p=\frac{(\alpha,\beta,1)}{\sqrt{\alpha ^2 +\beta^2 + 1}}$$
+
+那么任意平面上的点$A\in[0,x],[0,y]$的到$[0,0]$的区域面积投影到圆上：
+$$A(x,y)=\int_0^x\int_0^y|\frac{\partial p}{\partial \alpha}\times\frac{\partial p}{\partial \beta}|d\alpha d\beta$$
+$$=\int_0^x\int_0^y(\alpha^2+\beta^2+1)^{3/2}d\alpha d\beta$$
+$$=|arctan\frac{xy}{\sqrt{x^2+y^2+1}}|$$
+
+所以如果在正方形区域里采样一块微小区域，如下图：
+
+![image](../RenderPictures/PathTracing/PathTracing14.png)
+
+所以$A_{sp}=A(x_1,y_1)-A(x_1,y_0)-A(x_0,y_1)+A(x_0,y_0)$
+
+UE4里就是通过这个方法来映射到球面上，从而得到Pdf，但是还需要根据一个随机数来决定采样的方向以及采样Pdf，这里就会涉及到Cdf，累积分布函数 (cumulative distribution function)，是概率密度函数的积分，能完整描述一个实随机变量X的概率分布。
+这里给定一组随机数$(\xi_1,\xi_2)$，然后根据这组随机数得到Cubemap的采样面以及对应面的像素点。
+$\xi_1$：得到对应的面
+$\xi_2$：根据该随机值得到采样点
+
+这里得先对SkyLight的Cubemap做一次预处理，每个面计算Luminance，然后再生成Hierical MipMap，根据随机数从最低一级的Mip开始向上找，直至最高一级，这样做的好处是会有更多的采样点落在Luminance比较强的地方，这样的结果收敛更快。
+
+上面都是一些理论上的解释，但是UE4在PathTracing的实现中并没有按照这些理论来，使用了很直接的Pdf，比如点光的Pdf就是为1...
