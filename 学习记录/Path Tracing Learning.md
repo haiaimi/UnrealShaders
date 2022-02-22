@@ -209,3 +209,138 @@ $\xi_2$：根据该随机值得到采样点
 这里得先对SkyLight的Cubemap做一次预处理，每个面计算Luminance，然后再生成Hierical MipMap，根据随机数从最低一级的Mip开始向上找，直至最高一级，这样做的好处是会有更多的采样点落在Luminance比较强的地方，这样的结果收敛更快。
 
 上面都是一些理论上的解释，但是UE4在PathTracing的实现中并没有按照这些理论来，使用了很直接的Pdf，比如点光的Pdf就是为1...
+
+
+## Relationship Between Radiance and Irradiance on Spherical Harmonic
+
+通过PathTracing得到radiance，然后再以球谐的方式存起来，但是在实际渲染时，需要的是Irradiance，但是Irradiance实际上是半球积分，这中间就需要有转换的过程，首先Irradiance公式：
+
+$$E(n)=\int_{\Omega(n)}L(\omega)(n\cdot\omega)d\omega$$
+
+上式就是对法线方向$n$进行半球积分，$L(\omega)$就是radiance，但是我们已经把Radiance使用球谐表示，可以用快速近似的方法来近似半球积分。
+
+由于法线方向是随意的，所以这里就需要进行旋转从而把局部坐标系的方向$(\theta_i^{'},\phi_i^{'})$转换到全局坐标系$(\theta_i,\phi_i)$，如下：
+$$R^{\alpha,\beta,\gamma}=R_z(\beta)R_y(\alpha)R_z(\gamma)$$
+$$(\theta_i,\phi_i)=R^{\alpha,\beta,\gamma}(\theta_i^{'},\phi_i^{'})$$
+$$L(\theta_i,\phi_i)=L(R^{\alpha,\beta,\gamma}(\theta_i^{'},\phi_i^{'}))$$
+
+如下图：
+
+![image](../RenderPictures/PathTracing/PathTracing15.png)
+
+所以根据上面的关系可得Irradiance为：
+$$E(\alpha,\beta,\gamma)=\int_{\Omega^{'}}L(R^{\alpha,\beta,\gamma}(\theta_i^{'},\phi_i^{'}))A(\theta_i^{'})d{\Omega^{'}}$$
+
+根据球谐函数的数学推导知道：
+$$Y_{l,m}(\theta,\phi)=N_{l,m}P_{l,m}(cos\theta)e^{im\phi}$$
+$N_{l,m}$是标准化系数。
+那么根据指定方向取对应的radiance如下：
+$$L(\theta_i,\phi_i)=\sum_{l=0}^{\infty}\sum_{m=-l}^{l}L_{l,m}Y_{l,m}(\theta_i,\phi_i)$$
+
+上式其实就是一个球谐重建过程，$L_{l,m}$是球谐投影系数。
+
+那么球谐函数的旋转可以表示如下：
+z轴方向的旋转：
+$$R_z(\beta)\{Y_{l,m}(\theta^{'},\phi^{'})\}=Y_{l,m}(\theta_i^{'},\phi_i^{'}+\beta)=e^{im\beta}Y_{l,m}(\theta_i^{'},\phi_{i}^{'})$$
+y轴方向的旋转，相对会更复杂：
+$$R_y(\alpha)\{Y_{l,m}(\theta^{'},\phi^{'})\}=\sum_{m'=-l}^{l}D_{m,m'}^l(\alpha)Y_{l,m'}(\theta^{'},\phi^{'})$$
+
+其中$D^{l}$是$(2l+1)\times(2l+1)$尺寸的球谐旋转矩阵，根据上面的关系，可以得到对应旋转公式：
+$$R^{\alpha,\beta,\gamma}\{Y_{l,m}(\theta_i^{'},\phi_i^{'})\}$$
+$$=R_z(\beta)R_y(\alpha)R_z(\gamma)\{Y_{l,m}(\theta_i^{'},\phi_i^{'})\}$$
+$$=\sum_{m'=-l}^{l}\tilde{D}_{m,m'}^{l}(\alpha,\beta,\gamma)Y_{l,m'}(\theta_i^{'},\phi_i^{'})$$
+
+$$\tilde{D}_{m,m'}^{l}(\alpha,\beta,\gamma)=D_{m,m'}^l(\alpha)e^{im\beta}e^{im'\gamma}$$
+
+由于Transfer函数$A=cos\theta_i^{'}$，所以和$\phi$不相关，那么根据球谐函数的定义可得$m'=0$时只与$\theta$相关，最终可得：
+
+$$D_{m,0}^l(\alpha)e^{im\beta}=\sqrt{\frac{4\pi}{2l+1}}Y_{l,m}(\alpha,\beta)$$
+
+根据Transfer定义可知：
+$$A(\theta_i^{'})=cos\theta_i^{'}=\sum_{n=0}^{\infty}A_nY_{n,0}(\theta_i^{'})$$
+
+$A_n$系数可以表示为：
+$$A_n=2\pi\int_0^{\pi/2}Y_{n,0}(\theta_i^{'})cos\theta_i^{'}sin\theta_i^{'}d\theta_i^{'}$$
+
+上面就是一个傅里叶展开和傅里叶级数的表示。
+
+由于$m=0$，使$u=cos\theta_i^{'}$可得：
+
+$$Y_{n,0}(\theta_i^{'})=\sqrt{\frac{2n+1}{4\pi}}\int_0^1P_n(u)P_1(u)du$$
+
+$$A_n=2\pi\sqrt{\frac{2n+1}{4\pi}}\int_0^1P_n(u)P_1(u)du$$
+
+上面的$P_n$是勒让德多项式，同时有个特性是n为奇时，$P_n$是奇函数，n为偶时，$P_n$时偶函数，它在[-1,1]区间是正交的，其关系为：
+$$\int_{-1}^{1}P_a(u)P_b(u)=\frac{2}{2a+1}\delta_{a,b}$$
+
+
+如果$n=1$可以直接算出$A_n=\sqrt{\pi/3}$
+
+当$n>1$，当n为奇数，同时b=1，这就意味着上式左边$P_a(u)P_b(u)$是偶函数，那么等式不成立，只有为0才成立，所以当$n>1$，$A_n=0$
+
+当n为偶数时，那么得：
+$$A_n=2\pi\sqrt{\frac{2n+1}{4\pi}}\frac{(-1)^{n/2-1}}{(n+2)(n+1)}[\frac{n!}{2^n(n!/2)}]$$
+
+上面已经得到了$A_n$，那么可以得到Irradiance：
+$$E(\alpha,\beta,\gamma)=\sum_{n=0}^{\infty}\sum_{l=0}^{\infty}\sum_{m=-l}^{l}\sum_{m'=-l}^{l}L_{l,m}A_nD_{m,m'}^l(\alpha)e^{im\beta}e^{im'\gamma}T_{n,l,m'}$$
+
+$$T_{n,l,m'}=\int_{\phi'=0}^{2\pi}\int_{\theta'=0}^{\pi}Y_{l,m'}(\theta_i^{'},\phi_i^{'})Y_{n,0}(\theta_i^{'},\phi_i{'})sin\theta_i^{'}d\theta_i^{'}d\phi_i{'}$$
+
+根据球谐函数得正交性质，球谐函数得球面积分如下：
+
+$$\iint_S Y_l^m(\theta,\phi)Y_k^n(\theta,\phi)sin\theta d\theta d\phi=
+\begin{cases}
+0 \space m\neq n,l\neq k\\
+1 \space m=n,l=k
+\end{cases}
+$$
+
+要想使等式成立，那就必须使$n=l$，$m'=0$，且积分结果为1，这就得如下：
+
+$$E(\alpha,\beta,\gamma)=\sum_{l=0}^{\infty}\sum_{m=-l}^{l}L_{l,m}A_lD_{m,0}^l(\alpha)e^{im\beta}$$
+
+由于前文已经得出了关系：$$D_{m,0}^l(\alpha)e^{im\beta}=\sqrt{\frac{4\pi}{2l+1}}Y_{l,m}(\alpha,\beta)$$
+
+可得：
+$$E(\alpha,\beta,\gamma)=\sum_{l=0}^{\infty}\sum_{m=-l}^{l}\sqrt{\frac{4\pi}{2l+1}}A_lL_{l,m}Y_{l,m}(\alpha,\beta)$$
+
+又由于$\gamma$没有存在作用所以：
+$$E(\alpha,\beta)=\sum_{l=0}^{\infty}\sum_{m=-l}^{l}E_{l,m}Y_{l,m}(\alpha,\beta)$$
+从而继续可得：
+$$E_{l,m}=\sqrt{\frac{4\pi}{2l+1}}A_lL_{l,m}$$
+
+这个也是我们得核心关系式，上面就表示了Radiance和Irradiance之间得转换。我们可以看到只要有Radiance得球谐系数，就可以得到经过半球Cos Lobe积分得Irradiance，在Runtime可以十分高效得完成转换。
+
+我们把这个转换系数记为：
+$$\hat{A}_l=\sqrt{\frac{4\pi}{2l+1}}A_l$$
+
+根据计算前几个$\hat{A}_l$为：
+
+$$\hat{A}_0=\pi$$
+$$\hat{A}_1=\frac{2\pi}{3}$$
+$$l>1,odd,\hat{A}_l=0$$
+$$l>1,even,\hat{A}_l=2\pi\frac{(-1)^{\frac{l}{2}-1}}{(l+2)(l-1)}[\frac{l!}{2^l(\frac{l}{2}!)^2}]$$
+
+UE4中也有近似得实现，如下代码:
+```cpp
+FThreeBandSHVector CalcDiffuseTransferSH3(half3 Normal,half Exponent)
+{
+	FThreeBandSHVector Result = SHBasisFunction3(Normal);
+
+	// These formula are scaling factors for each SH band that convolve a SH with the circularly symmetric function
+	// max(0,cos(theta))^Exponent
+	half L0 =					2 * PI / (1 + 1 * Exponent							);
+	half L1 =					2 * PI / (2 + 1 * Exponent							);
+	half L2 = Exponent *		2 * PI / (3 + 4 * Exponent + Exponent * Exponent	);
+	half L3 = (Exponent - 1) *	2 * PI / (8 + 6 * Exponent + Exponent * Exponent	);
+
+	// Multiply the coefficients in each band with the appropriate band scaling factor.
+	Result.V0.x *= L0;
+	Result.V0.yzw *= L1;
+	Result.V1.xyzw *= L2;
+	Result.V2 *= L2;
+
+	return Result;
+}
+```
+
