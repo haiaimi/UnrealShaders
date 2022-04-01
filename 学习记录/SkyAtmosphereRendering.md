@@ -1,9 +1,9 @@
 # 大气渲染
 
 ## 基本理论
-下面的内容都是推导**单次散射（single scattering）**的渲染模型。如下图：
+下面的内容都是推导 **单次散射（single scattering）** 的渲染模型。如下图：
 
-![image]()
+![image](../RenderPictures/SkyAtmosphereRendering/AtmosphereRendering_0.png)
 
 实际上就是对视线路径AB上每一点的光照贡献进行积分。P就是每一个点。
 
@@ -11,7 +11,7 @@
 ### P点的光照
 从P点出发沿着光照方向与大气边缘的交点为C，C点沿着CP的方向衰减就达到P点的光照得到P的光照强度$I_p$。如下图：
 
-![image]()
+![image](../RenderPictures/SkyAtmosphereRendering/AtmosphereRendering_1.png)
 
 对应的公式就是$I_p=I_sT(\overline{CP})$。
 
@@ -34,7 +34,7 @@ $I_{PA}=I_{p}S(\lambda,\theta,h)T(\overline{PA})$
    * 大粒子使用**Mie散射（Mie Scattering）**，不受波长影响。
     两种方式的区别如下图：
 
-    ![image]()
+    ![image](../RenderPictures/SkyAtmosphereRendering/AtmosphereRendering_2.jpg)
 
     $Rayleigh$的散射模型如下：
     $S(\lambda,\theta,h)=\frac{\pi ^2(n^2-1)^2}{2}\frac{\rho(h)}{N}\frac{1}{\lambda ^4}(1+cos\theta ^2)$
@@ -45,7 +45,7 @@ $I_{PA}=I_{p}S(\lambda,\theta,h)T(\overline{PA})$
 
     可以看出$Rayleigh$散射大致和波长的4次幂成反比，波长越小（越靠近紫光），散射越厉害，所以白天天空为蓝色，黄昏天空会变红是因为阳光穿过的大气更厚，所以到达人眼前，大多数蓝光已经被散射到其他地方。光的波长如下：
 
-    ![image]()
+    ![image](../RenderPictures/SkyAtmosphereRendering/AtmosphereRendering_3.png)
 
 2. 衰减系数：$T(PA)$
     上面只是计算了一次衰减，但是实际上传播时是持续衰减。假设$I_0$在经过一次散射后损失$\beta$比例的能量，那么剩余的$I_1$就是：
@@ -100,7 +100,7 @@ $I_{PA}=I_{p}S(\lambda,\theta,h)T(\overline{PA})$
 ### 路径AB之间
 上面这么多内容只是一个点，但是路径AB上有很多个点这就需要随AB上所有点进行积分，如下图：
 
-![image]()
+![image](../RenderPictures/SkyAtmosphereRendering/AtmosphereRendering_5.png)
 
 计算过程如下：
 
@@ -129,6 +129,8 @@ $=I_S\beta(\lambda)P(\theta)\int_A^Bexp\{-\beta(\lambda)\{D(\overline{CP})+D(\ov
   
   公式如下：
   $I_A=R_BT_{extinction}+I_{inscatter}$
+
+## 预计算大气
 
 ## UE4中的大气散射实现
 
