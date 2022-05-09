@@ -22,14 +22,14 @@ static dens[size], dens_prev[size];
 通常认为整体格子的边长为1，那么每个网格单元的宽是*h=1/N*，因为模拟就是速度和密度格子的一系列Snapshots，所以Snapshots之间的时间差就是*dt*。
 如下图：
 
-![image](https://github.com/haiaimi/UnrealShaders/blob/master/RenderPictures/Real-Time%20Fluid%20Simulation/FluidGrids.png)
+![image](../RenderPictures/Real-Time%20Fluid%20Simulation/FluidGrids.png)
 
 ## Moving Densities
 首先解释密度场在一个固定的速度场中移，上述的等式表明导致密度改变有三个原因：1.密度需要跟随速度场，2.密度在一个固定的频率扩散，3.密度由于源头增加。
 
 1. 第一步还是比较好实现，可以认为每帧的源由数组*s[]*提供，而这个数组则是跟据游戏中检测密度源的部分填充，例如可以是玩家鼠标的移动。可以看下图：
 
-![image](https://github.com/haiaimi/UnrealShaders/blob/master/RenderPictures/Real-Time%20Fluid%20Simulation/DensityTerms.png)
+![image](../RenderPictures/Real-Time%20Fluid%20Simulation/DensityTerms.png)
 
 如下代码：
 ```cpp
@@ -762,7 +762,7 @@ $FinalColor.a += SampleColor.a\times (1-FinalColor.a)$
 #### Filtering
 在进行Ray-Marching后会产生一些Artifacts，例如*banding*，表现为画面分层严重，过渡不自然，在流体区域内深度变化剧烈的时候尤为明显，这是因为进行了等距采样。为了解决这个问题，需要进行一次额外的采样，然后根据到场景深度的距离在两个采样点之间进行插值，如下图：
 
-![image](https://github.com/haiaimi/UnrealShaders/blob/master/RenderPictures/Real-Time%20Fluid%20Simulation/Fluid3DArtifact_Binding.png)
+![image](../RenderPictures/Real-Time%20Fluid%20Simulation/Fluid3DArtifact_Binding.png)
 
 上图中，d就是采样点到场景深度的距离，$d/sampleWidth$就是最后的权重。但是$banding$现象可能还是会存在。有一些方法来解决这种问题，如增加采样频率，往射线方向抖动一小段距离，或者使用更高级的过滤器。通常会把这些方法结合起来使用以获得比较好的**表现-性能**之间的平衡。如这个示例项目就是使用了三线性抖动采样。
 

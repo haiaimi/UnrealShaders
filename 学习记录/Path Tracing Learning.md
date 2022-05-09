@@ -299,7 +299,8 @@ $$
 
 $$E(\alpha,\beta,\gamma)=\sum_{l=0}^{\infty}\sum_{m=-l}^{l}L_{l,m}A_lD_{m,0}^l(\alpha)e^{im\beta}$$
 
-由于前文已经得出了关系：$$D_{m,0}^l(\alpha)e^{im\beta}=\sqrt{\frac{4\pi}{2l+1}}Y_{l,m}(\alpha,\beta)$$
+由于前文已经得出了关系：
+$$D_{m,0}^l(\alpha)e^{im\beta}=\sqrt{\frac{4\pi}{2l+1}}Y_{l,m}(\alpha,\beta)$$
 
 可得：
 $$E(\alpha,\beta,\gamma)=\sum_{l=0}^{\infty}\sum_{m=-l}^{l}\sqrt{\frac{4\pi}{2l+1}}A_lL_{l,m}Y_{l,m}(\alpha,\beta)$$

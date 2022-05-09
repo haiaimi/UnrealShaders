@@ -1136,9 +1136,11 @@ UE4中的PathTracing没有使用Bidirection Path Tracing(BDPT)，而是使用比
  ```
 
  然后进行保守性光栅，需要把当前三角形往外扩一个单位大小：
+
   ![image](../RenderPictures/PrecomputedRadianceTransfer/GPUVoxelization03.png)
   ![image](../RenderPictures/PrecomputedRadianceTransfer/GPUVoxelization04.png)
   ![image](../RenderPictures/PrecomputedRadianceTransfer/GPUVoxelization05.png)
+  
   ![image](../RenderPictures/PrecomputedRadianceTransfer/GPUVoxelization06.png)
  ```cpp
   // 计算三个边的向量
