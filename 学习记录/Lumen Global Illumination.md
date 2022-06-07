@@ -49,7 +49,7 @@ Lumen每帧都会有LumenScene的更新及对应的Surface Cache更新，MeshCar
 经过上面的流程，我们就已经有了基本的场景信息，有了这个信息就可以进行间接光的计算，这也类似于Surfel，只不过Lumen是用新的方式实时计算，场景Surface信息可以动态变化也是纯动态GI的必要条件。通过SurfaceCache和SDF这时候已经可以表达出一个基本场景，如下：
 
 * Lumen Scene
-![image](../RenderPictures/Lumen/LumenSample.png)
+![image](../RenderPictures/Lumen/LumenScene.png)
 
 * Final Lit Scene
 ![image](../RenderPictures/Lumen/LitScene.png)
@@ -107,7 +107,7 @@ GPU上收集需要更新的Card及Tiles
     设半球采样数为$n$，设ConeHalfAngle为$\alpha$，则每个采样Cone的立体角为$\frac{2\pi}{n}$，如下
 
     $$\int^{2\pi}_{0}\int^{\alpha}_{0}sin\theta d\theta d\phi=\frac{2\pi}{n}$$
-    
+
     可以求出$\alpha=acos(1-1/n)$。Probe采样如下：
     ![image](../RenderPictures/Lumen/RadiosityProbes.png)
 
