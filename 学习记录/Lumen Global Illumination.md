@@ -105,7 +105,9 @@ GPU上收集需要更新的Card及Tiles
 - BuildRadiosityTilesCS 这个步骤与之前的DirectLight分Tile类似
 - LumenRadiosityDistanceFieldTracingCS 这里会为每个Tile Trace一个Probe默认4x4 Texels，根据计算出的方向、ConeHalfAngle并利用SDF进行ConeTrace（采样VoxelLighting），这里的ConeHalfAngle计算：ConeHalfAngle = acosFast(1.0f - 1.0f / (float)(NumTracesPerProbe));
     设半球采样数为$n$，设ConeHalfAngle为$\alpha$，则每个采样Cone的立体角为$\frac{2\pi}{n}$，如下
+
     $$\int^{2\pi}_{0}\int^{\alpha}_{0}sin\theta d\theta d\phi=\frac{2\pi}{n}$$
+    
     可以求出$\alpha=acos(1-1/n)$。Probe采样如下：
     ![image](../RenderPictures/Lumen/RadiosityProbes.png)
 
