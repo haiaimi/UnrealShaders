@@ -106,15 +106,60 @@ GPU上收集需要更新的Card及Tiles
 - LumenRadiosityDistanceFieldTracingCS 这里会为每个Tile Trace一个Probe默认4x4 Texels，根据计算出的方向、ConeHalfAngle并利用SDF进行ConeTrace（采样VoxelLighting），这里的ConeHalfAngle计算：ConeHalfAngle = acosFast(1.0f - 1.0f / (float)(NumTracesPerProbe));
     设半球采样数为$n$，设ConeHalfAngle为$\alpha$，则每个采样Cone的立体角为$\frac{2\pi}{n}$，如下
 
-    $$\int^{2\pi}_{0}\int^{\alpha}_{0}sin\theta d\theta d\phi=\frac{2\pi}{n}$$
+    $\int^{2\pi}_{0}\int^{\alpha}_{0}sin\theta d\theta d\phi=\frac{2\pi}{n}$
 
     可以求出$\alpha=acos(1-1/n)$。Probe采样如下：
+
     ![image](../RenderPictures/Lumen/RadiosityProbes.png)
 
 - LumenRadiositySpatialFilterProbeRadiance 为了减少noise，对Atlas Probe进行空间上的Filter，对周围的Probe数据采样并考虑可见性权重
-- LumenRadiosityConvertToSH 把当前的Probe（八面体表示）转换为2阶球谐
+- LumenRadiosityConvertToSH 把当前的Probe（八面体表示）转换为2阶球谐，转换为3张Atlas，分别为RGB通道的SH Coefficients：
+    ![image](../RenderPictures/Lumen/SurfaceCacheProbeSHRed.png)
+    ![image](../RenderPictures/Lumen/SurfaceCacheProbeSHGreen.png)
+    ![image](../RenderPictures/Lumen/SurfaceCacheProbeSHBlue.png)
+
 - LumenRadiosityIntegrateCS 根据上面的球谐数据计算SurfaceCache的间接光
 - CombineLighting 把当前计算出的间接光与之前的直接光结合计算出FinalLight
+    ![image](../RenderPictures/Lumen/LumenRadiosityFinalLight.png)
 
 ### ComputeLumenSceneVoxelLighting
-场景体素化并计算Voxel Lighting
+场景体素化并计算Voxel Lighting，用于Cone Tracing，有比较好的收敛。Lumen的VoxelLighting使用Clipmap方式组织，每个voxel有6个面，Lumen默认可视距离为200米表示为4级clipmap，例如一级clipmap是64x64x64，那么Voxel Volume Texture的尺寸就为64x256x384。
+
+- BuildUpdateGridTilesCS 根据当前场景Mesh的Transform变化对每个Voxel与对应Mesh的Bounds进行相交检测，收集需要更新的Voxel Tiles
+- CullToVoxelClipmap Clipmap范围与物体SDF box相交检测，去除不需要的SDF
+- SetupVoxelTracesCS 根据物体的AABB与Voxel相交检测，计算需要Trace的Voxel
+- VoxelTraceCS 对上面步骤筛选出来的Voxel进行6方向Trace，每个方向默认Trace 64次，不过这里是对单独的Mesh SDF进行Trace
+- CompactVisBuffer Compact需要更新的Voxel，这里会统计每个Voxel的每一个面，在上一步VoxelTraceCS中已经确定好数据，这里的Compact以64个Voxel单面为一组
+- SetupVisBufferShading 设置IndirectDispatch的arguments
+- VisBufferShading 根据前面提供的Voxel位置，面等信息，根据MeshCard从SurfaceCache取数据得到Voxel的光照结果Lighting和不透明度Opacity
+
+Lumen场景的体素化:
+
+![image](../RenderPictures/Lumen/LumenSceneVoxelization.png)
+
+### ComputeLumenTranslucencyGIVolume
+再议
+
+### 小结
+上面是Lumen里的SurfaceCache和VoxelLighting的内容，这里可以看到lumen为了实现多次反弹在SurfaceCache和Voxel中来回取数据，这也是很多实时GI的实现方式，其实有了这些就已经可以满足大多数游戏的GI，但是仅仅使用这些还达不到对标PathTracing的目标，所以之后的过程才是Lumen比较核心的地方，ScreenSpace Probe，这里涉及到很多优化的地方，在Epic的siggraph2021的分享中也着重讲了这一块：**Radiance Caching for real-time Global Illumination (SIGGRAPH 2021)**。
+
+## DiffuseIndirectAndAO
+这部分是Lumen最复杂的部分，也是lumen核心部分，这一部分可以结合lumen siggraph分享看，更容易理解。
+
+- LumenScreenProbeGather
+    - ScreenProbeDownsampleDepthUniformCS 对SceneRT降采样，默认16x16像素生成一个Probe，并输出Depth，Normal(Octahedron)，Probe Position，Probe Jitter Velocity(用于Temporal Filter)
+    - ScreenProbeAdaptivePlacementCS 屏幕空间自适应生成更高精度的Probe，解决Probe之间由于遮挡导致插值不正确的问题，由于Probe之间几何信息可能波动很大，所以就需要生成更高密度的Probe，Lumen中先指定一个高密度的Probe，计算周围的Probe到当前Probe的插值情况，这里对当前Probe所在的位置及法线构建一个平面，计算周围4个Probe距离该平面的距离，计算方式如下：
+        ```cpp
+        float PlaneDistance; //Depth to the plane
+        float SceneDepth; // Depth To camera
+        float RelativeDepthDifference = PlaneDistance / SceneDepth;
+        float DepthWeight = exp2(-10000.0f * (RelativeDepthDifference * RelativeDepthDifference));
+        ```
+        DepthWeight随着到Camera距离变远，权重也在变大，也就导致周围的Probe插值权重变高（因为最终是比较周围的权重和是否大于一定阈值，如1.f），当然这里的权重也会加入当前Probe到周围Probe距离的影响。
+        如下图：
+        ![image](../RenderPictures/Lumen/ScreenSpaceProbeAdapativePlacement.png)
+
+        最终的AdapativeProbe会Altas到同一张Texture中，下图是已经计算过Radiance的：
+        ![image](../RenderPictures/Lumen/ScreenSpaceProbeAdapativePlacementAtlas.png)
+
+    - ScreenProbeComputeBRDFProbabilityDensityFunctionCS
