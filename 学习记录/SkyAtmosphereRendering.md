@@ -131,6 +131,7 @@ $=I_S\beta(\lambda)P(\theta)\int_A^Bexp\{-\beta(\lambda)\{D(\overline{CP})+D(\ov
   $I_A=R_BT_{extinction}+I_{inscatter}$
 
 ## 预计算大气
+可以把Transmittance、Scatter都预计算，Runtime查询即可
 
 ## UE4中的大气散射实现
 
