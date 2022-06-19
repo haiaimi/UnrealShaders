@@ -320,7 +320,7 @@ void vel_step(int N, float * u, float * v, float * u0, float * v0, float visc, f
 
 注意这里和密度结算的差别，这里多了一个*project()*方法，这在视觉上迫使气流具有许多涡流，这个涡流会产生逼真的涡旋气流。为了保证质量守恒，使用了叫做*霍齐分解*（Hodge decomposition）的纯数学计算结果：每个速度场是质量守恒场和梯度场和。注意，质量守恒场如何具有良好的旋涡状涡流，通常是我们想要的场类型,如下图上半部分。另一方面梯度场是下图上半部分右边，这种情况是最糟糕的情况，在某些点的流动都是向外或者向内，实际梯度场表示一些高度函数的最陡下降方向。一旦有了高度场，我们就可以从速度场中减去梯度来得到质量守恒场，如下图下半部分。
 
-![image](https://github.com/haiaimi/UnrealShaders/blob/master/RenderPictures/Real-Time%20Fluid%20Simulation/ConstructVelocityField.png)
+![image](../RenderPictures/Real-Time%20Fluid%20Simulation/ConstructVelocityField.png)
 
 计算projection这里不会涉及很多数学细节，仅仅涉及一些计算高度场的线性系统也被称为*Poisson equation*，这个系统也是稀疏的，可以使用之前计算密度、扩散的G-S方程计算，下面是相关的代码：
 ```cpp
