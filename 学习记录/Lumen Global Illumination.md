@@ -109,7 +109,6 @@ GPU上收集需要更新的Card及Tiles
     $\int^{2\pi}_{0}\int^{\alpha}_{0}sin\theta d\theta d\phi=\frac{2\pi}{n}$
 
     可以求出$\alpha=acos(1-1/n)$。Probe采样如下：
-
     ![image](../RenderPictures/Lumen/RadiosityProbes.png)
 
 - LumenRadiositySpatialFilterProbeRadiance 为了减少noise，对Atlas Probe进行空间上的Filter，对周围的Probe数据采样并考虑可见性权重
@@ -162,4 +161,27 @@ Lumen场景的体素化:
         最终的AdapativeProbe会Altas到同一张Texture中，下图是已经计算过Radiance的：
         ![image](../RenderPictures/Lumen/ScreenSpaceProbeAdapativePlacementAtlas.png)
 
-    - ScreenProbeComputeBRDFProbabilityDensityFunctionCS
+    - ScreenProbeComputeBRDFProbabilityDensityFunctionCS 计算Screen Probe的BRDF PDF，对Screen Probe对应tile的每个像素的法线90度余弦积分的球谐，最终会转成一个3阶球谐
+    - World Space Radiance Cache 除了Screen Probe，还有World Space Probe，这里就对Worldspace probe做cache，Radiance Cache也是以Probe形式存在，并且有4级Clipmap
+        - MarkRadianceProbesUsedByScreenProbesCS 标记被ScreenProbe使用到的Radiance Probe，同时会随机选取一级Clipmap，并且会同时标记ScreenProbe周围的8个Radiance Probe
+        - UpdateCacheForUsedProbesCS 更新Radiance Probe状态，如果标记为需要使用就更新ProbeLastUsedFrame（该Probe上次被使用的帧数），如果超过最大KeepCache的帧数量，就更新ProbeFreeList，用于后面清除Probe数据
+        - ClearRadianceCacheUpdateResourcesCS 清除Radiance Probe相关数据
+        - AllocateUsedProbesCS 为被使用的Radiance Probe更新状态，更新对应Probe所在Bucket优先级直方图的Trace数量信息，其优先级根据Probe到相机的距离以及Probe上次Trace帧与上次被使用帧之差来决定，大概就是距离越短、帧数差越小优先级越高
+        - SelectMaxPriorityBucketCS
+        - ComputeProbeWorldOffsetsCS
+        - ScatterScreenProbeBRDFToRadianceProbesCS
+        - GenerateProbeTraceTilesCS
+        - SortProbeTraceTilesCS
+        - RadianceCacheTraceFromProbesCS
+        - FilterProbeRadianceWithGatherCS
+        - CalculateProbeIrradianceCS
+        - PrepareProbeOcclusionCS
+    - GenerateImportanceSamplingRays
+        - ScreenProbeComputeLightingProbabilityDensityFunctionCS
+        - ScreenProbeGenerateRaysCS
+    - TraceScreenProbes
+        - MeshSDFCulling
+        - ScreenProbeCompactTracesCS
+        - ScreenProbeTraceMeshSDFsCS
+        - ScreenProbeTraceVoxelsCS
+    - FilterScreenProbes
