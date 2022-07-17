@@ -167,21 +167,37 @@ Lumen场景的体素化:
         - UpdateCacheForUsedProbesCS 更新Radiance Probe状态，如果标记为需要使用就更新ProbeLastUsedFrame（该Probe上次被使用的帧数），如果超过最大KeepCache的帧数量，就更新ProbeFreeList，用于后面清除Probe数据
         - ClearRadianceCacheUpdateResourcesCS 清除Radiance Probe相关数据
         - AllocateUsedProbesCS 为被使用的Radiance Probe更新状态，更新对应Probe所在Bucket优先级直方图的Trace数量信息，其优先级根据Probe到相机的距离以及Probe上次Trace帧与上次被使用帧之差来决定，大概就是距离越短、帧数差越小优先级越高
-        - SelectMaxPriorityBucketCS
-        - ComputeProbeWorldOffsetsCS
-        - ScatterScreenProbeBRDFToRadianceProbesCS
+        - SelectMaxPriorityBucketCS 从直方图选择权重最高的Bucket
+        - AllocateProbeTracesCS 记录需要Trace的Probe位置与Index
+        - ComputeProbeWorldOffsetsCS 计算Probe的位置偏移，当Probe过于靠近Surface的时候会做一个适当的偏移，每个会对4x4x4的方向进行检测，应该是为了防止Probe太接近Mesh产生明显的漏光/漏阴影
+        - ScatterScreenProbeBRDFToRadianceProbesCS 把之前已经计算好的ScreenProbe BRDF利用到Radiance Probe上
         - GenerateProbeTraceTilesCS
-        - SortProbeTraceTilesCS
-        - RadianceCacheTraceFromProbesCS
-        - FilterProbeRadianceWithGatherCS
-        - CalculateProbeIrradianceCS
-        - PrepareProbeOcclusionCS
+        - RadianceCacheTraceFromProbesCS 实际执行Probe的Trace，利用距离场、VoxelLight、以及之前计算好的需要Trace的信息，输出Probe的Radiance八面体Atlas以及深度的Atlas
+        - FilterProbeRadianceWithGatherCS 对已经更新的Probe，执行一次Spatial filtering，输出到一张单独的Texture上，这里会根据当前Probe的前后左右上下6个方向的Probe进行Filter，同时考虑遮挡，其Filter方式大概如下图（本图原本是ScreenProbe得Filter方式，不过World Probe用了相似的方式），实线为当前Probe的方向，蓝色虚线为邻近Probe的同样方向并指向Hit点，绿色虚线为当前Probe到临近Probe Hit点，根据这个夹角计算权重：
+        ![image](../RenderPictures/Lumen/ProbeSpatialFilter.png)
+        - FixupBordersAndGenerateMipsCS 处理八面体的边界（用于插值），并把更新的Probe数据复制到最终的Atlas上
     - GenerateImportanceSamplingRays
-        - ScreenProbeComputeLightingProbabilityDensityFunctionCS
-        - ScreenProbeGenerateRaysCS
+        - ScreenProbeComputeLightingProbabilityDensityFunctionCS 根据周围环境的光照亮度计算重要性采样Pdf，这一步就是通过采样之前的RadianceCache计算亮度，从而计算Light的PDF，根据场景亮度进行重要性采样会有更好的收敛效果，注意这里是根据八面体采样，所以不同像素对应的立体角其实是不同的，可参考[OctahedralSolidAngle](https://math.stackexchange.com/questions/3342761/octahedral-facet-solid-angle/3343709#3343709)，如下：
+        ![image](../RenderPictures/Lumen/OctahedralSolidAngleLut.png)
+
+            计算结果：
+        ![image](../RenderPictures/Lumen/LightImportanceSamplePdf.png)
+        - ScreenProbeGenerateRaysCS 有了PDF就需要生成对应的Ray来进行下一步的Trace，利用之前计算的Probe BRDF PDF和Light PDF生成Probe，下图可以大致的表示其原理，就是根据计算出来的PDF来决定每个Octhedral纹素的采样数量：
+        ![image](../RenderPictures/Lumen/ScreenProbeImportanceSample.png)
     - TraceScreenProbes
-        - MeshSDFCulling
-        - ScreenProbeCompactTracesCS
-        - ScreenProbeTraceMeshSDFsCS
-        - ScreenProbeTraceVoxelsCS
+        - MeshSDFCulling 更新场景需要SDF的数据
+        - ScreenProbeCompactTracesCS Compact所有的Trace信息，用于后面直接进行Trace，根据Trace后Hit信息
+        - ScreenProbeTraceMeshSDFsCS 进行Surface SDF的Tracing，这里进行的是一定距离的Trace，因为对SurfaceCacheTrace相对来说比较耗，而且当距离变远时，同样立体角对应的区域变大，收敛效果也会变差，该步骤的Trace结果如下：
+        ![image](../RenderPictures/Lumen/TraceMeshSDFs.png)
+        - ScreenProbeCompactTracesCS 利用MeshSDF进行了一部分Surface的Tracing，有些Texel还没有Trace结果，所以收集这些还未Trace的Texel，用于后面的Voxel Tracing
+        - ScreenProbeTraceVoxelsCS 利用Voxel Lighting对远距离的Hit进行Trace，在Voxel Tracing之后的结果：
+        ![image](../RenderPictures/Lumen/TraceVoxels.png)
+        可以很明显的看到在VoxelTrace后会有更完善的结果
     - FilterScreenProbes
+        - ScreenProbeCompositeTracesWithScatterCS 根据Octahedral的立体角计算每个texel的权重，把Trace结果以Octahedral的形式表示，并计算深度，如下：
+        ![image](../RenderPictures/Lumen/CompositeTraces.png)
+        - ScreenProbeCalculateMovingCS 
+        - ScreenProbeTemporallyAccumulateTraceRadianceCS 
+        - ScreenProbeFilterGatherTracesCS 
+        - ScreenProbeConvertToIrradianceCS 把Probe从Radiance转到Irradiance
+        - ScreenProbeFixupBordersCS 处理Octahedral的边界
