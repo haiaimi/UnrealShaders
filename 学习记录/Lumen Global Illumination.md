@@ -196,8 +196,8 @@ Lumen场景的体素化:
     - FilterScreenProbes
         - ScreenProbeCompositeTracesWithScatterCS 根据Octahedral的立体角计算每个texel的权重，把Trace结果以Octahedral的形式表示，并计算深度，如下：
         ![image](../RenderPictures/Lumen/CompositeTraces.png)
-        - ScreenProbeCalculateMovingCS 
-        - ScreenProbeTemporallyAccumulateTraceRadianceCS 
-        - ScreenProbeFilterGatherTracesCS 
+        - ScreenProbeCalculateMovingCS 计算Screen Probe相对于上一帧的移动
+        - ScreenProbeTemporallyAccumulateTraceRadianceCS ScreenProbe的时域Filter，主要作用就是结合上一帧的Probe信息做Filter，从而减少Noise，实际上就是反推周围的Probe在上一帧的位置，再采样上一帧的Radiance结果，根据权重进行Filter
+        - ScreenProbeFilterGatherTracesCS 空间上的Filter，取当前帧的周围ScreenProbes进行Filter
         - ScreenProbeConvertToIrradianceCS 把Probe从Radiance转到Irradiance
         - ScreenProbeFixupBordersCS 处理Octahedral的边界
