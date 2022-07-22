@@ -22,6 +22,7 @@
 ![image](../RenderPictures/RainRendering/rainlayer.png)
 
 这里作者定义了4层在相机前面，表示远近，如下图：
+
 ![image](../RenderPictures/RainRendering/layer.png)
 
 每一层用的是同一张雨滴图，通过缩放UV和改变速度来表示每一层雨滴情况，这样做就会有层次感。不过这里远处的层可能会有
@@ -40,8 +41,11 @@
 ## 雨滴图
 雨滴图用一张贴图表示，两个通道分别表示雨滴的亮度值（可以通过调整亮度阈值来决定雨的密度）和雨滴的深度值（0-1），这个图可以是程序化生成或者美术生成（目前提供了自动生成的功能），如下图：
 亮度图：
+
 ![image](../RenderPictures/RainRendering/RainDropIntensity.png)
+
 深度图：
+
 ![image](../RenderPictures/RainRendering/RainDropVirtualDepth.png)
 
 URainDepthComponent：该组件就是绘制雨水深度的组件，需要拖到场景里，相当于逻辑线程对渲染线程的RainDepthRendering的代理
@@ -61,15 +65,19 @@ URainDepthComponent：该组件就是绘制雨水深度的组件，需要拖到�
 
 ## 使用方式
 1. 场景放入RainDepthCapture Actor并调整拍摄深度的方向
-![image](../RenderPictures/RainRendering/RainDepthCaptureActor.png)
+
+    ![image](../RenderPictures/RainRendering/RainDepthCaptureActor.png)
 
 2. 点击SaveDepthTexture会生成深度图（这里可能需要重启项目）
-![image](../RenderPictures/RainRendering/RainDepthCaptureParameters.png)
+
+    ![image](../RenderPictures/RainRendering/RainDepthCaptureParameters.png)
 
 2. 放入RainRenderingCone Actor
-![image](../RenderPictures/RainRendering/RainRenderingCone.png)
 
-经过上面的步骤场景就已经可以渲染出雨水了，效果如下：
-![image](../RenderPictures/RainRendering/RainRendering.png)
+    ![image](../RenderPictures/RainRendering/RainRenderingCone.png)
+
+4. 经过上面的步骤场景就已经可以渲染出雨水了，效果如下：
+
+    ![image](../RenderPictures/RainRendering/RainRendering.png)
 
 
