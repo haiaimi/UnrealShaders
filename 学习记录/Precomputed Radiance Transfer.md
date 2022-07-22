@@ -23,10 +23,10 @@ $$P_A=p(v)dA=\frac{1}{4\pi}dA$$
 $$d_A=sin\theta d\theta d\phi$$
 参数化概率密度函数为：
 $$p(\theta,\phi)=\frac{1}{4\pi}sin\theta$$
-求两个二维独立随机变量的概率密度函数的边缘密度函数：
+求两个二维独立随机变量的概率密度函数的累积（CDF）：
 $$f(\theta)=\int_{0}^{2\pi}p(\theta,\phi)d\phi=\frac{sin\theta}{2}$$
 $$f(\phi)=\int_{0}^{\pi}p(\theta,\phi)d\theta=\frac{1}{2\pi}$$
-再来一次边缘密度函数：
+再来一次累积概率密度函数（CDF）：
 $$F_\theta(\theta)=\int_0^{\theta}f(\hat\theta)d\hat{\theta}=\frac{1-cos\theta}{2}$$
 $$F_\phi(\phi)=\int_{0}^{\phi}f(\hat\phi)d\hat{\phi}=\frac{\phi}{2\pi}$$
 
