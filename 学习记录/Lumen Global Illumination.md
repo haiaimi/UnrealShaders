@@ -187,7 +187,7 @@ Lumen场景的体素化:
     - TraceScreenProbes
         - MeshSDFCulling 更新场景需要SDF的数据
         - ScreenProbeCompactTracesCS Compact所有的Trace信息，用于后面直接进行Trace，根据Trace后Hit信息
-        - ScreenProbeTraceMeshSDFsCS 进行Surface SDF的Tracing，这里进行的是一定距离的Trace，因为对SurfaceCacheTrace相对来说比较耗，而且当距离变远时，同样立体角对应的区域变大，收敛效果也会变差，该步骤的Trace结果如下：
+        - ScreenProbeTraceMeshSDFsCS 进行Surface SDF的Tracing，这里进行的是一定距离的Trace，因为对SurfaceCacheTrace相对来说比较耗，而且当距离变远时，同样立体角对应的区域变大，收敛效果也会变差，可以通过设置"r.Lumen.TraceMeshSDFs.TraceDistance"来更改Trace距离，该步骤的Trace结果如下：
         ![image](../RenderPictures/Lumen/TraceMeshSDFs.png)
         - ScreenProbeCompactTracesCS 利用MeshSDF进行了一部分Surface的Tracing，有些Texel还没有Trace结果，所以收集这些还未Trace的Texel，用于后面的Voxel Tracing
         - ScreenProbeTraceVoxelsCS 利用Voxel Lighting对远距离的Hit进行Trace，在Voxel Tracing之后的结果：
@@ -201,3 +201,23 @@ Lumen场景的体素化:
         - ScreenProbeFilterGatherTracesCS 空间上的Filter，取当前帧的周围ScreenProbes进行Filter
         - ScreenProbeConvertToIrradianceCS 把Probe从Radiance转到Irradiance
         - ScreenProbeFixupBordersCS 处理Octahedral的边界
+    - ScreenSpaceBentNormalCS 计算屏幕空间的 Bent Normal，这一步主要是为了解决Downsample后Trace引起的Contact Shadow的错误，生成结果如下：
+        ![image](../RenderPictures/Lumen/SceneNormal.png)
+        ![image](../RenderPictures/Lumen/SceneBentNormal.png)
+    其原理比较简单，就是在当前法线方向对应的半球区域随机发射光线，利用HZB加速屏幕空间RayTrace，根据是否Hit结果加权平均，从而得到Bent Normal（这里根据法线计算Basis的方法是根据这两篇文章得到[Building an Orthonormal Basis from a 3D Unit Vector Without Normalization](https://backend.orbit.dtu.dk/ws/portalfiles/portal/126824972/onb_frisvad_jgt2012_v2.pdf)，[Building an Orthonormal Basis, Revisited](https://graphics.pixar.com/library/OrthonormalB/paper.pdf)。大致就是利用四元数旋转解决计算basis需要normalize的情况，优化了性能，后者是对前者精度的优化）。
+
+- Integrate
+    - ScreenProbeTileClassificationMarkCS 对GBuffer分块，每一块8x8像素，每个Tile将会有3种Integrate模式：
+        - SimpleDiffuse：正常ShadingModel，DefaultLit
+        - Importance Sample BRDF：特殊的ShadingModel，如Hair、Clear Coat
+        - All：两者兼顾
+    - ScreenProbeTileClassificationBuildListsCS 为这些Tile生成CS的Dispatch Arguments
+    - ScreenProbeIntegrateCS_SimpleDiffuse 
+    - ScreenProbeIntegrateCS_SupportImportanceSampleBRDF
+    - ScreenProbeIntegrateCS_SupportAll
+
+    这里可以选择是否使用BentNormal（"r.Lumen.ScreenProbeGather.ScreenSpaceBentNormal.ApplyDuringIntegration 1"开启），开启BentNormalIntegrate的效果差别并不大：
+    - BentNormal On
+    ![image](../RenderPictures/Lumen/LumenBentNormalIntegrateOn.png)
+    - BentNormal Off
+    ![image](../RenderPictures/Lumen/LumenBentNormalIntegrateOff.png)
