@@ -202,18 +202,44 @@ Lumen场景的体素化:
         - ScreenProbeConvertToIrradianceCS 把Probe从Radiance转到Irradiance
         - ScreenProbeFixupBordersCS 处理Octahedral的边界
     - ScreenSpaceBentNormalCS 计算屏幕空间的 Bent Normal，这一步主要是为了解决Downsample后Trace引起的Contact Shadow的错误，生成结果如下：
+
         ![image](../RenderPictures/Lumen/SceneNormal.png)
         ![image](../RenderPictures/Lumen/SceneBentNormal.png)
     其原理比较简单，就是在当前法线方向对应的半球区域随机发射光线，利用HZB加速屏幕空间RayTrace，根据是否Hit结果加权平均，从而得到Bent Normal（这里根据法线计算Basis的方法是根据这两篇文章得到[Building an Orthonormal Basis from a 3D Unit Vector Without Normalization](https://backend.orbit.dtu.dk/ws/portalfiles/portal/126824972/onb_frisvad_jgt2012_v2.pdf)，[Building an Orthonormal Basis, Revisited](https://graphics.pixar.com/library/OrthonormalB/paper.pdf)。大致就是利用四元数旋转解决计算basis需要normalize的情况，优化了性能，后者是对前者精度的优化）。
 
 - Integrate
     - ScreenProbeTileClassificationMarkCS 对GBuffer分块，每一块8x8像素，每个Tile将会有3种Integrate模式：
-        - SimpleDiffuse：正常ShadingModel，DefaultLit
-        - Importance Sample BRDF：特殊的ShadingModel，如Hair、Clear Coat
+        - SimpleDiffuse：正常Lit ShadingModel，但是Roughness > 0.8
+        - Importance Sample BRDF：正常Lit ShadingModel Roughness < 0.8，特殊的ShadingModel，如Hair、Clear Coat
         - All：两者兼顾
+    在粗糙度大于一定程度的时候，Lumen就以粗糙的方式决定Irradiance，但是当粗糙度比较低时则就需要进行重要性采样提高质量
     - ScreenProbeTileClassificationBuildListsCS 为这些Tile生成CS的Dispatch Arguments
-    - ScreenProbeIntegrateCS_SimpleDiffuse 
-    - ScreenProbeIntegrateCS_SupportImportanceSampleBRDF
+    - ScreenProbeIntegrateCS_SimpleDiffuse 该部分直接从 ScreenProbeIrradiance Octahedral Texture中指定方向采样得到Irradiance，
+    - ScreenProbeIntegrateCS_SupportImportanceSampleBRDF 以Diffuse为例，使用余弦重要性采样，采样圆盘半球采样，如果开启Bent Normal，还是进行遮挡检测这里还引入了高斯球谐，具体细节目前没看（PPT上说是可以还原ContactShadow的效果，但是实际差别不大...），这一部分又感受到了PathTracing的感觉，Shader代码如下：
+        ```cpp
+        FSphericalGaussian HemisphereSG = Hemisphere_ToSphericalGaussian(GBufferData.WorldNormal);
+		FSphericalGaussian VisibleSG = BentNormalAO_ToSphericalGaussian(UnitBentNormal, AO);
+        for (uint PixelRayIndex = 0; PixelRayIndex < NumPixelSamples; PixelRayIndex += 1)
+        {
+            // 生成低差异序列随机数
+            float4 E = ComputeIndirectLightingSampleE(DispatchThreadId.xy, PixelRayIndex, NumPixelSamples);
+            // 对应不同的ShadingModel随机采样，使用Cosin重要性采样
+            FBxDFSample BxDFSample = SampleBxDFWrapper(TermMask, GBufferData, V, E);
+            // 具体采样Radiance Texture，注意这里直接采样Radiance
+            float3 InterpolatedRadiance = InterpolateFromScreenProbes(BxDFSample.L, DiffuseMipLevel, StochasticScreenProbeSample);
+
+            float DirectionVisibility = 1.0f;
+
+            // 考虑光线遮挡情况，具体应该类似于GTAO
+            #if SCREEN_SPACE_BENT_NORMAL
+                float LVisibility = saturate(Evaluate(VisibleSG, BxDFSample.L) / Evaluate(HemisphereSG, BxDFSample.L));
+                DirectionVisibility *= LVisibility;
+            #endif
+
+            DiffuseLighting += InterpolatedRadiance * BxDFSample.Weight * DirectionVisibility;
+        }
+        DiffuseLighting = DiffuseLighting * PI / ((float)NumPixelSamples * AO);
+        ```
     - ScreenProbeIntegrateCS_SupportAll
 
     这里可以选择是否使用BentNormal（"r.Lumen.ScreenProbeGather.ScreenSpaceBentNormal.ApplyDuringIntegration 1"开启），开启BentNormalIntegrate的效果差别并不大：
@@ -221,3 +247,7 @@ Lumen场景的体素化:
     ![image](../RenderPictures/Lumen/LumenBentNormalIntegrateOn.png)
     - BentNormal Off
     ![image](../RenderPictures/Lumen/LumenBentNormalIntegrateOff.png)
+
+- ScreenProbeTemporalReprojectionCS 时域重投影
+
+    这一部分不得不感叹Epic的工程能力，把以前离线的理论应用到实时渲染当中，抽丝剥茧的感觉，应用理论中的一部分，另外一部分用自己的方式实现，并且把它们整合到一起，最终能做到接近理论GroundTruth的结果。可以看出学术能力和工程能力缺一不可，所有的Trick都是有它的理论基础做支撑。
