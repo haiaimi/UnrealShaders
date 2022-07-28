@@ -215,7 +215,7 @@ Lumen场景的体素化:
     在粗糙度大于一定程度的时候，Lumen就以粗糙的方式决定Irradiance，但是当粗糙度比较低时则就需要进行重要性采样提高质量
     - ScreenProbeTileClassificationBuildListsCS 为这些Tile生成CS的Dispatch Arguments
     - ScreenProbeIntegrateCS_SimpleDiffuse 该部分直接从 ScreenProbeIrradiance Octahedral Texture中指定方向采样得到Irradiance，
-    - ScreenProbeIntegrateCS_SupportImportanceSampleBRDF 以Diffuse为例，使用余弦重要性采样，采样圆盘半球采样，如果开启Bent Normal，还是进行遮挡检测这里还引入了高斯球谐，具体细节目前没看（PPT上说是可以还原ContactShadow的效果，但是实际差别不大...），这一部分又感受到了PathTracing的感觉，Shader代码如下：
+    - ScreenProbeIntegrateCS_SupportImportanceSampleBRDF 以Diffuse为例，使用余弦重要性采样，采样圆盘半球采样，如果开启Bent Normal，还是进行遮挡检测这里还引入了高斯球谐，具体细节目前没看（PPT上说是可以还原ContactShadow的效果，但是实际差别不大...），这一部分又感受到了PathTracing的感觉，同时这里也会计算在一定粗糙度范围内（默认0.3-0.8）的RoughSpecular，RoughSpecular应该是给后续做高粗糙度的反射使用，这里同样使用重要性采样，Shader代码如下：
         ```cpp
         FSphericalGaussian HemisphereSG = Hemisphere_ToSphericalGaussian(GBufferData.WorldNormal);
 		FSphericalGaussian VisibleSG = BentNormalAO_ToSphericalGaussian(UnitBentNormal, AO);
@@ -248,6 +248,6 @@ Lumen场景的体素化:
     - BentNormal Off
     ![image](../RenderPictures/Lumen/LumenBentNormalIntegrateOff.png)
 
-- ScreenProbeTemporalReprojectionCS 时域重投影
+- ScreenProbeTemporalReprojectionCS 时域重投影，大致原理就是利用上一帧的IndirectDiffuse和RoughSpecularIndirect的结果来对当前帧的结果进行Filter
 
     这一部分不得不感叹Epic的工程能力，把以前离线的理论应用到实时渲染当中，抽丝剥茧的感觉，应用理论中的一部分，另外一部分用自己的方式实现，并且把它们整合到一起，最终能做到接近理论GroundTruth的结果。可以看出学术能力和工程能力缺一不可，所有的Trick都是有它的理论基础做支撑。
