@@ -365,4 +365,33 @@ DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<true, CF_LessEqual
 
 ![image](../RenderPictures/CascadedShadowMaps/CSM_06.png)
 
-最外面的方形才是ShadowDepth的区域，这样看来我们可以Cache住子视锥附近的图元深度，在视角移动的时候可以通过给ShadowDepth添加偏移来达到视口移动的效果。可以想象一种最理想情况，视锥的包围球位置不动，视锥在球里面旋转，那么就没有任何图元需要绘制
+最外面的方形才是ShadowDepth的区域，这样看来我们可以Cache住子视锥附近的图元深度，在视角移动的时候可以通过给ShadowDepth添加偏移来达到视口移动的效果。可以想象一种最理想情况，视锥的包围球位置不动，视锥在球里面旋转，那么就没有任何图元需要绘制。
+
+那么可以理解为下面的过程：
+![image](../RenderPictures/CascadedShadowMaps/CSMCache.png)
+
+![image](../RenderPictures/CascadedShadowMaps/CSMCache._MainFlow.png)
+![image](../RenderPictures/CascadedShadowMaps/CSMCache._MainFlow1.png)
+
+## Static Mesh
+对于静态物理来说Cache比较容易，直接与阴影的Box相交检测即可，可以直接记录Mesh的Cache状态，当前帧与前一帧Cache的Mesh对比，记录这帧需要绘制的Mesh。
+
+## ISM & HISM
+由于ISM和HISM的Bounding Box比较大，所以为了保证Cache效率，需要对这两类Mesh单独处理
+### ISM
+Instanced Static Mesh，这里对ISM里的每个Instance进行单独的处理，当然会有单独对Instance处理的数据
+### HISM
+HISM的最小处理单位为Cluster，这里也会重新组织Instance数据，主要添加了以下几个函数：
+```cpp
+virtual void GetCSMScrollingDynamicMeshElements(const TArray<const FSceneView*>& Views, const FSceneViewFamily& ViewFamily, uint32 VisibilityMap, FMeshElementCollector& Collector, class FProjectedCSMScrollingInfo& CSMScrollingInfo) const override;
+virtual bool CheckCSMCachedImmediately() const override { return false; }
+template<bool TUseVector>
+void TraverseCSMScrolling(const FFoliageCullInstanceParams& Params, const FConvexVolume& ShadowCullingFrustum, const FVector& PreTranslation, int32 Index, int32 MinLOD, int32 MaxLOD, struct FNodeIntersectInfo& IntersectInfo, FCSMScrollingCacheInfo& OutCache, const FCSMScrollingCacheInfo& PreFrameCache, TArray<int32>(&CachedInstanceId)[MAX_STATIC_MESH_LODS], int32 ShadowIndex, bool bFullyContained = false, bool bNeedSubmitToDraw = true) const;
+```
+
+CSM Cache的数据处理文件：
+ShadowCSMScrolling.h
+ShadowCSMScrolling.cpp
+
+## 边界处理
+当Mesh正好处于Box边缘的时候，就会记录Mesh到边界的距离，如果当前帧到边界的距离相比于上一帧变长，那就意味着这一帧需要更新这个Mesh的阴影。

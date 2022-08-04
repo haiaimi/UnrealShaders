@@ -88,6 +88,9 @@ $k=\lfloor \frac{\log(\frac{-Z_{vs}}{near})}{\log(1+\frac{2\tan\theta}{S_y})}\rf
 UE4也为Forward管线实现了一个Cluster Shading，下面内容就是UE4中的实现流程。
 主要文件就是*LightGridInjection.cpp*和*LightGridInjection.usf*，就是调用*FDeferredShadingSceneRenderer::ComputeLightGrid*函数进行构建。
 
+主要流程：
+![image](../RenderPictures/ClusterLighting/ClusterLightingMainFlow.png)
+
 ## 配置变量
 * int32 GLightGridPixel; 每个Light Grid以像素为单位的大小
 * int32 GLightGridSizeZ; Z方向的Light Grid的数量
