@@ -36,7 +36,7 @@ float ShadowRayCast(
 {
     // RayOriginTranslatedWorld：View Space的像素位置，Trace的起始位置 
     // RayDirection：光线方向
-    // RayLength：Trace的距离，这里是世界空间里的距离，对应光源设置里的ContactShadowLength(屏幕UV空间0-0.1)
+    // RayLength：Trace的距离，这里是世界空间里的距离，下面会提到
     // NumSteps：步进数量
     // StepOffset：步进偏移，用于抖动
 
@@ -104,3 +104,12 @@ float ShadowRayCast(
 	return HitDistance;
 }
   ```
+
+  为了能够Trace步进距离随着距离的远近更好的适配（距离越远世界空间Trace的StepDistance越远，保证远处的ContactShadow尽量正确），所以这里的RayLength计算如下：
+	![image](../RenderPictures/ContactShadow/ViewFrustumRadius.png)
+
+RayLength就以Radius值做为基数（一般scale小于0.1），可以看到随着距离越近，Radius越小，Trace的精度也随之变高，这样可以提供一个比较稳定的Trace步进。计算方法：
+已知深度Z（线性深度），$\alpha=\frac{fov}{2}$
+$$Radius=Z\times tan(\alpha) \times \frac{Width}{Height}$$
+
+这里的Width和Height是视口长宽比，因为这是根据横轴来确定值。
