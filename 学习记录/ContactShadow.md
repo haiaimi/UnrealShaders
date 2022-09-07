@@ -113,3 +113,33 @@ RayLength就以Radius值做为基数（一般scale小于0.1），可以看到随
 $$Radius=Z\times tan(\alpha) \times \frac{Width}{Height}$$
 
 这里的Width和Height是视口长宽比，因为这是根据横轴来确定值。
+
+其他部分就还是比较常规的raymarch。
+
+## 移动平台效果优化
+直接raymarch会产生很明显的artifact，明显的块状现象，这是由于步进距离是固定的，在步进次数不够的时候就会产生这种问题，所以正常会给个起始点的offset，这跟体积云的操作是一样的，如下：
+* Dither Off
+![image](../RenderPictures/ContactShadow/dither_off.png)
+* Dither On
+![image](../RenderPictures/ContactShadow/dither_on.png)
+
+可以看到阴影边缘过渡明显更加平滑，效果更佳。
+
+
+但是有了Dither后就会产生噪点，PC上使用TAA解决了这个问题，但是移动平台目前还没有，所以需要单独有个Temoral filter的操作，不过需要注意的是这并没有TAA那么复杂，实际上只要用到TAA里的两步即可：
+* 历史帧信息混合，$P_t$是上一帧信息，$c_t$是当前帧信息， $P_t=(1-\alpha)\cdot P_{t-1}+\alpha \cdot c_t$ 
+* clamp操作，处理ghosting
+
+由于只对shadowmask图做filter，所以重投影和velocity buffer不太需要（其实也不好生成），但是最终的结果可以接受。
+
+### 软阴影
+还有一点是软阴影的处理，上面可以看到阴影整体还是比较硬，实际是需要美术可以通过设置来调整软阴影范围，这里就通过每帧在一定范围内随机方向发射光线，16帧为1个周期，最后配合temporal filer降噪，结果如下：
+* soft shadow off
+![image](../RenderPictures/ContactShadow/soft_shadow_off.png)
+
+* soft shadow on
+![image](../RenderPictures/ContactShadow/soft_shadow_on.png)
+
+白色为阴影区域，模糊半径的值由美术调整
+
+随机序列使用Halton序列，这里预先计算好，runtime根据像素位置输出随机值旋转这个序列。同时这里需要注意，直接对结果做clamp的软阴影效果不太好，还是需要把clamp结果和当前帧混合结果做lerp，不过这样就需要在lag和noise之间做权衡了。
