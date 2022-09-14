@@ -104,3 +104,22 @@ $$\hat T_i=\hat T_{i+1}\bar T_i$$
 
 $\hat I_0$才是最终结果。
 
+以上都是在光线角度定义，但是实际上体素肯定是在世界空间，所以我们就需要在世界空间预计算两个方程$\bar Q$和$\bar T$，
+
+$$\bar Q(p,d,s,l)=\int_{r\in P}Q(s,s+l,r)dr$$
+$$\bar T(p,d,s,l)=\int_{r\in P}e^{-\tau(s,s+l,r)}dr$$
+
+$p$:位置
+$d$:方向
+$s$:面积
+$l$:长度
+
+由于体素是正方体结构，所以$s=l^2$，$l$就是体素宽度可以确定，体素为均匀等距分布，所以$p$也可以确定，就剩$d$没有确定。预积分能量值$\bar Q$不需要存储，只要存储对应的着色参数，以便动态计算处$\bar Q$。$d$参数在实际渲染的时候根据方向指定。
+
+在实际渲染中，肯定是按透视投影，所以实际就会有如下：
+
+![image](../RenderPictures/Voxel%20Global%20Illumination/PreIntegration%20Model_2.png)
+
+在实际应用中会有voxel mipmap来表示，方便进行采样。
+
+现在就需要计算前面说到的着色参数
