@@ -122,4 +122,34 @@ $l$:长度
 
 在实际应用中会有voxel mipmap来表示，方便进行采样。
 
-现在就需要计算前面说到的着色参数
+现在就需要计算前面说到的着色参数，以用来计算$\bar Q$，着色参数主要主要存储4类信息：体素透明度、漫反射材质颜色、法线分布、BRDF分布函数。
+
+* 漫反射 
+漫反射就是存储在贴图里的albedo，就是通过普通的贴图采样平均加权即可。
+
+* 法线分布
+实际上要存储法线分布函数（NDF）是比较占用内存的，所以这里还是使用平均法线和高斯分布（正态分布）来近似法线分布函数，其方差可以用平均法线模表示$|N|$：
+$$\sigma ^2=\frac{1-|N|}{|N|}$$
+
+    * 正态分布定义：
+        若随机变量$X$服从一个位置参数为$\mu$、尺度参数为$\sigma$的常态分布，记为：
+        $$X \sim N(\mu,\sigma ^2)$$
+
+        其概率密度函数为：
+        $$f(x)=\frac{1}{\sigma \sqrt{2\pi}}e^{-\frac{(x-\mu)^2}{2\sigma ^2}}$$
+
+    * 高斯分布的pdf如下图：
+    ![image](../RenderPictures/Voxel%20Global%20Illumination/Normal_Distribution_PDF.svg)
+
+### 着色模型
+有了上面两个参数以及可见性参数，就可以开始着色步骤。
+首先光照方程：
+$$L(x,\omega_o)=\int_{S^2}L(x,\omega_i)\rho(\omega_i,\omega_o;n(x))d\omega_i$$
+
+这里$n(x)$是单点的法线，但是实际上我们这里会使用近似法线分布函数表示，同时体素表示的是多个表面位置的集合，不是单个点，假设集合点为$q\in x$：
+$$L(x,\omega_o)=\frac{1}{N}\sum_{q\in x}\int_{S^2}L(x,\omega_i)\rho(\omega_i,\omega_o;n(q))d\omega_i$$
+$$=\int_{S^2}L(x,\omega_i)(\frac{1}{N}\sum_{q\in x}\rho(\omega_i,\omega_o;n(1)))d\omega_i$$
+这里假设位置对光照计算结果没有影响，这是因为对体素来说，法线变化影响才是最大的。
+
+所以定义BRDF分布函数：
+$$\rho_v(\omega_i,\omega_o;x)=\frac{1}{N}\sum_{q\in x}\rho(\omega_i,\omega_o;n(q))$$
