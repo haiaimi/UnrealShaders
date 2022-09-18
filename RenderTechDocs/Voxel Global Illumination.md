@@ -153,3 +153,12 @@ $$=\int_{S^2}L(x,\omega_i)(\frac{1}{N}\sum_{q\in x}\rho(\omega_i,\omega_o;n(1)))
 
 所以定义BRDF分布函数：
 $$\rho_v(\omega_i,\omega_o;x)=\frac{1}{N}\sum_{q\in x}\rho(\omega_i,\omega_o;n(q))$$
+
+那么如何高效计算$p_v$，其可以理解为对所有离散位置$p$的平均值计算，表示如下：
+$$p_v(\omega_i,\omega_o;\gamma(n))=\int_{S^2}(\rho(\omega_i,\omega_o;n)\gamma(n)dn$$
+
+这其实就是对表面所有法线方向的BRDF积分，$\gamma(n)$又表示体素法线分布函数。所以$\rho_v$就是表示基于像素的BRDF分布函数和法线分布函数的卷积。根据定义平面上的两个标准差为$\sigma$和$\sigma_s$的高斯分布，其卷积是一个标准差更大的高斯分布，为$\sigma_{s'}^2=\sigma^2+\sigma_{s}^2$，那么如果我们使用Diffuse BRDF，$f(x) = \frac{albedo}{\pi}$，我们又已知体素漫反射颜色值，那么就可以很轻松的计算出$\rho_{v}$。
+
+从下图就可以看出，一个体素需要计算多个位置的反射光照结果，所以这也就需要围绕法线分布函数积分计算：
+
+![image](../RenderPictures/Voxel%20Global%20Illumination/VoxelSample.png)
