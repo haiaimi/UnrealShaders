@@ -141,7 +141,7 @@ $$\sigma ^2=\frac{1-|N|}{|N|}$$
     * 高斯分布的pdf如下图：
     ![image](../RenderPictures/Voxel%20Global%20Illumination/Normal_Distribution_PDF.svg)
 
-### 着色模型
+#### 着色模型
 有了上面两个参数以及可见性参数，就可以开始着色步骤。
 首先光照方程：
 $$L(x,\omega_o)=\int_{S^2}L(x,\omega_i)\rho(\omega_i,\omega_o;n(x))d\omega_i$$
@@ -162,3 +162,31 @@ $$p_v(\omega_i,\omega_o;\gamma(n))=\int_{S^2}(\rho(\omega_i,\omega_o;n)\gamma(n)
 从下图就可以看出，一个体素需要计算多个位置的反射光照结果，所以这也就需要围绕法线分布函数积分计算：
 
 ![image](../RenderPictures/Voxel%20Global%20Illumination/VoxelSample.png)
+
+#### 渲染
+根据上述的信息，已经可以进行ConeTracing，VXGI是根据GBuffer在屏幕空间进行Conetracing，可以支持Diffuse和Specluar两种间接光，正常来说不会每个像素进行contracing，而是分tile进行Conetracing，比如一个Tile(4x4, 5x5)。
+
+但是我们是准备把ConeTracing数据投影到球谐函数上，理论上这写ConeTracing的数据可以Cache，可以大大减少Cache数量。
+
+### Surface Voxel Global Illumination
+这里先命名为Surface Voxel Global Illumination，Surface是因为我们通过屏幕空间信息Cache场景颜色信息，再通过Surface Cache来构建体素。
+
+#### 数据结构
+##### 主要数据：
+* Voxel Surface Cache：利用Octahedron对GBuffer信息进行存储，存储Diffuse、Emissive、Depth用于生成场景体素
+* SurfaceCahce Lookup Table：3DTexture，Voxel Surface Cache的位索引，uint32够用
+* Voxel Mipmap0：由Voxel Surface Cache转换成Voxel，存储Diffuse、Emissive、Visibility基本信息
+* Voxel Mipmap1：对Mipmap0注入直接光后的DirectLight，可以有1次反弹后的IndirectLight
+* Sparse Probe Clipmap：根据场景体素生成场景稀疏Probe，生成clipmap，增加GI范围
+
+前几个数据都是为了生成最后的Probe
+
+##### Voxel Surface Cache
+为什么需要这个？一开始我是认为直接从GBuffer取数据，根据Depth计算像素在对应哪个Voxel，如果直接用一个颜色值表示Voxel的一个面，那么随着视角变化，可能每帧Voxel的数据都不太一样，简单说就是Voxel数据不稳定，如下图：
+
+![image](../RenderPictures/Voxel%20Global%20Illumination/ScreenSpaceVoxel0.png)
+
+可以看到三个视角产生不同的结果，实际场景相机肯定会一直发生变化，如果使用Temporal方式混合，那就得保证视角一直围绕这个体素，比如视角突然一直固定在上图第一个位置，那么体素右边一面的颜色会变成橙色。所以为了构建相对比较稳定的体素，就需要对表面信息进行Cache，八面体Octahedron就可以表示一个球面颜色信息。这里可以把相机想象成一个Lidar，经过视角不停的变化，可以最终把Octahedron填充满，最终再通过Voxel Surface Cache构建场景Voxel。Voxel Surface Cache可能用一张2D Texture存储，比如1024x1024的可以存储16384个。
+
+##### Surface cache LookupTable
+如果八面体使用8x8(RGBA8)分辨率表示，那么一个体素的Cache就占用256 Bytes，所以这就不能像体素那样以3D Texture那样组织，就需要把数据Compact到一起，用Lookuptable 查询，为了提高查询效率，这里的lut使用3D Texture，一个像素对应场景一个Voxel。
