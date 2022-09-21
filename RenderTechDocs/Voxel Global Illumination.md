@@ -186,7 +186,16 @@ $$p_v(\omega_i,\omega_o;\gamma(n))=\int_{S^2}(\rho(\omega_i,\omega_o;n)\gamma(n)
 
 ![image](../RenderPictures/Voxel%20Global%20Illumination/ScreenSpaceVoxel0.png)
 
-可以看到三个视角产生不同的结果，实际场景相机肯定会一直发生变化，如果使用Temporal方式混合，那就得保证视角一直围绕这个体素，比如视角突然一直固定在上图第一个位置，那么体素右边一面的颜色会变成橙色。所以为了构建相对比较稳定的体素，就需要对表面信息进行Cache，八面体Octahedron就可以表示一个球面颜色信息。这里可以把相机想象成一个Lidar，经过视角不停的变化，可以最终把Octahedron填充满，最终再通过Voxel Surface Cache构建场景Voxel。Voxel Surface Cache可能用一张2D Texture存储，比如1024x1024的可以存储16384个。
+可以看到三个视角产生不同的结果，实际场景相机肯定会一直发生变化，如果使用Temporal方式混合，那就得保证视角一直围绕这个体素，比如视角突然一直固定在上图第一个位置，那么体素右边一面的颜色会变成橙色。所以为了构建相对比较稳定的体素，就需要对表面信息进行Cache，八面体Octahedron就可以表示一个球面颜色信息。这里可以把相机想象成一个Lidar，经过视角不停的变化，可以不断填充Octahedron，最终再通过Voxel Surface Cache构建场景Voxel。Voxel Surface Cache可能用一张2D Texture存储，比如1024x1024的可以存储16384个。
 
 ##### Surface cache LookupTable
 如果八面体使用8x8(RGBA8)分辨率表示，那么一个体素的Cache就占用256 Bytes，所以这就不能像体素那样以3D Texture那样组织，就需要把数据Compact到一起，用Lookuptable 查询，为了提高查询效率，这里的lut使用3D Texture，一个像素对应场景一个Voxel。
+
+##### Voxel Mipmap0
+需要注意的是，这里的体素不是VXGI里从非常小的粒度开始，而是直接以6个面表示体素。第一份体素主要是场景体素化后的基本信息，Albedo,Emissive,Visibility，会每帧根据Surface Cache更新这份体素数据。
+
+##### Voxel Mipmap1
+上面的Voxel只存储基本信息，但是实际是需要着色后的体素，所以我们还需要另一份Voxel数据，该Voxel数据已经注入光照，可以通过ShadowMap注入直接光，也可以从Probe获取1 Bounce后的间接光。
+
+##### Sparse Probe CLipmap
+正常Voxel GI是直接在GBuffer上进行ConeTracing，但是这里考虑降低性能，同时降低效果，使用空间Probe。Probe根据Voxel的位置分布，这也可以承担Radiance Cache的角色，可以给体素提供一次反弹的结果，所以GI就有了2次反弹效果，2次反弹正常来说已经够用了。
